@@ -48,6 +48,17 @@ records the plan for turning it into a desktop OS and the decisions behind it.
 Credentials are encrypted with PBKDF2-SHA256 + ChaCha20-Poly1305. An admin can
 reset a forgotten password but cannot recover the encrypted credentials.
 
+## Status
+
+| Phase | State |
+|---|---|
+| 1. Input and test tooling | Done |
+| 2. Kernel services | Done |
+| 3. Networking | Done for IPv4 and TLS. IPv6 is deferred until something needs it. |
+| 4. Graphics and windowing | Next (moved ahead of audio: most remaining work depends on it) |
+| 5. Audio and camera | Planned |
+| 6.–11. | Planned |
+
 ## Phases
 
 1. **Input and test tooling.** Automated QEMU test script; PS/2 and USB mouse and
@@ -59,11 +70,11 @@ reset a forgotten password but cannot recover the encrypted credentials.
    state per thread, kernel log buffer.
 3. **Networking.** virtio-net and e1000 drivers; IPv4/IPv6, TCP, UDP, DHCP, DNS;
    socket API; TLS (vendored) for HTTPS, IMAPS and SMTPS.
-4. **Audio and camera.** Intel HD Audio driver, audio server with per-app mixing
-   and volume keys; USB Video Class camera driver.
-5. **Graphics and windowing.** Compositor and window system, 2D graphics library,
+4. **Graphics and windowing.** Compositor and window system, 2D graphics library,
    TrueType and Unicode text, image decoding, AUI markup and widget toolkit,
    desktop shell with taskbar and backgrounds, graphical boot screen.
+5. **Audio and camera.** Intel HD Audio driver, audio server with per-app mixing
+   and volume keys; USB Video Class camera driver.
 6. **Users and language.** Per-user layout above, encrypted credentials,
    translations for the five languages, keyboard layouts, pinyin input method,
    keyboard-only navigation, high-contrast theme.
