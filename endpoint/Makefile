@@ -41,6 +41,12 @@ MATH_FLAGS := -std=c99 -O2 -ffreestanding -nostdinc -isystem $(shell $(CC) -prin
               -I$(MATH_DIR)/include -I$(MATH_DIR)/src -fpie -fno-stack-protector \
               -fno-asynchronous-unwind-tables -w
 
+# Graphics: drawing, fonts (stb_truetype) and images (stb_image).
+GFX_SRCS  := $(wildcard gfx/*.c)
+GFX_OBJS  := $(addprefix $(BUILD)/,$(GFX_SRCS:.c=.o))
+GFX_LIB   := $(BUILD)/libgfx.a
+LIBS      := $(LIBC) $(GFX_LIB) $(SSL_LIB) $(MATH_LIB)
+
 TERMINAL_SRCS := $(wildcard terminal/*.c terminal/commands/*.c)
 PROGRAMS      := $(basename $(notdir $(wildcard programs/*.c)))
 
@@ -59,6 +65,14 @@ $(BUILD)/bearssl/%.o: $(SSL_DIR)/src/%.c
 	$(CC) $(SSL_FLAGS) -c $< -o $@
 
 $(SSL_LIB): $(SSL_OBJS)
+	$(AR) rcs $@ $^
+
+$(BUILD)/gfx/%.o: gfx/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Ilib/include/compat -Wno-sign-compare -Wno-unused-function -Wno-unused-parameter \
+		-Wno-implicit-fallthrough -Wno-missing-field-initializers -c $< -o $@
+
+$(GFX_LIB): $(GFX_OBJS)
 	$(AR) rcs $@ $^
 
 $(BUILD)/libm/%.o: $(MATH_DIR)/src/%.c
@@ -83,9 +97,9 @@ $(BUILD)/bin/terminal: $(CRT0) $(addprefix $(BUILD)/,$(TERMINAL_SRCS:.c=.o)) $(L
 	@mkdir -p $(dir $@)
 	$(LD) $(LDFLAGS) $^ -o $@
 
-$(BUILD)/bin/%: $(CRT0) $(BUILD)/programs/%.o $(LIBC) $(SSL_LIB) $(MATH_LIB)
+$(BUILD)/bin/%: $(CRT0) $(BUILD)/programs/%.o $(LIBS)
 	@mkdir -p $(dir $@)
-	$(LD) $(LDFLAGS) $(CRT0) $(BUILD)/programs/$*.o --start-group $(LIBC) $(SSL_LIB) $(MATH_LIB) --end-group -o $@
+	$(LD) $(LDFLAGS) $(CRT0) $(BUILD)/programs/$*.o --start-group $(LIBS) --end-group -o $@
 
 clean:
 	rm -rf $(BUILD)

@@ -20,7 +20,8 @@ mkdir -p "$root"/bin "$root"/sbin "$root"/etc "$root"/boot "$root"/root \
 cp "$endpoint"/sbin/* "$root"/sbin/
 cp "$endpoint"/bin/* "$root"/bin/
 cp -r "$here"/../endpoint/rootfs/. "$root"/
-mkdir -p "$root"/etc/ssl/certs
+mkdir -p "$root"/etc/ssl/certs "$root"/usr/share/fonts
+cp "$here"/../third_party/fonts/*.ttf "$root"/usr/share/fonts/
 cp "$here"/../third_party/ca-certificates.pem "$root"/etc/ssl/certs/ca-bundle.pem
 
 cat > "$root"/etc/passwd <<PASSWD

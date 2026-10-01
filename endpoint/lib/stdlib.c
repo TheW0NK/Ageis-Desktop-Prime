@@ -229,3 +229,6 @@ int setenv(const char *name, const char *value)
     environ = list;
     return 0;
 }
+
+int abs(int v) { return v < 0 ? -v : v; }
+long labs(long v) { return v < 0 ? -v : v; }
