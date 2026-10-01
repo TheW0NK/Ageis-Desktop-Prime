@@ -1,0 +1,19 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include/efi",
+                "/usr/include/efi/x86_64"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "compilerArgs": ["-ffreestanding", "-fshort-wchar"],
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}

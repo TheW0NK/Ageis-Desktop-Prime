@@ -1,0 +1,19 @@
+# Aegis Boot Configuration Data. Installed as \EFI\Aegis\bcd.
+# See bcd.h for the format.
+
+timeout=5
+default=aegis
+loader=\EFI\Aegis\btloader.efi
+diagnostics=true
+resolution=auto
+
+[aegis]
+title=Aegis
+type=kernel
+path=\EFI\Aegis\kernel.elf
+cmdline=
+
+[recovery]
+title=Aegis Recovery
+type=efi
+path=\EFI\Aegis\recovery.efi

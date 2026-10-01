@@ -1,0 +1,213 @@
+#include "bcache.h"
+#include "mem.h"
+#include "string.h"
+
+#define BCACHE_MAX      4096
+#define HASH_SIZE       1024
+
+static struct mutex cache_lock = MUTEX_INIT;
+static struct buf *hash[HASH_SIZE];
+static struct buf *lru_head, *lru_tail;
+static size_t buf_count;
+
+static unsigned hash_of(struct block_device *dev, uint64_t block)
+{
+    return ((uint64_t)dev / 64 ^ block * 2654435761U) % HASH_SIZE;
+}
+
+static void lru_remove(struct buf *b)
+{
+    if (b->lru_prev)
+        b->lru_prev->lru_next = b->lru_next;
+    else
+        lru_head = b->lru_next;
+    if (b->lru_next)
+        b->lru_next->lru_prev = b->lru_prev;
+    else
+        lru_tail = b->lru_prev;
+    b->lru_prev = b->lru_next = NULL;
+}
+
+static void lru_push_front(struct buf *b)
+{
+    b->lru_next = lru_head;
+    b->lru_prev = NULL;
+    if (lru_head)
+        lru_head->lru_prev = b;
+    lru_head = b;
+    if (!lru_tail)
+        lru_tail = b;
+}
+
+static void hash_remove(struct buf *b)
+{
+    struct buf **pp = &hash[hash_of(b->dev, b->block)];
+
+    while (*pp && *pp != b)
+        pp = &(*pp)->hash_next;
+    if (*pp)
+        *pp = b->hash_next;
+}
+
+static int write_out(struct buf *b)
+{
+    if (block_write(b->dev, b->block * b->size, b->data, b->size) != 0)
+        return -1;
+    b->dirty = false;
+    return 0;
+}
+
+static struct buf *evict(void)
+{
+    for (struct buf *b = lru_tail; b; b = b->lru_prev) {
+        if (b->refs || b->pinned)
+            continue;
+        if (b->dirty && write_out(b) != 0)
+            continue;
+        hash_remove(b);
+        lru_remove(b);
+        return b;
+    }
+    return NULL;
+}
+
+static struct buf *lookup(struct block_device *dev, uint64_t block, uint32_t size)
+{
+    for (struct buf *b = hash[hash_of(dev, block)]; b; b = b->hash_next) {
+        if (b->dev == dev && b->block == block && b->size == size)
+            return b;
+    }
+    return NULL;
+}
+
+static struct buf *get_locked(struct block_device *dev, uint64_t block, uint32_t size)
+{
+    struct buf *b = lookup(dev, block, size);
+
+    if (b) {
+        b->refs++;
+        lru_remove(b);
+        lru_push_front(b);
+        return b;
+    }
+
+    if (buf_count < BCACHE_MAX) {
+        b = kzalloc(sizeof(*b));
+        if (b)
+            buf_count++;
+    }
+    if (!b) {
+        b = evict();
+        if (!b)
+            return NULL;
+    }
+
+    if (b->size != size) {
+        kfree(b->data);
+        b->data = kmalloc(size);
+        if (!b->data) {
+            kfree(b);
+            buf_count--;
+            return NULL;
+        }
+    }
+
+    b->dev = dev;
+    b->block = block;
+    b->size = size;
+    b->valid = false;
+    b->dirty = false;
+    b->pinned = false;
+    b->refs = 1;
+    b->hash_next = hash[hash_of(dev, block)];
+    hash[hash_of(dev, block)] = b;
+    lru_push_front(b);
+    return b;
+}
+
+struct buf *bget(struct block_device *dev, uint64_t block, uint32_t size)
+{
+    struct buf *b;
+
+    mutex_lock(&cache_lock);
+    b = get_locked(dev, block, size);
+    mutex_unlock(&cache_lock);
+    return b;
+}
+
+struct buf *bread(struct block_device *dev, uint64_t block, uint32_t size)
+{
+    struct buf *b;
+
+    mutex_lock(&cache_lock);
+    b = get_locked(dev, block, size);
+    if (b && !b->valid) {
+        if (block_read(dev, block * size, b->data, size) == 0) {
+            b->valid = true;
+        } else {
+            b->refs--;
+            b = NULL;
+        }
+    }
+    mutex_unlock(&cache_lock);
+    return b;
+}
+
+void brelse(struct buf *b)
+{
+    if (!b)
+        return;
+    mutex_lock(&cache_lock);
+    if (b->refs)
+        b->refs--;
+    mutex_unlock(&cache_lock);
+}
+
+void bhold(struct buf *b)
+{
+    mutex_lock(&cache_lock);
+    b->refs++;
+    mutex_unlock(&cache_lock);
+}
+
+void bdirty(struct buf *b)
+{
+    b->valid = true;
+    b->dirty = true;
+}
+
+int bwrite(struct buf *b)
+{
+    int ret;
+
+    mutex_lock(&cache_lock);
+    b->valid = true;
+    ret = write_out(b);
+    mutex_unlock(&cache_lock);
+    return ret;
+}
+
+int bcache_sync(struct block_device *dev)
+{
+    int ret = 0;
+
+    mutex_lock(&cache_lock);
+    for (struct buf *b = lru_head; b; b = b->lru_next) {
+        if (b->dirty && !b->pinned && (!dev || b->dev == dev) && write_out(b) != 0)
+            ret = -1;
+    }
+    mutex_unlock(&cache_lock);
+    if (dev && block_flush(dev) != 0)
+        ret = -1;
+    return ret;
+}
+
+void bcache_invalidate(struct block_device *dev)
+{
+    mutex_lock(&cache_lock);
+    for (struct buf *b = lru_head; b; b = b->lru_next) {
+        if (b->dev == dev && !b->refs && !b->dirty)
+            b->valid = false;
+    }
+    mutex_unlock(&cache_lock);
+}
