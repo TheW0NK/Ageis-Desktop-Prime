@@ -5,6 +5,7 @@
 #include "serial.h"
 #include "string.h"
 #include "sync.h"
+#include "abi/poll.h"
 
 #define READY_SIZE  4096
 #define LINE_MAX    1024
@@ -39,7 +40,7 @@ static void push(char c)
 static void input_char(char c)
 {
     if (c == 0x03 && tty.fg_pid) {
-        process_kill(tty.fg_pid, NULL);
+        signal_send(tty.fg_pid, SIGINT, NULL);
         if (!tty.raw) {
             tty.line_len = 0;
             echo("^C\n", 3);
@@ -107,14 +108,21 @@ void tty_input(const char *s, size_t n)
     spin_unlock_irqrestore(&tty.q.lock, flags);
 }
 
-int64_t tty_read(char *buf, size_t size)
+int64_t tty_read(char *buf, size_t size, bool nonblock)
 {
     struct process *p = process_current();
     uint64_t flags = spin_lock_irqsave(&tty.q.lock);
     size_t n = 0;
 
-    while (tty.head == tty.tail && !tty.eof) {
-        if (p && p->killed) {
+    for (;;) {
+        wait_prepare();
+        if (tty.head != tty.tail || tty.eof)
+            break;
+        if (nonblock) {
+            spin_unlock_irqrestore(&tty.q.lock, flags);
+            return -EAGAIN;
+        }
+        if (p && signal_pending()) {
             spin_unlock_irqrestore(&tty.q.lock, flags);
             return -EINTR;
         }
@@ -146,8 +154,20 @@ int64_t tty_write(const char *buf, size_t size)
 
 static int64_t f_read(struct file *f, void *buf, size_t size)
 {
+    return tty_read(buf, size, f->flags & O_NONBLOCK);
+}
+
+static uint32_t f_poll(struct file *f, struct poll_table *pt)
+{
+    uint64_t flags = spin_lock_irqsave(&tty.q.lock);
+    uint32_t ev = POLLOUT;
+
     (void)f;
-    return tty_read(buf, size);
+    if (tty.head != tty.tail || tty.eof)
+        ev |= POLLIN;
+    spin_unlock_irqrestore(&tty.q.lock, flags);
+    poll_wait(pt, &tty.q);
+    return ev;
 }
 
 static int64_t f_write(struct file *f, const void *buf, size_t size)
@@ -165,6 +185,11 @@ static int64_t f_ioctl(struct file *f, uint64_t cmd, uint64_t arg)
     switch (cmd) {
     case IOCTL_CONSOLE_RAW:
         flags = spin_lock_irqsave(&tty.q.lock);
+        // Keep what was typed ahead on a line that was never finished.
+        if (arg && !tty.raw) {
+            for (size_t i = 0; i < tty.line_len; i++)
+                push(tty.line[i]);
+        }
         tty.raw = arg != 0;
         tty.line_len = 0;
         tty.esc = 0;
@@ -183,7 +208,7 @@ static int64_t f_ioctl(struct file *f, uint64_t cmd, uint64_t arg)
     }
 }
 
-static const struct file_ops tty_ops = { f_read, f_write, f_ioctl, NULL };
+static const struct file_ops tty_ops = { f_read, f_write, f_ioctl, NULL, f_poll, NULL };
 
 struct file *tty_open(void)
 {

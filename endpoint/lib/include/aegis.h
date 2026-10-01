@@ -8,6 +8,11 @@
 
 #include "abi/errno.h"
 #include "abi/fs.h"
+#include "abi/mman.h"
+#include "abi/poll.h"
+#include "abi/proc.h"
+#include "abi/signal.h"
+#include "abi/socket.h"
 #include "abi/syscall.h"
 
 typedef int64_t ssize_t;
@@ -16,14 +21,20 @@ typedef int64_t ssize_t;
 #define STDOUT_FILENO   1
 #define STDERR_FILENO   2
 
-extern int errno;
+// errno is per thread.
+int *__errno_location(void);
+#define errno (*__errno_location())
 extern char **environ;
 
 long syscall6(long n, long a, long b, long c, long d, long e, long f);
+// Turns a raw syscall result into -1 and errno on failure.
+long __check(long r);
 #define syscall0(n)             syscall6(n, 0, 0, 0, 0, 0, 0)
 #define syscall1(n, a)          syscall6(n, (long)(a), 0, 0, 0, 0, 0)
 #define syscall2(n, a, b)       syscall6(n, (long)(a), (long)(b), 0, 0, 0, 0)
 #define syscall3(n, a, b, c)    syscall6(n, (long)(a), (long)(b), (long)(c), 0, 0, 0)
+#define syscall4(n, a, b, c, d) syscall6(n, (long)(a), (long)(b), (long)(c), (long)(d), 0, 0)
+#define syscall5(n, a, b, c, d, e) syscall6(n, (long)(a), (long)(b), (long)(c), (long)(d), (long)(e), 0)
 
 // System calls. On failure they return -1 and set errno.
 __attribute__((noreturn)) void exit(int status);
@@ -43,7 +54,7 @@ int rename(const char *from, const char *to);
 int chdir(const char *path);
 char *getcwd(char *buf, size_t size);
 int spawn(const char *path, char *const argv[], char *const envp[]);
-int waitpid(int pid, int *status);
+int waitpid(int pid, int *status, int options);
 int getpid(void);
 int getppid(void);
 int msleep(uint64_t ms);
@@ -70,11 +81,83 @@ int login(const char *user, const char *password);
 int sudo(const char *password);
 int reboot(int cmd);
 int uname(struct aegis_utsname *u);
-int kill(int pid);
+int kill(int pid, int sig);
 long ioctl(int fd, unsigned long cmd, unsigned long arg);
 int access(const char *path, int mode);
 int utime(const char *path, int64_t atime, int64_t mtime);
 int statfs(const char *path, struct aegis_statfs *st);
+
+// Memory, pipes, polling and descriptors.
+void *mmap(void *addr, size_t len, int prot, int flags, int fd, int64_t offset);
+int munmap(void *addr, size_t len);
+int mprotect(void *addr, size_t len, int prot);
+int shm_create(size_t size, int flags);     // shared memory object; mmap it with MAP_SHARED
+int pipe(int fds[2]);
+int pipe2(int fds[2], int flags);
+int poll(struct pollfd *fds, size_t n, int timeout_ms);
+int fcntl(int fd, int cmd, long arg);
+int procinfo(struct aegis_procinfo *buf, int max);
+int sysinfo(struct aegis_sysinfo *info);
+
+// Signals.
+typedef void (*sighandler_t)(int);
+#undef SIG_DFL
+#undef SIG_IGN
+#define SIG_DFL ((sighandler_t)0)
+#define SIG_IGN ((sighandler_t)1)
+#define SIG_ERR ((sighandler_t)-1)
+sighandler_t signal(int sig, sighandler_t handler);
+int sigaction(int sig, const struct aegis_sigaction *act, struct aegis_sigaction *old);
+int sigprocmask(int how, const uint64_t *set, uint64_t *old);
+int sigsuspend(const uint64_t *mask);
+int raise(int sig);
+__attribute__((noreturn)) void abort(void);
+
+// Threads. Mutexes and condition variables need no initialisation beyond
+// being zeroed.
+typedef struct { volatile uint32_t state; } mutex_t;
+typedef struct { volatile uint32_t seq; } cond_t;
+typedef struct thread *thread_t;
+int thread_create(thread_t *out, void *(*fn)(void *), void *arg);
+int thread_join(thread_t t, void **result);
+__attribute__((noreturn)) void thread_exit(void *result);
+thread_t thread_self(void);
+int gettid(void);
+void mutex_lock(mutex_t *m);
+bool mutex_trylock(mutex_t *m);
+void mutex_unlock(mutex_t *m);
+void cond_wait(cond_t *c, mutex_t *m);
+bool cond_timedwait(cond_t *c, mutex_t *m, uint64_t timeout_ms);     // false on timeout
+void cond_signal(cond_t *c);
+void cond_broadcast(cond_t *c);
+int futex_wait(volatile uint32_t *addr, uint32_t val, int64_t timeout_ms);
+int futex_wake(volatile uint32_t *addr, int count);
+
+// Sockets.
+int socket(int domain, int type, int protocol);
+int socketpair(int domain, int type, int protocol, int fds[2]);
+int bind(int fd, const void *addr, uint32_t len);
+int listen(int fd, int backlog);
+int accept(int fd, void *addr, uint32_t *len);
+int accept4(int fd, void *addr, uint32_t *len, int flags);
+int connect(int fd, const void *addr, uint32_t len);
+ssize_t send(int fd, const void *buf, size_t len, int flags);
+ssize_t recv(int fd, void *buf, size_t len, int flags);
+ssize_t sendto(int fd, const void *buf, size_t len, int flags, const void *addr, uint32_t alen);
+ssize_t recvfrom(int fd, void *buf, size_t len, int flags, void *addr, uint32_t *alen);
+ssize_t sendmsg(int fd, const struct aegis_msghdr *msg, int flags);
+ssize_t recvmsg(int fd, struct aegis_msghdr *msg, int flags);
+int shutdown(int fd, int how);
+int getsockopt(int fd, int level, int opt, void *val, uint32_t *len);
+int setsockopt(int fd, int level, int opt, const void *val, uint32_t len);
+int getsockname(int fd, void *addr, uint32_t *len);
+int getpeername(int fd, void *addr, uint32_t *len);
+// AF_UNIX helpers: name is a path, or "@name" for an abstract socket.
+int unix_listen(const char *name, int type);
+int unix_connect(const char *name, int type);
+// Sends or receives data together with file descriptors.
+ssize_t send_fds(int fd, const void *buf, size_t len, const int *fds, int nfds);
+ssize_t recv_fds(int fd, void *buf, size_t len, int *fds, int *nfds);
 
 // string.h
 void *memset(void *dst, int c, size_t n);

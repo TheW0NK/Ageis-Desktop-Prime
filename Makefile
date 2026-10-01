@@ -89,10 +89,12 @@ run-serial: image build/ovmf_vars.fd
 	$(QEMU) -serial stdio -display none
 
 test: image
-	tools/qemu-test.py @login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ls /dev' @expect:input \
-		'uname' @expect:Aegis
-	tools/qemu-test.py --usb --tablet @login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'whoami' \
-		@expect:$(AEGIS_USER)
+	tools/qemu-test.py @reject:FAIL @reject:PANIC @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \
+		'ls /dev' @expect:input 'uname' @expect:Aegis 'echo piped | cat' @expect:piped
+	tools/qemu-test.py --cpus 4 --timeout 180 @reject:FAIL @reject:PANIC \
+		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ktest' @expect:'ktest: all passed'
+	tools/qemu-test.py --usb --tablet @reject:PANIC @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \
+		'whoami' @expect:$(AEGIS_USER)
 
 clean:
 	$(MAKE) -C boot clean

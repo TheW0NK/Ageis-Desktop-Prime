@@ -129,16 +129,12 @@ static void free_table(uint64_t *table, int level)
         if ((table[i] & PTE_PRESENT) && !(table[i] & PTE_LARGE))
             free_table((uint64_t *)(table[i] & PTE_ADDR_MASK), level - 1);
     }
-    if (level == 0) {
-        for (unsigned i = 0; i < 512; i++) {
-            if (table[i] & PTE_PRESENT)
-                pmm_free_page(table[i] & PTE_ADDR_MASK);
-        }
-    }
+    // Leaf pages belong to the address space's mappings (vm.c), which
+    // release them before the space is destroyed.
     pmm_free_page((uint64_t)table);
 }
 
-// Frees the space's user pages and page tables. It must not be the active space.
+// Frees the space's page tables. It must not be the active space.
 void paging_destroy_space(uint64_t space)
 {
     uint64_t *pml4 = (uint64_t *)space;
@@ -152,8 +148,8 @@ void paging_destroy_space(uint64_t space)
     spin_unlock_irqrestore(&paging_lock, flags);
 }
 
-// Other CPUs only need a TLB flush for kernel mappings: a user address space
-// is only ever loaded on the CPU running its single thread.
+// Other CPUs only need a TLB flush here for kernel mappings; vm.c flushes
+// user spaces whose threads may be running elsewhere.
 static void kernel_mapping_changed(uint64_t space, uint64_t irq)
 {
     if ((!space || space == (uint64_t)kernel_pml4) && (irq & 0x200))
@@ -226,4 +222,34 @@ uint64_t paging_translate_in(uint64_t space, uint64_t virt)
 uint64_t paging_translate(uint64_t virt)
 {
     return paging_translate_in(0, virt);
+}
+
+// Clears a user mapping and returns the old entry (0 if there was none).
+uint64_t paging_unmap_page_in(uint64_t space, uint64_t virt)
+{
+    uint64_t irq = spin_lock_irqsave(&paging_lock);
+    uint64_t *pte = walk(space_pml4(space), virt, false, 0), old = 0;
+
+    if (pte) {
+        old = *pte;
+        *pte = 0;
+        invlpg(virt);
+    }
+    spin_unlock_irqrestore(&paging_lock, irq);
+    return old;
+}
+
+// Changes the flags of a present page; returns false if it is not mapped.
+bool paging_protect_in(uint64_t space, uint64_t virt, uint64_t flags)
+{
+    uint64_t irq = spin_lock_irqsave(&paging_lock);
+    uint64_t *pte = walk(space_pml4(space), virt, false, 0);
+    bool ok = pte && (*pte & PTE_PRESENT);
+
+    if (ok) {
+        *pte = (*pte & PTE_ADDR_MASK) | flags | PTE_PRESENT;
+        invlpg(virt);
+    }
+    spin_unlock_irqrestore(&paging_lock, irq);
+    return ok;
 }

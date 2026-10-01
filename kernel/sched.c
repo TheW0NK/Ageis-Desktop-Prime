@@ -3,10 +3,43 @@
 #include "mem.h"
 #include "spinlock.h"
 #include "string.h"
+#include "abi/errno.h"
+
+#define MSR_FS_BASE     0xC0000100
 
 static spinlock_t sched_lock = SPINLOCK_INIT;
 static struct thread *threads;
 static uint64_t next_id;
+static uint8_t fpu_template[512] __attribute__((aligned(16)));
+static uint64_t idle_ticks[CPU_MAX], busy_ticks[CPU_MAX];
+
+// Captures a clean FPU/SSE state for new threads. User threads own the FPU;
+// the kernel never touches it (it is built with -mgeneral-regs-only).
+void fpu_init(void)
+{
+    uint32_t mxcsr = 0x1F80;
+
+    __asm__ volatile ("fninit; ldmxcsr %1; fxsave64 %0" : "=m"(fpu_template) : "m"(mxcsr));
+}
+
+int thread_fpu_alloc(struct thread *t)
+{
+    if (!(t->fpu_alloc = kmalloc(sizeof(fpu_template) + 16)))
+        return -ENOMEM;
+    t->fpu = (uint8_t *)ALIGN_UP((uint64_t)t->fpu_alloc, 16);
+    memcpy(t->fpu, fpu_template, sizeof(fpu_template));
+    return 0;
+}
+
+uint64_t sched_idle_ticks(uint32_t cpu)
+{
+    return cpu < CPU_MAX ? idle_ticks[cpu] : 0;
+}
+
+uint64_t sched_busy_ticks(uint32_t cpu)
+{
+    return cpu < CPU_MAX ? busy_ticks[cpu] : 0;
+}
 
 static void link_thread(struct thread *t)
 {
@@ -124,6 +157,14 @@ struct thread *thread_create_user_at(const char *name, uint64_t space, uint64_t 
     return t;
 }
 
+// Frees a thread made by thread_create_user_at that never started.
+void thread_free_unstarted(struct thread *t)
+{
+    kfree(t->fpu_alloc);
+    kfree(t->kstack);
+    kfree(t);
+}
+
 void thread_start_ready(struct thread *t)
 {
     t->state = THREAD_READY;
@@ -170,11 +211,42 @@ void sched_block(void)
     irq_restore(flags);
 }
 
+bool sched_block_timeout(uint64_t ms)
+{
+    uint64_t flags = irq_save();
+    struct thread *t = sched_current();
+    bool woken;
+
+    spin_lock(&sched_lock);
+    if (__atomic_load_n(&t->wake_pending, __ATOMIC_SEQ_CST)) {
+        spin_unlock(&sched_lock);
+        irq_restore(flags);
+        return true;
+    }
+    if (ms == UINT64_MAX) {
+        t->state = THREAD_BLOCKED;
+    } else {
+        uint64_t ticks = ms * TIMER_HZ / 1000;
+
+        t->wake_tick = timer_ticks() + (ticks ? ticks : 1);
+        t->state = THREAD_SLEEPING;
+    }
+    spin_unlock(&sched_lock);
+    sched_yield();
+    woken = __atomic_load_n(&t->wake_pending, __ATOMIC_SEQ_CST);
+    irq_restore(flags);
+    return woken;
+}
+
 void sched_wake(struct thread *t)
 {
-    uint64_t flags = spin_lock_irqsave(&sched_lock);
+    uint64_t flags;
 
-    if (t && (t->state == THREAD_BLOCKED || t->state == THREAD_SLEEPING))
+    if (!t)
+        return;
+    flags = spin_lock_irqsave(&sched_lock);
+    __atomic_store_n(&t->wake_pending, 1, __ATOMIC_SEQ_CST);
+    if (t->state == THREAD_BLOCKED || t->state == THREAD_SLEEPING)
         t->state = THREAD_READY;
     spin_unlock_irqrestore(&sched_lock, flags);
 }
@@ -192,8 +264,7 @@ static void reap(void)
         *pp = t->next;
         if (thread_reap_hook)
             thread_reap_hook(t);
-        if (t->user && !t->process)
-            paging_destroy_space(t->space);
+        kfree(t->fpu_alloc);
         kfree(t->kstack);
         kfree(t);
     }
@@ -221,6 +292,8 @@ uint64_t sched_switch(struct interrupt_frame *frame)
     struct cpu *c = this_cpu();
     struct thread *prev = c->current, *next;
 
+    if (prev->fpu)
+        __asm__ volatile ("fxsave64 %0" : "=m"(*(uint8_t (*)[512])prev->fpu));
     spin_lock(&sched_lock);
     prev->frame = (uint64_t)frame;
     if (prev->state == THREAD_RUNNING)
@@ -242,13 +315,23 @@ uint64_t sched_switch(struct interrupt_frame *frame)
         c->tss.rsp[0] = next->kstack_top;
         c->kernel_rsp = next->kstack_top;
     }
+    if (next->fpu)
+        __asm__ volatile ("fxrstor64 %0" : : "m"(*(const uint8_t (*)[512])next->fpu));
+    if (next->user)
+        wrmsr(MSR_FS_BASE, next->fs_base);
     return next->frame;
 }
 
 uint64_t sched_tick(struct interrupt_frame *frame)
 {
     uint64_t now = timer_ticks();
+    struct cpu *c = this_cpu();
 
+    if (c->current == c->idle)
+        idle_ticks[c->id]++;
+    else
+        busy_ticks[c->id]++;
+    c->current->ticks++;
     spin_lock(&sched_lock);
     for (struct thread *t = threads; t; t = t->next) {
         if (t->state == THREAD_SLEEPING && t->wake_tick <= now)

@@ -1,4 +1,6 @@
 #include "process.h"
+#include "apic.h"
+#include "futex.h"
 #include "mem.h"
 #include "string.h"
 #include "sync.h"
@@ -7,6 +9,9 @@
 #define PT_LOAD     1
 #define ET_EXEC     2
 #define EM_X86_64   62
+#define PF_X        1
+#define PF_W        2
+#define PF_R        4
 
 typedef struct {
     uint8_t ident[16];
@@ -22,8 +27,10 @@ typedef struct {
     uint64_t offset, vaddr, paddr, filesz, memsz, align;
 } elf_phdr;
 
-static struct wait_queue tree = WAIT_QUEUE_INIT;    // its lock guards the process tree
-static struct process *all;
+// Its lock guards the process tree, every process's thread list and the
+// exit and stop state. Parents waiting for children sleep on it.
+struct wait_queue process_tree = WAIT_QUEUE_INIT;
+struct process *process_all;
 static struct process *init_process;
 static int next_pid = 1;
 
@@ -51,16 +58,16 @@ struct file *fd_get(struct process *p, int fd)
     return (fd >= 0 && fd < MAX_FDS) ? p->fds[fd] : NULL;
 }
 
-// Copies into another address space through the identity map.
-static int copy_to_space(uint64_t space, uint64_t va, const void *src, size_t len)
+// Writes into another address space, faulting its pages in first.
+static int space_write(struct mm *mm, uint64_t va, const void *src, size_t len)
 {
     const uint8_t *s = src;
 
     while (len) {
-        uint64_t phys = paging_translate_in(space, va);
+        uint64_t phys;
         size_t n = MIN(len, PAGE_SIZE - (va & (PAGE_SIZE - 1)));
 
-        if (!phys)
+        if (!vm_fault(mm, va, true) || !(phys = paging_translate_in(mm->space, va)))
             return -EFAULT;
         memcpy((void *)phys, s, n);
         va += n;
@@ -70,29 +77,17 @@ static int copy_to_space(uint64_t space, uint64_t va, const void *src, size_t le
     return 0;
 }
 
-static int map_zero(uint64_t space, uint64_t start, uint64_t end)
+static uint32_t elf_prot(uint32_t flags)
 {
-    for (uint64_t va = ALIGN_DOWN(start, PAGE_SIZE); va < end; va += PAGE_SIZE) {
-        uint64_t phys;
-
-        if (paging_translate_in(space, va))
-            continue;
-        if (!(phys = pmm_alloc_page()))
-            return -ENOMEM;
-        memset((void *)phys, 0, PAGE_SIZE);
-        if (!paging_map_page_in(space, va, phys, PTE_USER | PTE_WRITABLE)) {
-            pmm_free_page(phys);
-            return -ENOMEM;
-        }
-    }
-    return 0;
+    return ((flags & PF_R) ? PROT_READ : 0) | ((flags & PF_W) ? PROT_WRITE : 0)
+         | ((flags & PF_X) ? PROT_EXEC : 0);
 }
 
-static int load_elf(struct vnode *v, uint64_t space, uint64_t *entry, uint64_t *brk)
+static int load_elf(struct vnode *v, struct mm *mm, uint64_t *entry, uint64_t *brk)
 {
     elf_header eh;
     elf_phdr *ph;
-    uint64_t top = USER_REGION_BASE;
+    uint64_t top = USER_REGION_BASE, mapped_end = 0, addr;
     uint8_t *buf;
     int ret = -ENOEXEC;
 
@@ -111,16 +106,22 @@ static int load_elf(struct vnode *v, uint64_t space, uint64_t *entry, uint64_t *
     if (vfs_read(v, ph, eh.phnum * sizeof(*ph), eh.phoff) != (int64_t)(eh.phnum * sizeof(*ph)))
         goto out;
 
+    // Map writable while loading; final protections are applied afterwards.
     for (int i = 0; i < eh.phnum; i++) {
-        uint64_t va = ph[i].vaddr, end = va + ph[i].memsz;
+        uint64_t va = ph[i].vaddr, end = va + ph[i].memsz, start;
 
         if (ph[i].type != PT_LOAD || !ph[i].memsz)
             continue;
-        if (va < USER_REGION_BASE || end < va || end > USER_STACK_TOP - USER_STACK_SIZE
-            || ph[i].filesz > ph[i].memsz)
+        if (va < USER_REGION_BASE || end < va || end > MMAP_BASE || ph[i].filesz > ph[i].memsz)
             goto out;
-        if ((ret = map_zero(space, va, end)))
-            goto out;
+        start = MAX(ALIGN_DOWN(va, PAGE_SIZE), mapped_end);
+        if (ALIGN_UP(end, PAGE_SIZE) > start) {
+            ret = vm_mmap(mm, start, ALIGN_UP(end, PAGE_SIZE) - start, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, NULL, 0, &addr);
+            if (ret)
+                goto out;
+            mapped_end = ALIGN_UP(end, PAGE_SIZE);
+        }
         for (uint64_t off = 0; off < ph[i].filesz; off += PAGE_SIZE) {
             size_t n = MIN(PAGE_SIZE, ph[i].filesz - off);
 
@@ -128,10 +129,17 @@ static int load_elf(struct vnode *v, uint64_t space, uint64_t *entry, uint64_t *
                 ret = -EIO;
                 goto out;
             }
-            if ((ret = copy_to_space(space, va + off, buf, n)))
+            if ((ret = space_write(mm, va + off, buf, n)))
                 goto out;
         }
         top = MAX(top, end);
+    }
+    for (int i = 0; i < eh.phnum; i++) {
+        uint64_t start = ALIGN_DOWN(ph[i].vaddr, PAGE_SIZE);
+
+        if (ph[i].type == PT_LOAD && ph[i].memsz && !(ph[i].flags & PF_W))
+            vm_mprotect(mm, start, ALIGN_UP(ph[i].vaddr + ph[i].memsz, PAGE_SIZE) - start,
+                        elf_prot(ph[i].flags) | PROT_READ);
     }
     if (eh.entry < USER_REGION_BASE || eh.entry >= top) {
         ret = -ENOEXEC;
@@ -156,10 +164,10 @@ static size_t count_strings(char *const *list)
 }
 
 // Builds argc, argv[], envp[] and an empty auxv at the top of the stack.
-static int setup_stack(uint64_t space, char *const argv[], char *const envp[], uint64_t *rsp)
+static int setup_stack(struct mm *mm, char *const argv[], char *const envp[], uint64_t *rsp)
 {
     size_t argc = count_strings(argv), envc = count_strings(envp), strings = 0;
-    uint64_t sp = USER_STACK_TOP, *ptrs;
+    uint64_t sp = USER_STACK_TOP, *ptrs, addr;
     size_t nptrs = 1 + argc + 1 + envc + 1 + 2;
     int ret;
 
@@ -169,24 +177,26 @@ static int setup_stack(uint64_t space, char *const argv[], char *const envp[], u
         strings += strlen(envp[i]) + 1;
     if (strings + nptrs * 8 > USER_ARG_MAX)
         return -E2BIG;
-    if ((ret = map_zero(space, USER_STACK_TOP - USER_STACK_SIZE, USER_STACK_TOP)))
+    ret = vm_mmap(mm, USER_STACK_TOP - USER_STACK_SIZE, USER_STACK_SIZE, PROT_READ | PROT_WRITE,
+                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, NULL, 0, &addr);
+    if (ret)
         return ret;
     if (!(ptrs = kmalloc(nptrs * 8)))
         return -ENOMEM;
 
     size_t k = 0;
     ptrs[k++] = argc;
-    for (size_t i = 0; i < argc; i++) {
+    for (size_t i = 0; i < argc && !ret; i++) {
         size_t len = strlen(argv[i]) + 1;
         sp -= len;
-        copy_to_space(space, sp, argv[i], len);
+        ret = space_write(mm, sp, argv[i], len);
         ptrs[k++] = sp;
     }
     ptrs[k++] = 0;
-    for (size_t i = 0; i < envc; i++) {
+    for (size_t i = 0; i < envc && !ret; i++) {
         size_t len = strlen(envp[i]) + 1;
         sp -= len;
-        copy_to_space(space, sp, envp[i], len);
+        ret = space_write(mm, sp, envp[i], len);
         ptrs[k++] = sp;
     }
     ptrs[k++] = 0;
@@ -194,10 +204,24 @@ static int setup_stack(uint64_t space, char *const argv[], char *const envp[], u
     ptrs[k++] = 0;
 
     sp = ALIGN_DOWN(sp - nptrs * 8, 16);
-    ret = copy_to_space(space, sp, ptrs, nptrs * 8);
+    if (!ret)
+        ret = space_write(mm, sp, ptrs, nptrs * 8);
     kfree(ptrs);
     *rsp = sp;
     return ret;
+}
+
+static struct thread *new_user_thread(struct process *p, uint64_t rip, uint64_t rsp)
+{
+    struct thread *t = thread_create_user_at(p->name, p->space, rip, rsp, p);
+
+    if (!t)
+        return NULL;
+    if (thread_fpu_alloc(t)) {
+        thread_free_unstarted(t);
+        return NULL;
+    }
+    return t;
 }
 
 // argv and envp must be kernel memory.
@@ -206,6 +230,7 @@ int process_spawn(const char *path, char *const argv[], char *const envp[],
 {
     struct process *p;
     struct vnode *v;
+    struct thread *t;
     const struct cred *cred = parent ? &parent->cred : &root_cred;
     struct vnode *cwd = parent ? parent->cwd : NULL;
     uint64_t entry = 0, rsp = 0, flags;
@@ -227,15 +252,16 @@ int process_spawn(const char *path, char *const argv[], char *const envp[],
         vput(v);
         return -ENOMEM;
     }
-    p->space = paging_create_space();
-    if (!p->space) {
+    p->stop_wq = (struct wait_queue)WAIT_QUEUE_INIT;
+    if (!(p->mm = mm_create())) {
         ret = -ENOMEM;
         goto fail;
     }
-    if ((ret = load_elf(v, p->space, &entry, &p->brk_start)))
+    p->space = p->mm->space;
+    if ((ret = load_elf(v, p->mm, &entry, &p->brk_start)))
         goto fail;
     p->brk = p->brk_start;
-    if ((ret = setup_stack(p->space, argv, envp, &rsp)))
+    if ((ret = setup_stack(p->mm, argv, envp, &rsp)))
         goto fail;
     vput(v);
     v = NULL;
@@ -249,6 +275,7 @@ int process_spawn(const char *path, char *const argv[], char *const envp[],
     p->cred = *cred;
     p->cwd = cwd ? cwd : vfs_root();
     vref(p->cwd);
+    p->start_ms = timer_uptime_ms();
     if (!parent) {
         struct file *console = tty_open();
 
@@ -263,15 +290,21 @@ int process_spawn(const char *path, char *const argv[], char *const envp[],
                 p->fds[fd] = parent->fds[fd];
             }
         }
+        // Handlers do not survive into a new program, but ignored signals do.
+        for (int s = 0; s < NSIG; s++) {
+            if (parent->sigactions[s].handler == SIG_IGN)
+                p->sigactions[s].handler = SIG_IGN;
+        }
     }
 
-    p->thread = thread_create_user_at(p->name, p->space, entry, rsp, p);
-    if (!p->thread) {
+    if (!(t = new_user_thread(p, entry, rsp))) {
         ret = -ENOMEM;
         goto fail;
     }
+    if (parent)
+        t->sig_mask = sched_current()->sig_mask;
 
-    flags = spin_lock_irqsave(&tree.lock);
+    flags = spin_lock_irqsave(&process_tree.lock);
     p->pid = next_pid++;
     p->parent = parent;
     if (parent) {
@@ -280,12 +313,15 @@ int process_spawn(const char *path, char *const argv[], char *const envp[],
     } else if (!init_process) {
         init_process = p;
     }
-    p->next_all = all;
-    all = p;
+    p->next_all = process_all;
+    process_all = p;
+    p->threads = t;
+    p->nthreads = 1;
+    p->mm->users = 1;
     *pid_out = p->pid;
-    spin_unlock_irqrestore(&tree.lock, flags);
+    spin_unlock_irqrestore(&process_tree.lock, flags);
 
-    thread_start_ready(p->thread);
+    thread_start_ready(t);
     return 0;
 
 fail:
@@ -293,10 +329,123 @@ fail:
     for (int fd = 0; fd < MAX_FDS; fd++)
         file_put(p->fds[fd]);
     vput(p->cwd);
-    if (p->space)
-        paging_destroy_space(p->space);
+    if (p->mm)
+        mm_destroy(p->mm);
     kfree(p);
     return ret;
+}
+
+int process_thread_create(struct process *p, uint64_t entry, uint64_t stack, uint64_t arg,
+                          uint64_t tls, uint64_t clear_tid)
+{
+    struct thread *t;
+    uint64_t flags;
+    int tid;
+
+    if (!user_range_ok(entry, 1) || !user_range_ok(stack - 8, 8))
+        return -EINVAL;
+    if (!(t = new_user_thread(p, entry, ALIGN_DOWN(stack, 16) - 8)))
+        return -ENOMEM;
+    ((struct interrupt_frame *)t->frame)->rdi = arg;
+    t->fs_base = tls;
+    t->clear_tid = clear_tid;
+    t->sig_mask = sched_current()->sig_mask;
+
+    flags = spin_lock_irqsave(&process_tree.lock);
+    if (p->exiting) {
+        spin_unlock_irqrestore(&process_tree.lock, flags);
+        thread_free_unstarted(t);
+        return -EINTR;
+    }
+    t->proc_next = p->threads;
+    p->threads = t;
+    p->nthreads++;
+    p->mm->users++;
+    tid = t->id;
+    spin_unlock_irqrestore(&process_tree.lock, flags);
+
+    thread_start_ready(t);
+    return tid;
+}
+
+// Runs in the last thread of a process, which no longer uses its space.
+static void teardown(struct process *p)
+{
+    uint64_t flags;
+    struct process *parent;
+
+    for (int fd = 0; fd < MAX_FDS; fd++) {
+        file_put(p->fds[fd]);
+        p->fds[fd] = NULL;
+    }
+    vput(p->cwd);
+    p->cwd = NULL;
+    mm_destroy(p->mm);
+    p->mm = NULL;
+    p->space = 0;
+
+    flags = spin_lock_irqsave(&process_tree.lock);
+    while (p->children) {
+        struct process *c = p->children;
+
+        p->children = c->sibling;
+        c->parent = init_process;
+        c->sibling = init_process->children;
+        init_process->children = c;
+    }
+    p->zombie = true;
+    parent = p->parent;
+    wake_up_locked(&process_tree);
+    spin_unlock_irqrestore(&process_tree.lock, flags);
+    if (parent)
+        signal_send(parent->pid, SIGCHLD, NULL);
+}
+
+void process_thread_exit(int status)
+{
+    struct process *p = process_current();
+    struct thread *t = sched_current();
+    uint64_t flags;
+    bool last;
+
+    if (!p)
+        thread_exit(status);
+    if (t->clear_tid) {
+        uint32_t zero = 0;
+
+        if (copy_to_user(t->clear_tid, &zero, sizeof(zero)) == 0)
+            futex_wake(p, t->clear_tid, 1);
+    }
+
+    // Leave the address space before it can be destroyed.
+    flags = irq_save();
+    write_cr3(paging_kernel_space());
+    t->space = paging_kernel_space();
+    irq_restore(flags);
+
+    flags = spin_lock_irqsave(&process_tree.lock);
+    for (struct thread **pp = &p->threads; *pp; pp = &(*pp)->proc_next) {
+        if (*pp == t) {
+            *pp = t->proc_next;
+            break;
+        }
+    }
+    p->nthreads--;
+    p->mm->users--;
+    p->dead_ticks += t->ticks;
+    last = p->nthreads == 0;
+    if (last && !p->exiting) {
+        p->exiting = true;
+        p->exit_status = status;
+    }
+    spin_unlock_irqrestore(&process_tree.lock, flags);
+
+    if (last) {
+        if (p == init_process)
+            panic("init exited with status 0x%x", p->exit_status);
+        teardown(p);
+    }
+    thread_exit(status);
 }
 
 void process_exit(int status)
@@ -306,42 +455,21 @@ void process_exit(int status)
 
     if (!p)
         thread_exit(status);
-    if (p == init_process)
-        panic("init exited with status %d", status);
-
-    for (int fd = 0; fd < MAX_FDS; fd++) {
-        file_put(p->fds[fd]);
-        p->fds[fd] = NULL;
+    flags = spin_lock_irqsave(&process_tree.lock);
+    if (!p->exiting) {
+        p->exiting = true;
+        p->exit_status = status;
     }
-    vput(p->cwd);
-    p->cwd = NULL;
-
-    write_cr3(paging_kernel_space());
-    sched_current()->space = paging_kernel_space();
-    paging_destroy_space(p->space);
-    p->space = 0;
-
-    flags = spin_lock_irqsave(&tree.lock);
-    while (p->children) {
-        struct process *c = p->children;
-
-        p->children = c->sibling;
-        c->parent = init_process;
-        c->sibling = init_process->children;
-        init_process->children = c;
-    }
-    p->exit_status = status;
-    p->zombie = true;
-    p->thread = NULL;
-    wake_up_locked(&tree);
-    spin_unlock_irqrestore(&tree.lock, flags);
-
-    thread_exit(status);
+    for (struct thread *t = p->threads; t; t = t->proc_next)
+        sched_wake(t);
+    wake_up_locked(&p->stop_wq);
+    spin_unlock_irqrestore(&process_tree.lock, flags);
+    process_thread_exit(p->exit_status);
 }
 
 static void unlink_all(struct process *p)
 {
-    for (struct process **pp = &all; *pp; pp = &(*pp)->next_all) {
+    for (struct process **pp = &process_all; *pp; pp = &(*pp)->next_all) {
         if (*pp == p) {
             *pp = p->next_all;
             return;
@@ -349,14 +477,15 @@ static void unlink_all(struct process *p)
     }
 }
 
-int process_wait(int pid, int *status)
+int process_wait(int pid, int *status, bool nohang)
 {
     struct process *self = process_current();
 
     for (;;) {
-        uint64_t flags = spin_lock_irqsave(&tree.lock);
+        uint64_t flags = spin_lock_irqsave(&process_tree.lock);
         bool any = false;
 
+        wait_prepare();
         for (struct process **pp = &self->children, *c; (c = *pp); pp = &c->sibling) {
             if (pid > 0 && c->pid != pid)
                 continue;
@@ -367,71 +496,90 @@ int process_wait(int pid, int *status)
             int found = c->pid;
             *pp = c->sibling;
             unlink_all(c);
-            spin_unlock_irqrestore(&tree.lock, flags);
+            spin_unlock_irqrestore(&process_tree.lock, flags);
             if (status)
                 *status = c->exit_status;
             kfree(c);
             return found;
         }
         if (!any) {
-            spin_unlock_irqrestore(&tree.lock, flags);
+            spin_unlock_irqrestore(&process_tree.lock, flags);
             return -ECHILD;
         }
-        if (self->killed) {
-            spin_unlock_irqrestore(&tree.lock, flags);
+        if (nohang) {
+            spin_unlock_irqrestore(&process_tree.lock, flags);
+            return 0;
+        }
+        if (signal_pending()) {
+            spin_unlock_irqrestore(&process_tree.lock, flags);
             return -EINTR;
         }
-        wait_queue_sleep_locked(&tree);
+        wait_queue_sleep_locked(&process_tree);
         irq_restore(flags);
     }
-}
-
-// `by` is the sender's credentials, or NULL for the kernel.
-int process_kill(int pid, const struct cred *by)
-{
-    uint64_t flags = spin_lock_irqsave(&tree.lock);
-    int ret = -ESRCH;
-
-    for (struct process *p = all; p; p = p->next_all) {
-        if (p->pid == pid && !p->zombie) {
-            if (p == init_process || (by && by->euid != 0 && by->uid != p->cred.uid)) {
-                ret = -EPERM;
-                break;
-            }
-            p->killed = true;
-            if (p->thread)
-                sched_wake(p->thread);
-            ret = 0;
-            break;
-        }
-    }
-    spin_unlock_irqrestore(&tree.lock, flags);
-    return ret;
-}
-
-void process_check_killed(void)
-{
-    struct process *p = process_current();
-
-    if (p && p->killed)
-        process_exit(-9);
 }
 
 int process_count(void)
 {
     int n = 0;
 
-    for (struct process *p = all; p; p = p->next_all)
+    for (struct process *p = process_all; p; p = p->next_all)
         n++;
+    return n;
+}
+
+uint32_t process_thread_total(void)
+{
+    uint64_t flags = spin_lock_irqsave(&process_tree.lock);
+    uint32_t n = 0;
+
+    for (struct process *p = process_all; p; p = p->next_all)
+        n += p->nthreads;
+    spin_unlock_irqrestore(&process_tree.lock, flags);
+    return n;
+}
+
+int process_info(struct aegis_procinfo *out, int max)
+{
+    uint64_t flags = spin_lock_irqsave(&process_tree.lock);
+    int n = 0;
+
+    for (struct process *p = process_all; p && n < max; p = p->next_all, n++) {
+        struct aegis_procinfo *i = &out[n];
+        uint64_t ticks = p->dead_ticks;
+        bool running = false;
+
+        memset(i, 0, sizeof(*i));
+        i->pid = p->pid;
+        i->ppid = p->parent ? p->parent->pid : 0;
+        i->uid = p->cred.uid;
+        i->euid = p->cred.euid;
+        i->threads = p->nthreads;
+        for (struct thread *t = p->threads; t; t = t->proc_next) {
+            ticks += t->ticks;
+            running |= t->state == THREAD_READY || t->state == THREAD_RUNNING;
+        }
+        i->state = p->zombie ? PROC_ZOMBIE : p->stopped ? PROC_STOPPED
+                 : running ? PROC_RUNNING : PROC_SLEEPING;
+        i->cpu_ms = ticks * 1000 / TIMER_HZ;
+        if (p->mm) {
+            i->memory = p->mm->resident * PAGE_SIZE;
+            i->virtual_memory = vm_mapped_bytes(p->mm);
+        }
+        i->start_ms = p->start_ms;
+        memcpy(i->name, p->name, sizeof(i->name));
+    }
+    spin_unlock_irqrestore(&process_tree.lock, flags);
     return n;
 }
 
 void process_list(void)
 {
-    uint64_t flags = spin_lock_irqsave(&tree.lock);
+    uint64_t flags = spin_lock_irqsave(&process_tree.lock);
 
-    for (struct process *p = all; p; p = p->next_all)
-        kprintf("  %5d  %5d  %5u  %-8s  %s\n", p->pid, p->parent ? p->parent->pid : 0, p->cred.euid,
-                p->zombie ? "zombie" : "running", p->name);
-    spin_unlock_irqrestore(&tree.lock, flags);
+    for (struct process *p = process_all; p; p = p->next_all)
+        kprintf("  %5d  %5d  %5u  %3u  %-8s  %s\n", p->pid, p->parent ? p->parent->pid : 0,
+                p->cred.euid, p->nthreads, p->zombie ? "zombie" : p->stopped ? "stopped" : "running",
+                p->name);
+    spin_unlock_irqrestore(&process_tree.lock, flags);
 }

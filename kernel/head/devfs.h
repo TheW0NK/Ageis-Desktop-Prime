@@ -3,6 +3,7 @@
 
 #include "vfs.h"
 
+#define DEVFS_GID_ADM       4
 #define DEVFS_GID_INPUT     50
 
 // Returns 0 and a new file in *out, or a negative errno.

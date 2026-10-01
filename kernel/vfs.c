@@ -495,6 +495,12 @@ out:
     return ret;
 }
 
+int vfs_mknod(const char *path, struct vnode *cwd, const struct cred *c, uint32_t mode,
+              struct vnode **out)
+{
+    return create_node(path, cwd, c, mode, NULL, out);
+}
+
 int vfs_mkdir(const char *path, struct vnode *cwd, const struct cred *c, uint32_t mode)
 {
     return create_node(path, cwd, c, S_IFDIR | (mode & 07777), NULL, NULL);

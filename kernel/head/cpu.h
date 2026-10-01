@@ -37,6 +37,7 @@ void tss_set_kernel_stack(uint64_t rsp0);
 void irq_register(uint8_t vector, irq_handler_t handler);
 uint64_t isr_dispatch(struct interrupt_frame *frame);
 NORETURN void exception_report(struct interrupt_frame *frame);
+const char *exception_report_name(uint64_t vector);
 
 static inline void outb(uint16_t port, uint8_t val)
 {
@@ -107,6 +108,30 @@ static inline uint32_t inl(uint16_t port)
     uint32_t val;
     __asm__ volatile ("inl %1, %0" : "=a"(val) : "Nd"(port));
     return val;
+}
+
+static inline uint64_t read_cr0(void)
+{
+    uint64_t val;
+    __asm__ volatile ("mov %%cr0, %0" : "=r"(val));
+    return val;
+}
+
+static inline void write_cr0(uint64_t val)
+{
+    __asm__ volatile ("mov %0, %%cr0" : : "r"(val) : "memory");
+}
+
+static inline uint64_t read_cr4(void)
+{
+    uint64_t val;
+    __asm__ volatile ("mov %%cr4, %0" : "=r"(val));
+    return val;
+}
+
+static inline void write_cr4(uint64_t val)
+{
+    __asm__ volatile ("mov %0, %%cr4" : : "r"(val) : "memory");
 }
 
 static inline uint64_t read_cr2(void)

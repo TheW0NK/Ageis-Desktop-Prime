@@ -127,6 +127,8 @@ int64_t vfs_write(struct vnode *v, const void *buf, size_t size, uint64_t off);
 int vfs_readdir(struct vnode *dir, uint64_t *pos, struct vfs_dirent *out);
 int vfs_truncate(struct vnode *v, uint64_t size, const struct cred *c);
 int vfs_mkdir(const char *path, struct vnode *cwd, const struct cred *c, uint32_t mode);
+int vfs_mknod(const char *path, struct vnode *cwd, const struct cred *c, uint32_t mode,
+              struct vnode **out);
 int vfs_rmdir(const char *path, struct vnode *cwd, const struct cred *c);
 int vfs_unlink(const char *path, struct vnode *cwd, const struct cred *c);
 int vfs_rename(const char *from, const char *to, struct vnode *cwd, const struct cred *c);
@@ -145,12 +147,36 @@ int vfs_read_file(const char *path, char **data, size_t *size);
 
 struct file;
 
+struct poll_table;
+struct vma;
+
 struct file_ops {
     int64_t (*read)(struct file *f, void *buf, size_t size);
     int64_t (*write)(struct file *f, const void *buf, size_t size);
     int64_t (*ioctl)(struct file *f, uint64_t cmd, uint64_t arg);
     void (*close)(struct file *f);
+    // Returns the POLL* events ready now, and registers on the wait queues
+    // that will announce changes (poll_wait). Without it a file is always
+    // readable and writable.
+    uint32_t (*poll)(struct file *f, struct poll_table *pt);
+    // Fills in a mapping's backing (type, shm or offset).
+    int (*mmap)(struct file *f, struct vma *v);
 };
+
+// poll() collects wait queue entries here; pt is NULL when only the ready
+// events are wanted.
+#define POLL_MAX_WAITS  128
+
+struct poll_table {
+    int count;
+    struct {
+        struct wait_queue *q;
+        struct wait_entry e;
+    } waits[POLL_MAX_WAITS];
+};
+
+void poll_wait(struct poll_table *pt, struct wait_queue *q);
+uint32_t file_poll(struct file *f, struct poll_table *pt);
 
 struct file {
     struct vnode *vnode;

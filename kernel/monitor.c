@@ -14,7 +14,7 @@
 
 static size_t read_line(char *buf, size_t size)
 {
-    int64_t n = tty_read(buf, size - 1);
+    int64_t n = tty_read(buf, size - 1, false);
 
     if (n <= 0)
         n = 0;

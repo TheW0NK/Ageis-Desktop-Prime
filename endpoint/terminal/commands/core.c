@@ -157,16 +157,42 @@ int cmd_uname(int argc, char **argv)
     return 0;
 }
 
+static int signal_number(const char *s)
+{
+    static const struct { const char *name; int sig; } names[] = {
+        { "HUP", SIGHUP }, { "INT", SIGINT }, { "QUIT", SIGQUIT }, { "KILL", SIGKILL },
+        { "USR1", SIGUSR1 }, { "USR2", SIGUSR2 }, { "TERM", SIGTERM }, { "CONT", SIGCONT },
+        { "STOP", SIGSTOP }, { "TSTP", SIGTSTP }, { "ALRM", SIGALRM }, { "PIPE", SIGPIPE },
+    };
+
+    if (isdigit(*s))
+        return atoi(s);
+    if (!strncmp(s, "SIG", 3))
+        s += 3;
+    for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        if (!strcmp(names[i].name, s))
+            return names[i].sig;
+    }
+    return -1;
+}
+
 int cmd_kill(int argc, char **argv)
 {
-    int ret = 0;
+    int ret = 0, sig = SIGTERM, i = 1;
 
-    if (argc < 2) {
-        dprintf(STDERR_FILENO, "usage: kill PID...\n");
+    if (argc > 1 && argv[1][0] == '-' && argv[1][1]) {
+        if ((sig = signal_number(argv[1] + 1)) < 0 || sig > NSIG) {
+            dprintf(STDERR_FILENO, "kill: unknown signal %s\n", argv[1] + 1);
+            return 1;
+        }
+        i++;
+    }
+    if (i >= argc) {
+        dprintf(STDERR_FILENO, "usage: kill [-SIGNAL] PID...\n");
         return 1;
     }
-    for (int i = 1; i < argc; i++) {
-        if (kill(atoi(argv[i])) < 0) {
+    for (; i < argc; i++) {
+        if (kill(atoi(argv[i]), sig) < 0) {
             fail("kill", argv[i]);
             ret = 1;
         }

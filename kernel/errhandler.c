@@ -50,19 +50,13 @@ void panic(const char *fmt, ...)
     panic_end();
 }
 
+const char *exception_report_name(uint64_t vector)
+{
+    return vector < 32 ? exception_names[vector] : "Unknown exception";
+}
+
 void exception_report(struct interrupt_frame *f)
 {
-    if ((f->cs & 3) == 3) {
-        struct thread *t = sched_current();
-
-        kprintf("Thread %lu (%s) killed: %s at 0x%lx", t->id, t->name,
-                exception_names[f->vector], f->rip);
-        if (f->vector == 14)
-            kprintf(", address 0x%lx", read_cr2());
-        kprintf("\n");
-        process_exit(-11);
-    }
-
     panic_begin();
     kprintf("  %s (vector %lu, error code 0x%lx)\n\n",
             exception_names[f->vector], f->vector, f->error_code);

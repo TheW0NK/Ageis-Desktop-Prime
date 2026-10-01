@@ -9,6 +9,7 @@ The serial port only carries output, so input goes through the QEMU monitor
     @key:QCODE           press a key or combination (e.g. ctrl-c, f13, kp_5)
     @wait:TEXT           wait until TEXT appears in the serial output
     @expect:TEXT         like @wait, but fail the run if it never appears
+    @reject:TEXT         fail the run if TEXT appears anywhere in the output
     @sleep:SECONDS       pause
     @shot:FILE.png       save a screenshot
     @mouse:DX,DY[,DZ]    move the mouse (DZ is the wheel)
@@ -175,14 +176,26 @@ class Machine:
         self.proc.wait()
 
 
+PROMPT = re.compile(r'^[\w.-]+@[\w.-]+:\S*[$#] ')
+
+
 def clean(text):
-    text = ANSI.sub('', text.replace('\r', ''))
-    # The shell redraws its line after every key; keep only the final redraw.
+    # The shell redraws its line after every key; keep only the final state
+    # of each command line.
     lines = []
-    for line in text.split('\n'):
-        parts = re.split(r'(?<![\w-])(?=\w[\w-]*@\w+:[^\s$#]*[$#] )', line)
-        lines.append(parts[-1] if len(parts) > 1 else line)
-    return '\n'.join(lines)
+    for line in ANSI.sub('', text).split('\n'):
+        line = line.rstrip('\r')
+        if '\r' in line:
+            line = line.split('\r')[-1]
+        lines.append(line)
+    out = []
+    for i, line in enumerate(lines):
+        nxt = lines[i + 1] if i + 1 < len(lines) else None
+        if (PROMPT.match(line) and nxt is not None and PROMPT.match(nxt)
+                and nxt.startswith(line.rstrip()) and len(nxt.rstrip()) >= len(line.rstrip())):
+            continue
+        out.append(line)
+    return '\n'.join(out)
 
 
 def main():
@@ -202,6 +215,7 @@ def main():
     args = p.parse_args()
 
     failed = []
+    rejects = [s[8:] for s in args.steps if s.startswith('@reject:')]
     with tempfile.TemporaryDirectory() as tmp:
         m = Machine(args, tmp)
         try:
@@ -225,6 +239,8 @@ def main():
                 elif step.startswith('@expect:'):
                     if not m.wait(step[8:], args.timeout):
                         failed.append(step[8:])
+                elif step.startswith('@reject:'):
+                    pass
                 elif step.startswith('@sleep:'):
                     time.sleep(float(step[7:]))
                 elif step.startswith('@shot:'):
@@ -262,11 +278,15 @@ def main():
             m.stop()
 
     out = clean(log)
+    for r in rejects:
+        if r in out:
+            failed.append('unexpected ' + repr(r))
     if not args.full_log and 'Welcome to Aegis' in out:
         out = out[out.index('Aegis kernel'):] if 'Aegis kernel' in out else out
     print(out)
     if failed:
-        print('\nFAILED: expected text not seen: ' + ', '.join(repr(f) for f in failed), file=sys.stderr)
+        print('\nFAILED: ' + ', '.join(f if f.startswith('unexpected') else repr(f) + ' not seen'
+                                     for f in failed), file=sys.stderr)
         return 1
     return 0
 

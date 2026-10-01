@@ -6,6 +6,7 @@
 #include "string.h"
 #include "sync.h"
 #include "tty.h"
+#include "abi/poll.h"
 
 #define MAX_DEVICES     16
 #define QUEUE_SIZE      1024
@@ -391,12 +392,15 @@ static int64_t f_read(struct file *f, void *buf, size_t size)
     if (!max)
         return -EINVAL;
     flags = spin_lock_irqsave(&in.wq.lock);
-    while (r->head == r->tail) {
+    for (;;) {
+        wait_prepare();
+        if (r->head != r->tail)
+            break;
         if (f->flags & O_NONBLOCK) {
             spin_unlock_irqrestore(&in.wq.lock, flags);
             return -EAGAIN;
         }
-        if (p && p->killed) {
+        if (p && signal_pending()) {
             spin_unlock_irqrestore(&in.wq.lock, flags);
             return -EINTR;
         }
@@ -448,7 +452,18 @@ static void f_close(struct file *f)
     kfree(r);
 }
 
-static const struct file_ops input_ops = { f_read, NULL, f_ioctl, f_close };
+static uint32_t f_poll(struct file *f, struct poll_table *pt)
+{
+    struct reader *r = f->priv;
+    uint64_t flags = spin_lock_irqsave(&in.wq.lock);
+    uint32_t ev = r->head != r->tail ? POLLIN : 0;
+
+    spin_unlock_irqrestore(&in.wq.lock, flags);
+    poll_wait(pt, &in.wq);
+    return ev;
+}
+
+static const struct file_ops input_ops = { f_read, NULL, f_ioctl, f_close, f_poll, NULL };
 
 struct file *input_open(void)
 {

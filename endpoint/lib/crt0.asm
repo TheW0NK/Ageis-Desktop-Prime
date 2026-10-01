@@ -27,3 +27,10 @@ _start:
     mov     edi, eax
     call    exit
     ud2
+
+; Signal handlers return here; the kernel restores the interrupted state.
+global __signal_restorer
+__signal_restorer:
+    mov     eax, 64                 ; SYS_SIGRETURN
+    syscall
+    ud2

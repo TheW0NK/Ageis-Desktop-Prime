@@ -4,6 +4,7 @@
 #include "percpu.h"
 #include "process.h"
 #include "sched.h"
+#include "vm.h"
 
 struct gdt_ptr {
     uint16_t limit;
@@ -99,6 +100,11 @@ static void idt_init(void)
 // Loads the CPU's own GDT and TSS and points %gs at its struct cpu.
 void cpu_setup(struct cpu *c)
 {
+    // FPU and SSE for user programs: no emulation, native error reporting,
+    // FXSAVE/FXRSTOR and SSE exceptions enabled.
+    write_cr0((read_cr0() & ~((1ULL << 2) | (1ULL << 3))) | (1ULL << 1) | (1ULL << 5));
+    write_cr4(read_cr4() | (1ULL << 9) | (1ULL << 10));
+
     c->self = c;
     gdt_init(c);
     idt_load();
@@ -115,6 +121,7 @@ void cpu_init(void)
     bsp->df_stack = bsp_df_stack;
     idt_init();
     cpu_setup(bsp);
+    fpu_init();
 }
 
 void tss_set_kernel_stack(uint64_t rsp0)
@@ -127,14 +134,66 @@ void irq_register(uint8_t vector, irq_handler_t handler)
     handlers[vector] = handler;
 }
 
+static int exception_signal(uint64_t vector)
+{
+    switch (vector) {
+    case 0: case 16: case 19:   return SIGFPE;
+    case 1: case 3:             return SIGTRAP;
+    case 6:                     return SIGILL;
+    case 17:                    return SIGBUS;
+    }
+    return SIGSEGV;
+}
+
+static void user_exception(struct interrupt_frame *frame)
+{
+    struct process *p = process_current();
+    struct thread *t = sched_current();
+    int sig = exception_signal(frame->vector);
+    struct aegis_sigaction *act;
+
+    if (frame->vector == 14) {
+        bool ok;
+
+        sti();
+        ok = vm_fault(p ? p->mm : NULL, read_cr2(), frame->error_code & 2);
+        cli();
+        if (ok)
+            return;
+    }
+    if (!p)
+        exception_report(frame);
+    act = &p->sigactions[sig - 1];
+    // A fault that is blocked or ignored would repeat forever: take the
+    // default action instead.
+    if ((t->sig_mask & SIGBIT(sig)) || act->handler == SIG_IGN) {
+        t->sig_mask &= ~SIGBIT(sig);
+        act->handler = SIG_DFL;
+    }
+    if (act->handler == SIG_DFL) {
+        kprintf("%s (pid %d, thread %lu) crashed: %s at 0x%lx", p->name, p->pid, t->id,
+                exception_report_name(frame->vector), frame->rip);
+        if (frame->vector == 14)
+            kprintf(", address 0x%lx", read_cr2());
+        kprintf("\n");
+    }
+    signal_thread(t, sig);
+}
+
 uint64_t isr_dispatch(struct interrupt_frame *frame)
 {
     uint64_t vector = frame->vector;
+    bool user = (frame->cs & 3) == 3;
 
-    if (vector < 32)
-        exception_report(frame);
-    if ((frame->cs & 3) == 3)
-        process_check_killed();
+    if (vector < 32) {
+        if (user)
+            user_exception(frame);
+        else if (!(vector == 14 && vm_kernel_fault(frame, read_cr2())))
+            exception_report(frame);
+        if (user)
+            signal_deliver(frame);
+        return (uint64_t)frame;
+    }
     if (vector == VECTOR_SPURIOUS)
         return (uint64_t)frame;
     if (vector == VECTOR_YIELD)
@@ -144,6 +203,8 @@ uint64_t isr_dispatch(struct interrupt_frame *frame)
         handlers[vector](frame);
     apic_eoi();
 
+    if (user)
+        signal_deliver(frame);
     if (vector == VECTOR_TIMER)
         return sched_tick(frame);
     return (uint64_t)frame;

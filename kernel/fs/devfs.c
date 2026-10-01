@@ -4,6 +4,9 @@
 #include "random.h"
 #include "string.h"
 #include "tty.h"
+#include "process.h"
+#include "sched.h"
+#include "abi/poll.h"
 
 // /dev: a flat, in-memory directory of device nodes. Opening a node asks its
 // driver for a struct file with the driver's own file_ops.
@@ -183,9 +186,9 @@ static int64_t random_write(struct file *f, const void *buf, size_t size)
     return size;
 }
 
-static const struct file_ops null_ops = { null_read, sink_write, NULL, NULL };
-static const struct file_ops zero_ops = { zero_read, sink_write, NULL, NULL };
-static const struct file_ops random_ops = { random_read, random_write, NULL, NULL };
+static const struct file_ops null_ops = { .read = null_read, .write = sink_write };
+static const struct file_ops zero_ops = { .read = zero_read, .write = sink_write };
+static const struct file_ops random_ops = { .read = random_read, .write = random_write };
 
 static int open_simple(void *ctx, uint32_t flags, struct file **out)
 {
@@ -210,6 +213,51 @@ static int open_input(void *ctx, uint32_t flags, struct file **out)
     return *out ? 0 : -ENOMEM;
 }
 
+// /dev/kmsg: the kernel log, from the oldest message still kept.
+static struct wait_queue kmsg_wq = WAIT_QUEUE_INIT;
+
+static int64_t kmsg_read(struct file *f, void *buf, size_t size)
+{
+    for (;;) {
+        size_t n;
+
+        wait_prepare();
+        if ((n = klog_read(&f->offset, buf, size)))
+            return n;
+        if (f->flags & O_NONBLOCK)
+            return -EAGAIN;
+        if (signal_pending())
+            return -EINTR;
+        uint64_t flags = spin_lock_irqsave(&kmsg_wq.lock);
+        wait_queue_sleep_locked(&kmsg_wq);
+        irq_restore(flags);
+    }
+}
+
+static uint32_t kmsg_poll(struct file *f, struct poll_table *pt)
+{
+    poll_wait(pt, &kmsg_wq);
+    return f->offset < klog_head() ? POLLIN : 0;
+}
+
+static const struct file_ops kmsg_ops = { .read = kmsg_read, .poll = kmsg_poll };
+
+// Waking readers from kprintf itself is unsafe (it runs under scheduler
+// locks), so a thread announces new log data instead.
+static void kmsg_thread(void *arg)
+{
+    uint64_t seen = 0;
+
+    (void)arg;
+    for (;;) {
+        sched_sleep(100);
+        if (klog_head() != seen) {
+            seen = klog_head();
+            wake_up(&kmsg_wq);
+        }
+    }
+}
+
 static struct filesystem devfs = { .name = "devfs", .mount = devfs_mount };
 
 void devfs_register_fs(void)
@@ -224,6 +272,9 @@ void devfs_register_fs(void)
     // Raw key events would let any program log keystrokes, so only root and
     // the "input" group (the window system) may read them.
     devfs_register("input", 0640, 0, DEVFS_GID_INPUT, open_input, NULL);
+    // The kernel log is for administrators (group adm) and the log viewer.
+    devfs_register("kmsg", 0640, 0, DEVFS_GID_ADM, open_simple, (void *)&kmsg_ops);
+    thread_create("kmsgd", kmsg_thread, NULL);
 }
 
 void devfs_set_time(int64_t now)

@@ -3,6 +3,8 @@
 #define ALIGN       16
 #define GROW_MIN    (64 * 1024)
 #define USED        ((struct block *)0x5A5A5A5A5A5A5A5AULL)
+#define MAPPED      ((struct block *)0x6B6B6B6B6B6B6B6BULL)
+#define MMAP_MIN    (256 * 1024)        // larger blocks get their own mapping
 
 struct block {
     size_t size;
@@ -10,6 +12,7 @@ struct block {
 };
 
 static struct block *free_list;
+static mutex_t heap_lock;
 
 void malloc_init(void)
 {
@@ -36,14 +39,8 @@ static void insert_free(struct block *b)
     }
 }
 
-void *malloc(size_t size)
+static void *alloc_locked(size_t need)
 {
-    size_t need;
-
-    if (size == 0 || size > ((size_t)1 << 40))
-        return NULL;
-    need = ((size + ALIGN - 1) & ~(size_t)(ALIGN - 1)) + sizeof(struct block);
-
     for (;;) {
         for (struct block **pp = &free_list, *b; (b = *pp); pp = &b->next) {
             if (b->size < need)
@@ -72,6 +69,30 @@ void *malloc(size_t size)
     }
 }
 
+void *malloc(size_t size)
+{
+    size_t need;
+    void *p;
+
+    if (size == 0 || size > ((size_t)1 << 40))
+        return NULL;
+    need = ((size + ALIGN - 1) & ~(size_t)(ALIGN - 1)) + sizeof(struct block);
+    if (need >= MMAP_MIN) {
+        size_t len = (need + 4095) & ~(size_t)4095;
+        struct block *b = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+        if (b == MAP_FAILED)
+            return NULL;
+        b->size = len;
+        b->next = MAPPED;
+        return b + 1;
+    }
+    mutex_lock(&heap_lock);
+    p = alloc_locked(need);
+    mutex_unlock(&heap_lock);
+    return p;
+}
+
 void free(void *ptr)
 {
     struct block *b;
@@ -79,9 +100,15 @@ void free(void *ptr)
     if (!ptr)
         return;
     b = (struct block *)ptr - 1;
+    if (b->next == MAPPED) {
+        munmap(b, b->size);
+        return;
+    }
     if (b->next != USED)
         return;
+    mutex_lock(&heap_lock);
     insert_free(b);
+    mutex_unlock(&heap_lock);
 }
 
 void *calloc(size_t n, size_t size)

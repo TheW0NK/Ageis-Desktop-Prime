@@ -45,6 +45,8 @@ uint64_t paging_create_space(void);
 void paging_destroy_space(uint64_t space);
 bool paging_map_page_in(uint64_t space, uint64_t virt, uint64_t phys, uint64_t flags);
 uint64_t paging_translate_in(uint64_t space, uint64_t virt);
+uint64_t paging_unmap_page_in(uint64_t space, uint64_t virt);
+bool paging_protect_in(uint64_t space, uint64_t virt, uint64_t flags);
 
 void *kmalloc(size_t size);
 void *kzalloc(size_t size);

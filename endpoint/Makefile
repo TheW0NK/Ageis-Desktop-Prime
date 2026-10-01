@@ -9,7 +9,7 @@ CFLAGS  := -std=c11 -O2 -Wall -Wextra -ffreestanding -nostdinc \
            -isystem $(shell $(CC) -print-file-name=include) \
            -Ilib/include -I../kernel/head \
            -fpie -fno-stack-protector -fno-asynchronous-unwind-tables \
-           -mno-red-zone -mgeneral-regs-only -MMD -MP
+           -MMD -MP
 ASFLAGS := -f elf64
 LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -z noexecstack -T lib/user.ld
 

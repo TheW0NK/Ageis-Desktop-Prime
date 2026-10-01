@@ -22,6 +22,7 @@ extern char home_dir[256];
 const struct command *find_command(const char *name);
 int run_args(int argc, char **argv);
 int run_external(int argc, char **argv);
+int report_status(int status);
 ssize_t read_secret(const char *prompt, char *buf, size_t size);
 void set_raw(bool raw);
 void history_print(void);

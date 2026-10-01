@@ -8,6 +8,7 @@ char home_dir[256];
 static char *history[HISTORY_MAX];
 static int history_count;
 static int last_status;
+static int last_job;
 
 void set_raw(bool raw)
 {
@@ -165,62 +166,154 @@ ssize_t read_secret(const char *prompt, char *buf, size_t size)
     }
 }
 
-// Splits a line into words, handling quotes, backslashes, $VAR and ~.
-static int parse(char *line, char **argv, char *storage, size_t storage_size)
+// ---- Parsing ----
+//
+// A line is a list of pipelines joined by ;, && and || (a trailing & runs
+// the last one in the background). A pipeline is commands joined by |, each
+// with optional redirections: < FILE, > FILE, >> FILE, 2> FILE, 2>&1.
+
+enum token { T_WORD, T_PIPE, T_AND, T_OR, T_SEMI, T_AMP, T_IN, T_OUT, T_APPEND, T_ERR, T_ERR_OUT, T_END };
+
+#define MAX_CMDS    16
+
+struct cmd {
+    char *argv[ARGS_MAX];
+    int argc;
+    char *in, *out, *err;
+    bool append, err_to_out;
+};
+
+struct pipeline {
+    struct cmd cmds[MAX_CMDS];
+    int count;
+    bool background;
+};
+
+struct parser {
+    const char *p;
+    char *out, *end;
+};
+
+// Reads one token; words are copied (unquoted and expanded) into storage.
+static enum token next_token(struct parser *ps, char **word)
 {
-    char *out = storage, *end = storage + storage_size - 1;
-    int argc = 0;
-    char *p = line;
+    const char *p = ps->p;
 
-    for (;;) {
-        while (isspace(*p))
-            p++;
-        if (!*p || *p == '#' || argc == ARGS_MAX - 1)
-            break;
-
-        char quote = 0;
-        argv[argc++] = out;
-        if (*p == '~' && (p[1] == '/' || !p[1] || isspace(p[1]))) {
-            for (const char *h = home_dir; *h && out < end; h++)
-                *out++ = *h;
-            p++;
-        }
-        while (*p && (quote || !isspace(*p)) && out < end) {
-            if (quote && *p == quote) {
-                quote = 0;
-                p++;
-            } else if (!quote && (*p == '"' || *p == '\'')) {
-                quote = *p++;
-            } else if (*p == '\\' && quote != '\'' && p[1]) {
-                *out++ = p[1];
-                p += 2;
-            } else if (*p == '$' && quote != '\'' && (isalpha(p[1]) || p[1] == '_' || p[1] == '?')) {
-                char name[64];
-                size_t n = 0;
-                const char *val;
-                char status[16];
-
-                p++;
-                if (*p == '?') {
-                    snprintf(status, sizeof(status), "%d", last_status);
-                    val = status;
-                    p++;
-                } else {
-                    while ((isalnum(*p) || *p == '_') && n < sizeof(name) - 1)
-                        name[n++] = *p++;
-                    name[n] = '\0';
-                    val = getenv(name);
-                }
-                for (; val && *val && out < end; val++)
-                    *out++ = *val;
-            } else {
-                *out++ = *p++;
-            }
-        }
-        *out++ = '\0';
+    while (isspace(*p))
+        p++;
+    if (!*p || *p == '#') {
+        ps->p = p;
+        return T_END;
     }
-    argv[argc] = NULL;
-    return argc;
+    if (p[0] == '|' && p[1] == '|') { ps->p = p + 2; return T_OR; }
+    if (p[0] == '&' && p[1] == '&') { ps->p = p + 2; return T_AND; }
+    if (p[0] == '2' && p[1] == '>' && p[2] == '&' && p[3] == '1') { ps->p = p + 4; return T_ERR_OUT; }
+    if (p[0] == '2' && p[1] == '>') { ps->p = p + 2; return T_ERR; }
+    if (p[0] == '>' && p[1] == '>') { ps->p = p + 2; return T_APPEND; }
+    switch (*p) {
+    case '|': ps->p = p + 1; return T_PIPE;
+    case ';': ps->p = p + 1; return T_SEMI;
+    case '&': ps->p = p + 1; return T_AMP;
+    case '<': ps->p = p + 1; return T_IN;
+    case '>': ps->p = p + 1; return T_OUT;
+    }
+
+    char quote = 0, *out = ps->out;
+    *word = out;
+    if (*p == '~' && (p[1] == '/' || !p[1] || isspace(p[1]))) {
+        for (const char *h = home_dir; *h && out < ps->end; h++)
+            *out++ = *h;
+        p++;
+    }
+    while (*p && out < ps->end) {
+        if (!quote && (isspace(*p) || strchr("|;&<>", *p)))
+            break;
+        if (quote && *p == quote) {
+            quote = 0;
+            p++;
+        } else if (!quote && (*p == '"' || *p == '\'')) {
+            quote = *p++;
+        } else if (*p == '\\' && quote != '\'' && p[1]) {
+            *out++ = p[1];
+            p += 2;
+        } else if (*p == '$' && quote != '\'' && (isalpha(p[1]) || p[1] == '_' || p[1] == '?' || p[1] == '!')) {
+            char name[64], status[16];
+            size_t n = 0;
+            const char *val;
+
+            p++;
+            if (*p == '?' || *p == '!') {
+                snprintf(status, sizeof(status), "%d", *p == '?' ? last_status : last_job);
+                val = status;
+                p++;
+            } else {
+                while ((isalnum(*p) || *p == '_') && n < sizeof(name) - 1)
+                    name[n++] = *p++;
+                name[n] = '\0';
+                val = getenv(name);
+            }
+            for (; val && *val && out < ps->end; val++)
+                *out++ = *val;
+        } else {
+            *out++ = *p++;
+        }
+    }
+    *out++ = '\0';
+    ps->out = out;
+    ps->p = p;
+    return T_WORD;
+}
+
+// Parses one pipeline. Returns the token that ended it, or -1 on a syntax error.
+static int parse_pipeline(struct parser *ps, struct pipeline *pl)
+{
+    struct cmd *c;
+    char *word;
+    enum token t;
+
+    memset(pl, 0, sizeof(*pl));
+    pl->count = 1;
+    c = &pl->cmds[0];
+    for (;;) {
+        t = next_token(ps, &word);
+        switch (t) {
+        case T_WORD:
+            if (c->argc == ARGS_MAX - 1)
+                return -1;
+            c->argv[c->argc++] = word;
+            continue;
+        case T_IN:
+        case T_OUT:
+        case T_APPEND:
+        case T_ERR:
+            if (next_token(ps, &word) != T_WORD)
+                return -1;
+            if (t == T_IN)
+                c->in = word;
+            else if (t == T_ERR)
+                c->err = word;
+            else {
+                c->out = word;
+                c->append = t == T_APPEND;
+            }
+            continue;
+        case T_ERR_OUT:
+            c->err_to_out = true;
+            continue;
+        case T_PIPE:
+            if (!c->argc || pl->count == MAX_CMDS)
+                return -1;
+            c = &pl->cmds[pl->count++];
+            continue;
+        case T_AMP:
+            pl->background = true;
+            /* fall through */
+        default:
+            if (!c->argc)
+                return (pl->count == 1 && t != T_AMP) ? (int)t : -1;
+            return t;
+        }
+    }
 }
 
 const struct command *find_command(const char *name)
@@ -253,10 +346,38 @@ static bool find_in_path(const char *name, char *out, size_t size)
     return false;
 }
 
+// Converts a wait() status to a shell status, reporting abnormal ends.
+int report_status(int status)
+{
+    if (WIFEXITED(status))
+        return WEXITSTATUS(status);
+    switch (WTERMSIG(status)) {
+    case SIGINT:    printf("\n"); break;
+    case SIGKILL:   printf("[killed]\n"); break;
+    case SIGTERM:   printf("[terminated]\n"); break;
+    case SIGPIPE:   break;
+    case SIGSEGV:
+    case SIGBUS:
+    case SIGILL:
+    case SIGFPE:    printf("[crashed: signal %d]\n", WTERMSIG(status)); break;
+    default:        printf("[signal %d]\n", WTERMSIG(status));
+    }
+    return 128 + WTERMSIG(status);
+}
+
+static int wait_for(int pid)
+{
+    int status = 0;
+
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR)
+        ;
+    return status;
+}
+
 int run_external(int argc, char **argv)
 {
     char path[AEGIS_PATH_MAX];
-    int pid, status = 0;
+    int pid, status;
 
     (void)argc;
     if (!find_in_path(argv[0], path, sizeof(path))) {
@@ -271,15 +392,10 @@ int run_external(int argc, char **argv)
         return 126;
     }
     ioctl(STDIN_FILENO, IOCTL_CONSOLE_FOREGROUND, pid);
-    while (waitpid(pid, &status) < 0 && errno == EINTR)
-        ;
+    status = wait_for(pid);
     ioctl(STDIN_FILENO, IOCTL_CONSOLE_FOREGROUND, 0);
     set_raw(true);
-    if (status == -9)
-        printf("[killed]\n");
-    else if (status == -11)
-        printf("[crashed]\n");
-    return status;
+    return report_status(status);
 }
 
 int run_args(int argc, char **argv)
@@ -292,6 +408,206 @@ int run_args(int argc, char **argv)
     int ret = c->fn(argc, argv);
     set_raw(true);
     return ret;
+}
+
+// ---- Running pipelines ----
+
+static int saved_fds[3] = { -1, -1, -1 };
+
+// Points fd at target (closing nothing the shell still needs).
+static void redirect(int fd, int target)
+{
+    if (target >= 0 && target != fd)
+        dup2(target, fd);
+}
+
+static void save_std(void)
+{
+    for (int i = 0; i < 3; i++) {
+        saved_fds[i] = fcntl(i, F_DUPFD, 10);
+        fcntl(saved_fds[i], F_SETFD, FD_CLOEXEC);
+    }
+}
+
+static void restore_std(void)
+{
+    for (int i = 0; i < 3; i++) {
+        dup2(saved_fds[i], i);
+        close(saved_fds[i]);
+        saved_fds[i] = -1;
+    }
+}
+
+// Opens a command's redirections; returns false (after reporting) on failure.
+static bool open_redirects(struct cmd *c, int *in, int *out, int *err)
+{
+    *in = *out = *err = -1;
+    if (c->in && (*in = open(c->in, O_RDONLY | O_CLOEXEC)) < 0) {
+        fail("open", c->in);
+        return false;
+    }
+    if (c->out && (*out = open(c->out, O_WRONLY | O_CREAT | O_CLOEXEC | (c->append ? O_APPEND : O_TRUNC),
+                               0644)) < 0) {
+        fail("open", c->out);
+        return false;
+    }
+    if (c->err && (*err = open(c->err, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644)) < 0) {
+        fail("open", c->err);
+        return false;
+    }
+    return true;
+}
+
+static void close_fd(int *fd)
+{
+    if (*fd >= 0)
+        close(*fd);
+    *fd = -1;
+}
+
+static int run_pipeline(struct pipeline *pl)
+{
+    int pipes[MAX_CMDS][2], pids[MAX_CMDS], status = 0, last_pid = -1;
+    int in[MAX_CMDS], out[MAX_CMDS], err[MAX_CMDS];
+    bool ok = true;
+
+    // A lone builtin without redirections runs as before.
+    if (pl->count == 1 && !pl->background && !pl->cmds[0].in && !pl->cmds[0].out
+        && !pl->cmds[0].err && !pl->cmds[0].err_to_out)
+        return run_args(pl->cmds[0].argc, pl->cmds[0].argv);
+
+    for (int i = 0; i < pl->count; i++) {
+        pids[i] = -1;
+        pipes[i][0] = pipes[i][1] = -1;
+        in[i] = out[i] = err[i] = -1;
+    }
+    for (int i = 0; i + 1 < pl->count && ok; i++) {
+        if (pipe2(pipes[i], O_CLOEXEC) < 0) {
+            fail("pipe", "");
+            ok = false;
+        }
+    }
+    for (int i = 0; i < pl->count && ok; i++)
+        ok = open_redirects(&pl->cmds[i], &in[i], &out[i], &err[i]);
+    if (!ok)
+        goto cleanup;
+
+    set_raw(false);
+    save_std();
+    // Start the programs first, so builtins writing into pipes have readers.
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < pl->count; i++) {
+            struct cmd *c = &pl->cmds[i];
+            const struct command *b = find_command(c->argv[0]);
+            char path[AEGIS_PATH_MAX];
+
+            if ((pass == 0) == (b != NULL))
+                continue;
+            redirect(0, in[i] >= 0 ? in[i] : i > 0 ? pipes[i - 1][0] : saved_fds[0]);
+            redirect(1, out[i] >= 0 ? out[i] : i + 1 < pl->count ? pipes[i][1] : saved_fds[1]);
+            redirect(2, c->err_to_out ? 1 : err[i] >= 0 ? err[i] : saved_fds[2]);
+            if (b) {
+                status = b->fn(c->argc, c->argv) << 8;
+            } else if (!find_in_path(c->argv[0], path, sizeof(path))) {
+                dprintf(saved_fds[2], "%s: command not found\n", c->argv[0]);
+                status = 127 << 8;
+            } else if ((pids[i] = spawn(path, c->argv, environ)) < 0) {
+                dprintf(saved_fds[2], "%s: %s\n", c->argv[0], strerror(errno));
+                status = 126 << 8;
+            }
+            if (i == pl->count - 1)
+                last_pid = pids[i];
+            // A builtin's output is complete: let its reader see the end.
+            if (b && i + 1 < pl->count)
+                close_fd(&pipes[i][1]);
+        }
+        // Programs now hold their own write ends; builtins reading from
+        // them must see end-of-file when the programs exit.
+        for (int i = 0; pass == 0 && i + 1 < pl->count; i++) {
+            if (pids[i] > 0)
+                close_fd(&pipes[i][1]);
+        }
+    }
+    restore_std();
+
+cleanup:
+    for (int i = 0; i < pl->count; i++) {
+        close_fd(&pipes[i][0]);
+        close_fd(&pipes[i][1]);
+        close_fd(&in[i]);
+        close_fd(&out[i]);
+        close_fd(&err[i]);
+    }
+    if (!ok)
+        return 1;
+    if (pl->background) {
+        for (int i = 0; i < pl->count; i++) {
+            if (pids[i] > 0) {
+                printf("[%d] %s\n", pids[i], pl->cmds[i].argv[0]);
+                last_job = pids[i];
+            }
+        }
+        set_raw(true);
+        return 0;
+    }
+    if (last_pid > 0)
+        ioctl(STDIN_FILENO, IOCTL_CONSOLE_FOREGROUND, last_pid);
+    for (int i = 0; i < pl->count; i++) {
+        if (pids[i] > 0) {
+            int s = wait_for(pids[i]);
+            if (pids[i] == last_pid)
+                status = s;
+        }
+    }
+    ioctl(STDIN_FILENO, IOCTL_CONSOLE_FOREGROUND, 0);
+    set_raw(true);
+    return report_status(status);
+}
+
+// Reports background jobs that have finished.
+static void reap_jobs(void)
+{
+    int status, pid;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("[%d] done", pid);
+        if (!WIFEXITED(status))
+            printf(" (signal %d)", WTERMSIG(status));
+        else if (WEXITSTATUS(status))
+            printf(" (exit %d)", WEXITSTATUS(status));
+        printf("\n");
+    }
+}
+
+// Runs a whole line. Returns false if the shell should exit.
+static bool run_line(const char *line, int *exit_code)
+{
+    static char storage[LINE_MAX * 2];
+    struct parser ps = { line, storage, storage + sizeof(storage) - 1 };
+    static struct pipeline pl;
+    int skip = 0;               // 0: run, 1: skip because of && / ||
+
+    for (;;) {
+        int t = parse_pipeline(&ps, &pl);
+
+        if (t < 0) {
+            dprintf(STDERR_FILENO, "syntax error\n");
+            last_status = 2;
+            return true;
+        }
+        if (pl.cmds[0].argc && !skip) {
+            char **argv = pl.cmds[0].argv;
+
+            if (pl.count == 1 && (!strcmp(argv[0], "exit") || !strcmp(argv[0], "logout"))) {
+                *exit_code = pl.cmds[0].argc > 1 ? atoi(argv[1]) : 0;
+                return false;
+            }
+            last_status = run_pipeline(&pl);
+        }
+        if (t == T_END)
+            return true;
+        skip = (t == T_AND && last_status != 0) || (t == T_OR && last_status == 0);
+    }
 }
 
 static void prompt_string(char *buf, size_t size)
@@ -388,8 +704,7 @@ static void do_login(void)
 
 int main(void)
 {
-    char line[LINE_MAX], storage[LINE_MAX * 2], prompt[AEGIS_PATH_MAX + 64];
-    char *argv[ARGS_MAX];
+    char line[LINE_MAX], prompt[AEGIS_PATH_MAX + 64];
     struct aegis_utsname u;
 
     set_raw(true);
@@ -398,18 +713,15 @@ int main(void)
     do_login();
 
     for (;;) {
-        int argc;
+        int code;
 
+        reap_jobs();
         prompt_string(prompt, sizeof(prompt));
         if (edit_line(prompt, line, sizeof(line)) < 0)
             break;
         history_add(line);
-        argc = parse(line, argv, storage, sizeof(storage));
-        if (argc == 0)
-            continue;
-        if (!strcmp(argv[0], "exit") || !strcmp(argv[0], "logout"))
-            return argc > 1 ? atoi(argv[1]) : 0;
-        last_status = run_args(argc, argv);
+        if (!run_line(line, &code))
+            return code;
     }
     return 0;
 }

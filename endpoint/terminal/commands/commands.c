@@ -14,7 +14,7 @@ const struct command commands[] = {
     { "date",       "",                     "Show the date and time (UTC)", cmd_date },
     { "uptime",     "",                     "Show time since boot", cmd_uptime },
     { "uname",      "[-a]",                 "Show system information", cmd_uname },
-    { "kill",       "PID...",               "Terminate processes", cmd_kill },
+    { "kill",       "[-SIGNAL] PID...",     "Send a signal (default TERM) to processes", cmd_kill },
     { "sleep",      "SECONDS",              "Wait", cmd_sleep },
     { "sudo",       "COMMAND [args...]",    "Run a command as root", cmd_sudo },
     { "run",        "PROGRAM [args...]",    "Run a program (also: type its name or path)", cmd_run },

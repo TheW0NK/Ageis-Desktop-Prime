@@ -17,7 +17,7 @@ int main(int argc, char **argv)
             continue;
         }
         // Also reaps orphans that were reparented to init.
-        while (waitpid(-1, &status) != pid)
+        while (waitpid(-1, &status, 0) != pid)
             ;
     }
 }

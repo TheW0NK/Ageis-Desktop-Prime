@@ -26,5 +26,8 @@ void kvprintf(const char *fmt, va_list args);
 NORETURN void panic(const char *fmt, ...) PRINTF(1, 2);
 void console_output(const char *s, size_t n);
 void console_force(void);
+void console_set_quiet(bool quiet);
+uint64_t klog_head(void);
+size_t klog_read(uint64_t *pos, char *buf, size_t size);
 
 #endif

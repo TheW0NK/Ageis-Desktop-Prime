@@ -30,4 +30,6 @@ then prints the serial log. For example:
     tools/qemu-test.py @login:user:aegis 'ls /dev' @expect:input
     tools/qemu-test.py --usb --tablet @login:user:aegis 'sudo evtest 10' aegis @click:640,400
 
-Run it with `--help` for every step type.
+Run it with `--help` for every step type. `make test` runs the smoke tests and
+`ktest`, the kernel self-test (threads, signals, memory mapping, shared memory,
+pipes, poll and sockets).
