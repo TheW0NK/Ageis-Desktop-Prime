@@ -18,8 +18,10 @@
 
 typedef int64_t ssize_t;
 
+#ifndef AEGIS_NO_MINMAX
 #define MIN(a, b)   ((a) < (b) ? (a) : (b))
 #define MAX(a, b)   ((a) > (b) ? (a) : (b))
+#endif
 
 #define STDIN_FILENO    0
 #define STDOUT_FILENO   1

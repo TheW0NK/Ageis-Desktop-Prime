@@ -20,6 +20,8 @@ mkdir -p "$root"/bin "$root"/sbin "$root"/etc "$root"/boot "$root"/root \
 cp "$endpoint"/sbin/* "$root"/sbin/
 cp "$endpoint"/bin/* "$root"/bin/
 cp -r "$here"/../endpoint/rootfs/. "$root"/
+mkdir -p "$root"/etc/ssl/certs
+cp "$here"/../third_party/ca-certificates.pem "$root"/etc/ssl/certs/ca-bundle.pem
 
 cat > "$root"/etc/passwd <<PASSWD
 root:x:0:0:root:/root:/bin/terminal
@@ -44,7 +46,8 @@ fakeroot sh -c "
     chmod 0700 '$root'/root '$root/home/$user'
     chmod 1777 '$root'/tmp
     chmod 0755 '$root'/bin/* '$root'/sbin/*
-    chmod 0644 '$root'/etc/passwd '$root'/etc/group '$root'/etc/motd '$root'/etc/hostname '$root'/etc/hosts
+    chmod 0644 '$root'/etc/passwd '$root'/etc/group '$root'/etc/motd '$root'/etc/hostname '$root'/etc/hosts \\
+          '$root'/etc/ssl/certs/ca-bundle.pem
     chmod 0600 '$root'/etc/shadow
     '$here'/mkimage.sh '$out' '$esp' '$root' $size
 "
