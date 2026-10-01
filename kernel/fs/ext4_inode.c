@@ -608,12 +608,9 @@ int64_t ext4_file_write(struct vnode *v, const void *buf, size_t size, uint64_t 
             break;
         }
         memcpy(b->data + boff, (const uint8_t *)buf + done, n);
-        ret = bwrite(b);
+        // Data is written back before the next journal commit (ordered mode).
+        bdirty(b);
         brelse(b);
-        if (ret) {
-            ret = -EIO;
-            break;
-        }
         done += n;
     }
 

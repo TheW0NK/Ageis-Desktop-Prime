@@ -3,128 +3,90 @@
 #include "spinlock.h"
 #include "string.h"
 
-#define HEAP_ALIGN      16
-#define HEAP_GROW_MIN   (64 * 1024)
-#define HEAP_USED       ((struct block *)0xA5A5A5A5A5A5A5A5ULL)
+// Kernel heap. Small requests come from per-size free lists filled from
+// 64 KiB slabs; large ones get their own run of pages. Every allocation has
+// a 16-byte header recording its class, so kfree is constant time and
+// catches double frees.
 
-struct block {
-    size_t size;
-    struct block *next;
+#define HEADER          16
+#define SLAB_BYTES      (64 * 1024)
+#define MAGIC_USED      0xA110CA7EU
+#define MAGIC_FREE      0xF4EEF4EEU
+#define CLASS_PAGES     0xFFFF
+
+static const uint32_t sizes[] = { 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 };
+#define NCLASSES        (sizeof(sizes) / sizeof(sizes[0]))
+
+struct header {
+    uint32_t magic;
+    uint32_t cls;                   // index into sizes[], or CLASS_PAGES
+    uint64_t pages;                 // for page allocations
 };
 
-struct chunk {
-    struct chunk *next;
-    uint64_t pages;
+struct free_obj {
+    struct header h;
+    struct free_obj *next;
 };
 
-static spinlock_t heap_lock = SPINLOCK_INIT;
-static struct block *free_list;
-static struct chunk *chunks;
-static uint64_t chunk_count;
+static struct {
+    spinlock_t lock;
+    struct free_obj *free;
+} classes[NCLASSES];
 
-static void insert_free(struct block *b)
+_Static_assert(sizeof(struct header) == HEADER, "heap header size");
+
+static bool refill(unsigned c)
 {
-    struct block **pp = &free_list;
+    uint64_t base = pmm_alloc_pages(SLAB_BYTES / PAGE_SIZE);
+    uint32_t size = sizes[c];
 
-    while (*pp && *pp < b)
-        pp = &(*pp)->next;
-
-    b->next = *pp;
-    *pp = b;
-
-    if (b->next && (char *)b + b->size == (char *)b->next) {
-        b->size += b->next->size;
-        b->next = b->next->next;
-    }
-    if (pp != &free_list) {
-        struct block *prev = (struct block *)((char *)pp - offsetof(struct block, next));
-
-        if ((char *)prev + prev->size == (char *)b) {
-            prev->size += b->size;
-            prev->next = b->next;
-        }
-    }
-}
-
-static bool grow(size_t need)
-{
-    uint64_t pages = ALIGN_UP(MAX(need + sizeof(struct chunk), HEAP_GROW_MIN), PAGE_SIZE) / PAGE_SIZE;
-    uint64_t addr = pmm_alloc_pages(pages);
-    struct chunk *c = (struct chunk *)addr;
-    struct block *b = (struct block *)(c + 1);
-
-    if (!addr)
+    if (!base)
         return false;
-    c->pages = pages;
-    c->next = chunks;
-    chunks = c;
-    chunk_count++;
+    for (uint64_t off = 0; off + size <= SLAB_BYTES; off += size) {
+        struct free_obj *o = (struct free_obj *)(base + off);
 
-    b->size = pages * PAGE_SIZE - sizeof(struct chunk);
-    insert_free(b);
+        o->h.magic = MAGIC_FREE;
+        o->h.cls = c;
+        o->next = classes[c].free;
+        classes[c].free = o;
+    }
     return true;
-}
-
-// Returns chunks that are entirely free to the page allocator, keeping one.
-static void release_chunks(void)
-{
-    for (struct chunk **cp = &chunks, *c; chunk_count > 1 && (c = *cp);) {
-        struct block *first = (struct block *)(c + 1);
-        size_t usable = c->pages * PAGE_SIZE - sizeof(struct chunk);
-        struct block **bp = &free_list;
-
-        while (*bp && *bp != first)
-            bp = &(*bp)->next;
-
-        if (*bp && first->size == usable) {
-            *bp = first->next;
-            *cp = c->next;
-            chunk_count--;
-            pmm_free_pages((uint64_t)c, c->pages);
-        } else {
-            cp = &c->next;
-        }
-    }
-}
-
-static void *alloc_locked(size_t size)
-{
-    size_t need;
-
-    if (size == 0 || size > (1ULL << 40))
-        return NULL;
-    need = ALIGN_UP(size, HEAP_ALIGN) + sizeof(struct block);
-
-    for (;;) {
-        for (struct block **pp = &free_list, *b; (b = *pp); pp = &b->next) {
-            if (b->size < need)
-                continue;
-
-            if (b->size - need >= sizeof(struct block) + HEAP_ALIGN) {
-                struct block *rest = (struct block *)((char *)b + need);
-
-                rest->size = b->size - need;
-                rest->next = b->next;
-                *pp = rest;
-                b->size = need;
-            } else {
-                *pp = b->next;
-            }
-            b->next = HEAP_USED;
-            return b + 1;
-        }
-        if (!grow(need))
-            return NULL;
-    }
 }
 
 void *kmalloc(size_t size)
 {
-    uint64_t flags = spin_lock_irqsave(&heap_lock);
-    void *p = alloc_locked(size);
+    size_t need;
+    uint64_t flags;
 
-    spin_unlock_irqrestore(&heap_lock, flags);
-    return p;
+    if (size == 0 || size > (1ULL << 36))
+        return NULL;
+    need = size + HEADER;
+    for (unsigned c = 0; c < NCLASSES; c++) {
+        struct free_obj *o;
+
+        if (need > sizes[c])
+            continue;
+        flags = spin_lock_irqsave(&classes[c].lock);
+        if (!classes[c].free && !refill(c)) {
+            spin_unlock_irqrestore(&classes[c].lock, flags);
+            return NULL;
+        }
+        o = classes[c].free;
+        classes[c].free = o->next;
+        spin_unlock_irqrestore(&classes[c].lock, flags);
+        o->h.magic = MAGIC_USED;
+        return (uint8_t *)o + HEADER;
+    }
+
+    uint64_t pages = ALIGN_UP(need, PAGE_SIZE) / PAGE_SIZE;
+    struct header *h = (struct header *)pmm_alloc_pages(pages);
+
+    if (!h)
+        return NULL;
+    h->magic = MAGIC_USED;
+    h->cls = CLASS_PAGES;
+    h->pages = pages;
+    return (uint8_t *)h + HEADER;
 }
 
 void *kzalloc(size_t size)
@@ -138,16 +100,28 @@ void *kzalloc(size_t size)
 
 void kfree(void *ptr)
 {
-    struct block *b;
+    struct header *h;
+    uint64_t flags;
 
     if (!ptr)
         return;
-    b = (struct block *)ptr - 1;
-    if (b->next != HEAP_USED)
+    h = (struct header *)((uint8_t *)ptr - HEADER);
+    if (h->magic != MAGIC_USED)
         panic("kfree: %p was not allocated or is already free", ptr);
+    if (h->cls == CLASS_PAGES) {
+        h->magic = MAGIC_FREE;
+        pmm_free_pages((uint64_t)h, h->pages);
+        return;
+    }
+    if (h->cls >= NCLASSES)
+        panic("kfree: %p has a corrupt header", ptr);
 
-    uint64_t flags = spin_lock_irqsave(&heap_lock);
-    insert_free(b);
-    release_chunks();
-    spin_unlock_irqrestore(&heap_lock, flags);
+    struct free_obj *o = (struct free_obj *)h;
+    unsigned c = h->cls;
+
+    o->h.magic = MAGIC_FREE;
+    flags = spin_lock_irqsave(&classes[c].lock);
+    o->next = classes[c].free;
+    classes[c].free = o;
+    spin_unlock_irqrestore(&classes[c].lock, flags);
 }

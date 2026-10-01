@@ -4,6 +4,7 @@
 
 #define BCACHE_MAX      4096
 #define HASH_SIZE       1024
+#define MERGE_BYTES     (256 * 1024)
 
 static struct mutex cache_lock = MUTEX_INIT;
 static struct buf *hash[HASH_SIZE];
@@ -57,8 +58,14 @@ static int write_out(struct buf *b)
     return 0;
 }
 
+static int flush_locked(struct block_device *dev);
+
 static struct buf *evict(void)
 {
+    // When the oldest buffers are dirty, write everything out in large
+    // batches rather than one block at a time.
+    if (lru_tail && lru_tail->dirty && !lru_tail->pinned)
+        flush_locked(NULL);
     for (struct buf *b = lru_tail; b; b = b->lru_prev) {
         if (b->refs || b->pinned)
             continue;
@@ -187,18 +194,98 @@ int bwrite(struct buf *b)
     return ret;
 }
 
-int bcache_sync(struct block_device *dev)
+static int compare_bufs(const struct buf *a, const struct buf *b)
 {
+    if (a->dev != b->dev)
+        return a->dev < b->dev ? -1 : 1;
+    return a->block < b->block ? -1 : a->block > b->block;
+}
+
+// Writes dirty, unpinned buffers in block order, merging neighbours into
+// larger requests. Called with cache_lock held.
+static int flush_locked(struct block_device *dev)
+{
+    struct buf **list;
+    size_t n = 0, cap = 0;
+    uint8_t *staging = NULL;
     int ret = 0;
 
-    mutex_lock(&cache_lock);
     for (struct buf *b = lru_head; b; b = b->lru_next) {
-        if (b->dirty && !b->pinned && (!dev || b->dev == dev) && write_out(b) != 0)
-            ret = -1;
+        if (b->dirty && !b->pinned && (!dev || b->dev == dev))
+            cap++;
     }
+    if (!cap)
+        return 0;
+    if (!(list = kmalloc(cap * sizeof(*list))) || !(staging = kmalloc(MERGE_BYTES))) {
+        kfree(list);
+        // Not enough memory to batch: write one at a time.
+        for (struct buf *b = lru_head; b; b = b->lru_next) {
+            if (b->dirty && !b->pinned && (!dev || b->dev == dev) && write_out(b) != 0)
+                ret = -1;
+        }
+        return ret;
+    }
+    for (struct buf *b = lru_head; b; b = b->lru_next) {
+        if (b->dirty && !b->pinned && (!dev || b->dev == dev))
+            list[n++] = b;
+    }
+    // Insertion sort is fine for the few thousand buffers the cache holds.
+    for (size_t i = 1; i < n; i++) {
+        struct buf *x = list[i];
+        size_t j = i;
+
+        while (j && compare_bufs(list[j - 1], x) > 0) {
+            list[j] = list[j - 1];
+            j--;
+        }
+        list[j] = x;
+    }
+    for (size_t i = 0; i < n;) {
+        size_t j = i + 1, bytes = list[i]->size;
+
+        while (j < n && list[j]->dev == list[i]->dev && list[j]->size == list[i]->size
+               && list[j]->block == list[j - 1]->block + 1 && bytes + list[j]->size <= MERGE_BYTES)
+            bytes += list[j++]->size;
+        if (j - i == 1) {
+            if (write_out(list[i]) != 0)
+                ret = -1;
+        } else {
+            for (size_t k = i; k < j; k++)
+                memcpy(staging + (k - i) * list[i]->size, list[k]->data, list[k]->size);
+            if (block_write(list[i]->dev, list[i]->block * list[i]->size, staging, bytes) != 0) {
+                ret = -1;
+            } else {
+                for (size_t k = i; k < j; k++)
+                    list[k]->dirty = false;
+            }
+        }
+        i = j;
+    }
+    kfree(staging);
+    kfree(list);
+    return ret;
+}
+
+int bcache_sync(struct block_device *dev)
+{
+    int ret;
+
+    mutex_lock(&cache_lock);
+    ret = flush_locked(dev);
     mutex_unlock(&cache_lock);
     if (dev && block_flush(dev) != 0)
         ret = -1;
+    return ret;
+}
+
+// Like bcache_sync without the device cache flush.
+int bcache_writeback(struct block_device *dev)
+{
+    int ret;
+
+    mutex_lock(&cache_lock);
+    ret = flush_locked(dev);
+    mutex_unlock(&cache_lock);
     return ret;
 }
 

@@ -95,6 +95,9 @@ test: image
 		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ktest' @expect:'ktest: all passed'
 	tools/qemu-test.py --usb --tablet @reject:PANIC @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \
 		'whoami' @expect:$(AEGIS_USER)
+	tools/qemu-test.py --net --qemu-arg=-nic --qemu-arg=user,model=virtio-net-pci @reject:PANIC \
+		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) @sleep:3 'ifconfig eth0' @expect:10.0.2.15 \
+		'ping -c 1 10.0.2.2' @expect:'1 received' 'netbench 8' @expect:'tcp loopback: 8388608'
 
 clean:
 	$(MAKE) -C boot clean

@@ -23,6 +23,7 @@ void bhold(struct buf *b);
 void bdirty(struct buf *b);
 int bwrite(struct buf *b);
 int bcache_sync(struct block_device *dev);
+int bcache_writeback(struct block_device *dev);
 void bcache_invalidate(struct block_device *dev);
 
 #endif

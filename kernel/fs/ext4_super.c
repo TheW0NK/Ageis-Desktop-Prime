@@ -456,9 +456,11 @@ int ext4_commit(struct ext4_fs *fs)
         return bcache_sync(fs->dev);
     if (fs->txn_count == 0) {
         fs->pending_count = 0;
-        return 0;
+        return bcache_writeback(fs->dev);
     }
 
+    // Ordered mode: file data reaches the disk before metadata that refers to it.
+    bcache_writeback(fs->dev);
     ret = jbd2_commit(fs, fs->txn, fs->txn_count);
     for (size_t i = 0; i < fs->txn_count; i++) {
         fs->txn[i]->pinned = false;

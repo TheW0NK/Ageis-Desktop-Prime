@@ -31,6 +31,28 @@ static void panic_begin(void)
     kprintf("\n  *** AEGIS KERNEL PANIC ***\n\n");
 }
 
+// Walks the frame-pointer chain (the kernel keeps frame pointers).
+static void backtrace(uint64_t rbp, uint64_t rip)
+{
+    extern char __kernel_start[], __kernel_end[];
+
+    kprintf("\n  Backtrace (resolve with addr2line -e kernel/build/kernel.elf):\n   ");
+    if (rip)
+        kprintf(" %lx", rip);
+    for (int depth = 0; depth < 24 && rbp >= (uint64_t)__kernel_start - 0x100000000ULL; depth++) {
+        uint64_t *frame = (uint64_t *)rbp;
+
+        if (rbp & 7 || rbp < 0x1000)
+            break;
+        if (frame[1] < (uint64_t)__kernel_start || frame[1] >= (uint64_t)__kernel_end)
+            break;
+        kprintf(" %lx", frame[1]);
+        rbp = frame[0];
+    }
+    kprintf("\n");
+    (void)__kernel_end;
+}
+
 static NORETURN void panic_end(void)
 {
     kprintf("\n  System halted.\n");
@@ -47,6 +69,7 @@ void panic(const char *fmt, ...)
     kvprintf(fmt, args);
     va_end(args);
     kprintf("\n");
+    backtrace((uint64_t)__builtin_frame_address(0), 0);
     panic_end();
 }
 
@@ -74,5 +97,6 @@ void exception_report(struct interrupt_frame *f)
     kprintf("  RBP=%016lx  R8 =%016lx  R9 =%016lx\n", f->rbp, f->r8, f->r9);
     kprintf("  R10=%016lx  R11=%016lx  R12=%016lx\n", f->r10, f->r11, f->r12);
     kprintf("  R13=%016lx  R14=%016lx  R15=%016lx\n", f->r13, f->r14, f->r15);
+    backtrace(f->rbp, f->rip);
     panic_end();
 }

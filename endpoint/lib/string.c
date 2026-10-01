@@ -151,6 +151,29 @@ const char *strerror(int err)
     switch (err) {
     case EPERM: return "Operation not permitted";
     case ENOENT: return "No such file or directory";
+    case EPIPE: return "Broken pipe";
+    case ENOTSOCK: return "Not a socket";
+    case EDESTADDRREQ: return "Destination address required";
+    case EMSGSIZE: return "Message too long";
+    case EPROTOTYPE: return "Wrong protocol type for socket";
+    case ENOPROTOOPT: return "Protocol not available";
+    case EPROTONOSUPPORT: return "Protocol not supported";
+    case EAFNOSUPPORT: return "Address family not supported";
+    case EADDRINUSE: return "Address already in use";
+    case EADDRNOTAVAIL: return "Address not available";
+    case ENETDOWN: return "Network is down";
+    case ENETUNREACH: return "Network is unreachable";
+    case ECONNABORTED: return "Connection aborted";
+    case ECONNRESET: return "Connection reset by peer";
+    case ENOBUFS: return "No buffer space available";
+    case EISCONN: return "Already connected";
+    case ENOTCONN: return "Not connected";
+    case ETIMEDOUT: return "Timed out";
+    case ECONNREFUSED: return "Connection refused";
+    case EHOSTUNREACH: return "Host is unreachable";
+    case EALREADY: return "Operation already in progress";
+    case EINPROGRESS: return "Operation in progress";
+    case EDEADLK: return "Resource deadlock avoided";
     case ESRCH: return "No such process";
     case EINTR: return "Interrupted";
     case EIO: return "Input/output error";
@@ -182,4 +205,15 @@ const char *strerror(int err)
     case ENOTSUP: return "Not supported";
     default: return "Unknown error";
     }
+}
+
+void *memchr(const void *s, int c, size_t n)
+{
+    const unsigned char *p = s;
+
+    for (size_t i = 0; i < n; i++) {
+        if (p[i] == (unsigned char)c)
+            return (void *)(p + i);
+    }
+    return NULL;
 }

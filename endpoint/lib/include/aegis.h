@@ -9,6 +9,7 @@
 #include "abi/errno.h"
 #include "abi/fs.h"
 #include "abi/mman.h"
+#include "abi/net.h"
 #include "abi/poll.h"
 #include "abi/proc.h"
 #include "abi/signal.h"
@@ -16,6 +17,9 @@
 #include "abi/syscall.h"
 
 typedef int64_t ssize_t;
+
+#define MIN(a, b)   ((a) < (b) ? (a) : (b))
+#define MAX(a, b)   ((a) > (b) ? (a) : (b))
 
 #define STDIN_FILENO    0
 #define STDOUT_FILENO   1
@@ -159,11 +163,28 @@ int unix_connect(const char *name, int type);
 ssize_t send_fds(int fd, const void *buf, size_t len, const int *fds, int nfds);
 ssize_t recv_fds(int fd, void *buf, size_t len, int *fds, int *nfds);
 
+// Internet.
+static inline uint16_t htons(uint16_t v) { return __builtin_bswap16(v); }
+static inline uint16_t ntohs(uint16_t v) { return __builtin_bswap16(v); }
+static inline uint32_t htonl(uint32_t v) { return __builtin_bswap32(v); }
+static inline uint32_t ntohl(uint32_t v) { return __builtin_bswap32(v); }
+// Parses dotted-quad text into a network-order address; returns false if invalid.
+bool inet_parse(const char *text, uint32_t *addr);
+// Formats a network-order address into buf (at least 16 bytes).
+char *inet_format(uint32_t addr, char *buf);
+int netconfig(int op, int index, struct aegis_netif *info);
+// Looks a host name up (numeric, /etc/hosts, then DNS). Returns 0 or -1 with
+// errno set (ENOENT: no such host, ETIMEDOUT: no answer).
+int resolve_host(const char *name, uint32_t *addr);
+// Connects a TCP socket to host:port; returns the descriptor or -1.
+int tcp_connect(const char *host, uint16_t port, uint64_t timeout_ms);
+
 // string.h
 void *memset(void *dst, int c, size_t n);
 void *memcpy(void *dst, const void *src, size_t n);
 void *memmove(void *dst, const void *src, size_t n);
 int memcmp(const void *a, const void *b, size_t n);
+void *memchr(const void *s, int c, size_t n);
 size_t strlen(const char *s);
 size_t strnlen(const char *s, size_t max);
 int strcmp(const char *a, const char *b);

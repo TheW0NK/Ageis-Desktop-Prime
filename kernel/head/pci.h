@@ -2,6 +2,7 @@
 #define AEGIS_PCI_H
 
 #include "kernel.h"
+#include "cpu.h"
 
 #define PCI_MAX_DEVICES 128
 
@@ -23,5 +24,9 @@ const struct pci_device *pci_find_class(uint8_t class_code, uint8_t subclass, ui
 const struct pci_device *pci_find_id(uint16_t vendor, uint16_t device, size_t nth);
 void pci_enable(const struct pci_device *d);
 uint64_t pci_bar(const struct pci_device *d, int index, bool *is_io);
+uint8_t pci_find_capability(const struct pci_device *d, uint8_t id);
+int pci_alloc_vector(irq_handler_t handler);
+int pci_enable_msi(const struct pci_device *d, irq_handler_t handler);
+int pci_enable_msix(const struct pci_device *d, int count, irq_handler_t handler);
 
 #endif

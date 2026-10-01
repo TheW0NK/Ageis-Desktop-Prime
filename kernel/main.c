@@ -9,6 +9,7 @@
 #include "input.h"
 #include "keyboard.h"
 #include "mem.h"
+#include "net.h"
 #include "pci.h"
 #include "process.h"
 #include "random.h"
@@ -113,6 +114,9 @@ static void kinit(void *arg)
         mount_dev();
     }
     smp_init();
+    net_init();
+    virtio_net_init();
+    e1000_init();
 
     static char *argv[] = { "init", NULL };
     static char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };

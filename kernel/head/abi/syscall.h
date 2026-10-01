@@ -85,7 +85,8 @@
 #define SYS_SYSINFO     79      // struct aegis_sysinfo *
 #define SYS_FCNTL       80      // fd, cmd, arg
 #define SYS_SIGSUSPEND  81      // const uint64_t *mask
-#define SYS_COUNT       82
+#define SYS_NETCONFIG   82      // op, interface index, struct aegis_netif *
+#define SYS_COUNT       83
 
 #define WNOHANG         1       // SYS_WAIT options (third argument)
 

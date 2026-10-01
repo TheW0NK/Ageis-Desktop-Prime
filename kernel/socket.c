@@ -2,6 +2,7 @@
 #include "mem.h"
 #include "process.h"
 #include "string.h"
+#include "net.h"
 #include "abi/poll.h"
 
 // The generic part of sockets: files, creation, and dispatch to the domain.
@@ -91,15 +92,15 @@ int socket_create(int domain, int type, int protocol, struct socket **out)
     struct socket *s;
     int ret;
 
-    if (protocol != 0)
-        return -EPROTONOSUPPORT;
-    if (domain != AF_UNIX)
+    if (domain != AF_UNIX && domain != AF_INET)
         return -EAFNOSUPPORT;
+    if (domain == AF_UNIX && protocol != 0)
+        return -EPROTONOSUPPORT;
     if (type != SOCK_STREAM && type != SOCK_DGRAM && type != SOCK_SEQPACKET)
         return -EPROTOTYPE;
     if (!(s = socket_alloc(domain, type)))
         return -ENOMEM;
-    if ((ret = unix_create(s))) {
+    if ((ret = domain == AF_UNIX ? unix_create(s) : inet_create(s, type, protocol))) {
         socket_free(s);
         return ret;
     }

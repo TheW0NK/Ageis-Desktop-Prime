@@ -14,6 +14,7 @@
 #include "string.h"
 #include "tty.h"
 #include "vm.h"
+#include "net.h"
 
 #define IO_CHUNK        65536
 #define ARGV_MAX        256
@@ -1116,6 +1117,19 @@ static int64_t sys_sockopt(struct process *p, int fd, int level, int opt, uint64
 
 // ---- System information ----
 
+static int64_t sys_netconfig(struct process *p, int op, int index, uint64_t uinfo)
+{
+    struct aegis_netif info;
+    int ret;
+
+    if (op == NETCONFIG_SET && copy_from_user(&info, uinfo, sizeof(info)))
+        return -EFAULT;
+    ret = net_config(op, index, &info, p->cred.euid == 0);
+    if (!ret && op == NETCONFIG_GET && copy_to_user(uinfo, &info, sizeof(info)))
+        return -EFAULT;
+    return ret;
+}
+
 static int64_t sys_procinfo(uint64_t ubuf, uint64_t max)
 {
     struct aegis_procinfo *k;
@@ -1244,6 +1258,7 @@ static int64_t dispatch(struct process *p, struct interrupt_frame *f)
     case SYS_PROCINFO:      return sys_procinfo(a, b);
     case SYS_SYSINFO:       return sys_sysinfo(a);
     case SYS_FCNTL:         return sys_fcntl(p, a, b, c);
+    case SYS_NETCONFIG:     return sys_netconfig(p, a, b, c);
     default:                return -ENOSYS;
     }
 }

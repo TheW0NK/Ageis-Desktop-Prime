@@ -4,7 +4,7 @@
 #include "kernel.h"
 #include "cpu.h"
 
-#define TIMER_HZ    100
+#define TIMER_HZ    1000
 
 void apic_init(void);
 void apic_eoi(void);

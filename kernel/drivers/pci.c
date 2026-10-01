@@ -1,5 +1,7 @@
 #include "pci.h"
 #include "cpu.h"
+#include "apic.h"
+#include "mem.h"
 
 #define PCI_ADDRESS     0xCF8
 #define PCI_DATA        0xCFC
@@ -146,4 +148,115 @@ uint64_t pci_bar(const struct pci_device *d, int index, bool *is_io)
     if (((bar >> 1) & 3) == 2 && index < 5)
         return ((uint64_t)d->bar[index + 1] << 32) | (bar & ~0xFU);
     return bar & ~0xFU;
+}
+
+// Returns the config-space offset of a capability, or 0.
+uint8_t pci_find_capability(const struct pci_device *d, uint8_t id)
+{
+    uint8_t off;
+
+    if (!(pci_read32(d->bus, d->slot, d->function, 0x04) & (1U << 20)))
+        return 0;
+    off = pci_read32(d->bus, d->slot, d->function, 0x34) & 0xFC;
+    for (int guard = 0; off && guard < 48; guard++) {
+        uint32_t cap = pci_read32(d->bus, d->slot, d->function, off);
+
+        if ((cap & 0xFF) == id)
+            return off;
+        off = (cap >> 8) & 0xFC;
+    }
+    return 0;
+}
+
+// Interrupt vectors for message-signalled interrupts, below the system ones.
+#define MSI_VECTOR_FIRST    0x50
+#define MSI_VECTOR_LAST     0xEF
+
+static uint8_t next_vector = MSI_VECTOR_FIRST;
+
+int pci_alloc_vector(irq_handler_t handler)
+{
+    uint8_t v;
+
+    if (next_vector == VECTOR_YIELD)
+        next_vector++;
+    if (next_vector > MSI_VECTOR_LAST)
+        return -1;
+    v = next_vector++;
+    irq_register(v, handler);
+    return v;
+}
+
+static uint32_t msi_address(void)
+{
+    return 0xFEE00000U | (apic_id() << 12);
+}
+
+// Routes the device's interrupt to handler through MSI-X (entry 0 for every
+// vector table entry the device uses) or MSI. Returns the vector, or -1.
+int pci_enable_msi(const struct pci_device *d, irq_handler_t handler)
+{
+    uint8_t cap = pci_find_capability(d, 0x05);
+    int vector;
+
+    if (!cap)
+        return -1;
+    if ((vector = pci_alloc_vector(handler)) < 0)
+        return -1;
+
+    uint32_t ctrl = pci_read32(d->bus, d->slot, d->function, cap);
+    bool is64 = ctrl & (1U << 23);
+
+    pci_write32(d->bus, d->slot, d->function, cap + 4, msi_address());
+    if (is64) {
+        pci_write32(d->bus, d->slot, d->function, cap + 8, 0);
+        pci_write32(d->bus, d->slot, d->function, cap + 12, vector);
+    } else {
+        pci_write32(d->bus, d->slot, d->function, cap + 8, vector);
+    }
+    // One message, enabled; legacy INTx off.
+    ctrl &= ~(0x7U << 20);
+    ctrl |= 1U << 16;
+    pci_write32(d->bus, d->slot, d->function, cap, ctrl);
+    pci_write32(d->bus, d->slot, d->function, 0x04,
+                (pci_read32(d->bus, d->slot, d->function, 0x04) & 0xFFFF) | (1U << 10));
+    return vector;
+}
+
+// MSI-X with `count` table entries, all delivering the same handler on
+// consecutive vectors. Returns the first vector, or -1.
+int pci_enable_msix(const struct pci_device *d, int count, irq_handler_t handler)
+{
+    uint8_t cap = pci_find_capability(d, 0x11);
+    uint32_t ctrl, table;
+    volatile uint32_t *entries;
+    uint64_t bar;
+    int first = -1;
+
+    if (!cap)
+        return -1;
+    ctrl = pci_read32(d->bus, d->slot, d->function, cap);
+    if ((int)((ctrl >> 16) & 0x7FF) + 1 < count)
+        return -1;
+    table = pci_read32(d->bus, d->slot, d->function, cap + 4);
+    bar = pci_bar(d, table & 7, NULL);
+    if (!bar || !paging_map_mmio(bar + (table & ~7U), count * 16))
+        return -1;
+    entries = (volatile uint32_t *)(bar + (table & ~7U));
+    for (int i = 0; i < count; i++) {
+        int v = pci_alloc_vector(handler);
+
+        if (v < 0)
+            return -1;
+        if (first < 0)
+            first = v;
+        entries[i * 4 + 0] = msi_address();
+        entries[i * 4 + 1] = 0;
+        entries[i * 4 + 2] = v;
+        entries[i * 4 + 3] = 0;         // unmasked
+    }
+    pci_write32(d->bus, d->slot, d->function, cap, (ctrl & ~(1U << 30)) | (1U << 31));
+    pci_write32(d->bus, d->slot, d->function, 0x04,
+                (pci_read32(d->bus, d->slot, d->function, 0x04) & 0xFFFF) | (1U << 10));
+    return first;
 }

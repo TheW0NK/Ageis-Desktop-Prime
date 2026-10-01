@@ -12,7 +12,7 @@ CFLAGS  := -std=c11 -O2 -Wall -Wextra -ffreestanding -nostdinc \
 ASFLAGS := -f elf64
 LDFLAGS := -nostdlib -static -z max-page-size=0x1000 -z noexecstack -T linker.ld
 
-SRCS    := $(wildcard *.c lib/*.c display/*.c drivers/*.c fs/*.c)
+SRCS    := $(wildcard *.c lib/*.c display/*.c drivers/*.c fs/*.c net/*.c)
 ASMS    := $(wildcard *.asm)
 OBJS    := $(addprefix $(BUILD)/,$(SRCS:.c=.o) $(ASMS:.asm=.o))
 
