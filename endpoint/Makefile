@@ -42,7 +42,7 @@ MATH_FLAGS := -std=c99 -O2 -ffreestanding -nostdinc -isystem $(shell $(CC) -prin
               -fno-asynchronous-unwind-tables -w
 
 # Graphics: drawing, fonts (stb_truetype) and images (stb_image).
-GFX_SRCS  := $(wildcard gfx/*.c)
+GFX_SRCS  := $(wildcard gfx/*.c ui/*.c)
 GFX_OBJS  := $(addprefix $(BUILD)/,$(GFX_SRCS:.c=.o))
 GFX_LIB   := $(BUILD)/libgfx.a
 LIBS      := $(LIBC) $(GFX_LIB) $(SSL_LIB) $(MATH_LIB)
@@ -50,7 +50,10 @@ LIBS      := $(LIBC) $(GFX_LIB) $(SSL_LIB) $(MATH_LIB)
 TERMINAL_SRCS := $(wildcard terminal/*.c terminal/commands/*.c)
 PROGRAMS      := $(basename $(notdir $(wildcard programs/*.c)))
 
-TARGETS := $(BUILD)/sbin/init $(BUILD)/bin/terminal $(addprefix $(BUILD)/bin/,$(PROGRAMS))
+COMPOSITOR_SRCS := $(wildcard compositor/*.c)
+
+TARGETS := $(BUILD)/sbin/init $(BUILD)/bin/terminal $(addprefix $(BUILD)/bin/,$(PROGRAMS)) \
+           $(BUILD)/sbin/compositor
 
 .PHONY: all clean
 
@@ -66,6 +69,10 @@ $(BUILD)/bearssl/%.o: $(SSL_DIR)/src/%.c
 
 $(SSL_LIB): $(SSL_OBJS)
 	$(AR) rcs $@ $^
+
+$(BUILD)/ui/%.o: ui/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/gfx/%.o: gfx/%.c
 	@mkdir -p $(dir $@)
@@ -96,6 +103,10 @@ $(BUILD)/sbin/init: $(CRT0) $(BUILD)/init/main.o $(LIBC)
 $(BUILD)/bin/terminal: $(CRT0) $(addprefix $(BUILD)/,$(TERMINAL_SRCS:.c=.o)) $(LIBC)
 	@mkdir -p $(dir $@)
 	$(LD) $(LDFLAGS) $^ -o $@
+
+$(BUILD)/sbin/compositor: $(CRT0) $(addprefix $(BUILD)/,$(COMPOSITOR_SRCS:.c=.o)) $(LIBS)
+	@mkdir -p $(dir $@)
+	$(LD) $(LDFLAGS) $(CRT0) $(addprefix $(BUILD)/,$(COMPOSITOR_SRCS:.c=.o)) --start-group $(LIBS) --end-group -o $@
 
 $(BUILD)/bin/%: $(CRT0) $(BUILD)/programs/%.o $(LIBS)
 	@mkdir -p $(dir $@)

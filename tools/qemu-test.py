@@ -17,6 +17,7 @@ The serial port only carries output, so input goes through the QEMU monitor
     @hmp:COMMAND         run a QEMU monitor command (e.g. device_add usb-mouse,id=m1)
     @abs:X,Y             move an absolute pointer (--tablet) to screen pixel X,Y
     @click:X,Y[,BUTTON]  move there and click (BUTTON: left, right, middle)
+    @drag:X1,Y1,X2,Y2    press the left button at X1,Y1, move to X2,Y2 and release
     @login:USER:PASSWORD wait for the login prompt and log in
 
 Examples:
@@ -118,6 +119,15 @@ class Machine:
             reply = json.loads(self.qmp_file.readline())
             if 'return' in reply or 'error' in reply:
                 return reply
+
+    def drag(self, x1, y1, x2, y2):
+        self.absolute(x1, y1)
+        self.qmp('input-send-event', events=[{'type': 'btn', 'data': {'down': True, 'button': 'left'}}])
+        time.sleep(0.1)
+        for i in range(1, 11):
+            self.absolute(x1 + (x2 - x1) * i / 10, y1 + (y2 - y1) * i / 10)
+        self.qmp('input-send-event', events=[{'type': 'btn', 'data': {'down': False, 'button': 'left'}}])
+        time.sleep(0.2)
 
     def absolute(self, x, y, buttons=None):
         events = [
@@ -259,6 +269,9 @@ def main():
                 elif step.startswith('@button:'):
                     m.hmp('mouse_button ' + step[8:])
                     time.sleep(0.2)
+                elif step.startswith('@drag:'):
+                    x1, y1, x2, y2 = (float(v) for v in step[6:].split(','))
+                    m.drag(x1, y1, x2, y2)
                 elif step.startswith('@abs:') or step.startswith('@click:'):
                     parts = step.split(':', 1)[1].split(',')
                     button = None
