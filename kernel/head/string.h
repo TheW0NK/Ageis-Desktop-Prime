@@ -11,5 +11,6 @@ size_t strlen(const char *s);
 size_t strnlen(const char *s, size_t max);
 int strcmp(const char *a, const char *b);
 int strncmp(const char *a, const char *b, size_t n);
+char *strstr(const char *haystack, const char *needle);
 
 #endif

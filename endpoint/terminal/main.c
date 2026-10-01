@@ -702,15 +702,24 @@ static void do_login(void)
     show_file("/etc/motd");
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     char line[LINE_MAX], prompt[AEGIS_PATH_MAX + 64];
     struct aegis_utsname u;
 
     set_raw(true);
-    if (uname(&u) == 0)
-        printf("\n%s %s (%s)\n", u.sysname, u.release, u.machine);
-    do_login();
+    // In a graphical session the user is already signed in.
+    if (argc > 1 && !strcmp(argv[1], "--no-login")) {
+        load_identity();
+        setenv("HOME", home_dir);
+        setenv("USER", user_name);
+        if (!getenv("PATH"))
+            setenv("PATH", "/bin:/sbin");
+    } else {
+        if (uname(&u) == 0)
+            printf("\n%s %s (%s)\n", u.sysname, u.release, u.machine);
+        do_login();
+    }
 
     for (;;) {
         int code;

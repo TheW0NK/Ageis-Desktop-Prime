@@ -56,5 +56,18 @@ void console_putc(char c);
 void console_write(const char *s, size_t len);
 void console_set_color(uint32_t fg, uint32_t bg);
 void console_clear(void);
+void console_set_hidden(bool hidden);
+bool console_hidden(void);
+
+// Boot splash: shown until a program prints to the console, takes the display
+// over, or verbose output is requested (F13 or "verbose" on the command line).
+void splash_start(void);
+void splash_request_verbose(void);
+void splash_user_output(void);
+bool splash_active(void);
+
+// One program (the window system) may own the display through /dev/fb0.
+void display_devfs_init(void);
+bool display_claimed(void);
 
 #endif

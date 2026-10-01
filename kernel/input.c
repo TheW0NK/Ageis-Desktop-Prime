@@ -6,6 +6,7 @@
 #include "string.h"
 #include "sync.h"
 #include "tty.h"
+#include "display.h"
 #include "abi/poll.h"
 
 #define MAX_DEVICES     16
@@ -289,6 +290,8 @@ void input_key(int dev, uint16_t code, bool pressed)
     }
     key_locked(dev, code, pressed);
     spin_unlock_irqrestore(&in.wq.lock, flags);
+    if (pressed && code == KEY_F13)
+        splash_request_verbose();
     if (leds)
         update_leds();
 }

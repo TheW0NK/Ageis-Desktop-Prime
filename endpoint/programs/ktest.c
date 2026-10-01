@@ -358,6 +358,40 @@ static void test_sockets(void)
     unlink("/tmp/ktest.sock");
 }
 
+static void test_pty(void)
+{
+    int fds[2], status = 0;
+    char buf[512] = { 0 }, *argv[] = { "hello", "pty", NULL };
+    size_t got = 0;
+    ssize_t n;
+
+    CHECK("openpty", openpty(fds, O_CLOEXEC) == 0);
+    int saved = dup(1);
+    dup2(fds[1], 1);
+    int pid = spawn("/bin/hello", argv, environ);
+    dup2(saved, 1);
+    close(saved);
+    waitpid(pid, &status, 0);
+    struct pollfd p = { fds[0], POLLIN, 0 };
+    while (got < sizeof(buf) - 1 && poll(&p, 1, 200) == 1 && (n = read(fds[0], buf + got, sizeof(buf) - 1 - got)) > 0)
+        got += n;
+    CHECK("program output through a pty", strstr(buf, "Hello from an Aegis program") && strstr(buf, "\r\n"));
+
+    // Cooked mode: the line is echoed to the master and delivered on Enter.
+    write(fds[0], "abc\n", 4);
+    memset(buf, 0, sizeof(buf));
+    n = read(fds[1], buf, sizeof(buf));
+    CHECK("pty line discipline", n == 4 && !strcmp(buf, "abc\n"));
+    memset(buf, 0, sizeof(buf));
+    n = read(fds[0], buf, sizeof(buf));
+    CHECK("pty echo", n > 0 && !strncmp(buf, "abc", 3));
+    CHECK("pty window size", ioctl(fds[0], IOCTL_PTY_SET_SIZE, (30 << 16) | 100) == 0
+          && ioctl(fds[1], IOCTL_CONSOLE_SIZE, 0) == ((30 << 16) | 100));
+    close(fds[0]);
+    CHECK("pty hangup", read(fds[1], buf, sizeof(buf)) == 0);
+    close(fds[1]);
+}
+
 static void test_info(void)
 {
     struct aegis_sysinfo si;
@@ -398,6 +432,7 @@ int main(int argc, char **argv)
     test_pipes();
     test_signals();
     test_sockets();
+    test_pty();
     test_info();
     if (failures)
         printf("ktest: %d failed\n", failures);

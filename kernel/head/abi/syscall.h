@@ -86,7 +86,8 @@
 #define SYS_FCNTL       80      // fd, cmd, arg
 #define SYS_SIGSUSPEND  81      // const uint64_t *mask
 #define SYS_NETCONFIG   82      // op, interface index, struct aegis_netif *
-#define SYS_COUNT       83
+#define SYS_OPENPTY     83      // int fds[2] (master, slave), flags (O_CLOEXEC)
+#define SYS_COUNT       84
 
 #define WNOHANG         1       // SYS_WAIT options (third argument)
 
@@ -103,6 +104,7 @@
 #define IOCTL_CONSOLE_RAW       1   // arg: 1 = raw (no echo, byte at a time), 0 = line mode
 #define IOCTL_CONSOLE_FOREGROUND 2  // arg: pid that receives Ctrl+C, 0 = none
 #define IOCTL_CONSOLE_SIZE      3   // returns (rows << 16) | columns
+#define IOCTL_PTY_SET_SIZE      9   // pty master: arg (rows << 16) | columns; sends SIGWINCH
 #define IOCTL_SHM_SIZE          8   // shared memory object: returns its size
 #define IOCTL_DISPLAY_MODE      4   // arg: (width << 16) | height; root only
 

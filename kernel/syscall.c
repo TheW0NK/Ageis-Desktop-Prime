@@ -666,6 +666,29 @@ static int64_t sys_pipe(struct process *p, uint64_t ufds, uint32_t flags)
     return 0;
 }
 
+static int64_t sys_openpty(struct process *p, uint64_t ufds, uint32_t flags)
+{
+    struct file *m, *s;
+    int fds[2], ret;
+
+    if ((ret = pty_create(&m, &s)))
+        return ret;
+    if ((fds[0] = install(p, m, flags & O_CLOEXEC)) < 0) {
+        file_put(s);
+        return fds[0];
+    }
+    if ((fds[1] = install(p, s, flags & O_CLOEXEC)) < 0) {
+        sys_close(p, fds[0]);
+        return fds[1];
+    }
+    if (copy_to_user(ufds, fds, sizeof(fds))) {
+        sys_close(p, fds[0]);
+        sys_close(p, fds[1]);
+        return -EFAULT;
+    }
+    return 0;
+}
+
 static int64_t sys_poll(struct process *p, uint64_t ufds, uint64_t n, int64_t timeout)
 {
     struct pollfd *fds;
@@ -1259,6 +1282,7 @@ static int64_t dispatch(struct process *p, struct interrupt_frame *f)
     case SYS_SYSINFO:       return sys_sysinfo(a);
     case SYS_FCNTL:         return sys_fcntl(p, a, b, c);
     case SYS_NETCONFIG:     return sys_netconfig(p, a, b, c);
+    case SYS_OPENPTY:       return sys_openpty(p, a, b);
     default:                return -ENOSYS;
     }
 }

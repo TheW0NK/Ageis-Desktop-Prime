@@ -113,6 +113,7 @@ static void kinit(void *arg)
         mount_boot();
         mount_dev();
     }
+    display_devfs_init();
     smp_init();
     net_init();
     virtio_net_init();
@@ -167,6 +168,8 @@ void kmain(struct aegis_boot_info *info)
 
     random_init();
     input_init();
+    if (!strstr(cmdline, "verbose"))
+        splash_start();
 
     pci_init();
     kprintf("PCI: %lu device(s)\n", pci_device_count());

@@ -152,6 +152,7 @@ int mprotect(void *a, size_t l, int p) { return check(syscall3(SYS_MPROTECT, a, 
 int shm_create(size_t size, int flags) { return check(syscall2(SYS_SHM_CREATE, size, flags)); }
 int pipe(int fds[2]) { return check(syscall2(SYS_PIPE, fds, 0)); }
 int pipe2(int fds[2], int flags) { return check(syscall2(SYS_PIPE, fds, flags)); }
+int openpty(int fds[2], int flags) { return check(syscall2(SYS_OPENPTY, fds, flags)); }
 int poll(struct pollfd *fds, size_t n, int t) { return check(syscall3(SYS_POLL, fds, n, (long)t)); }
 int fcntl(int fd, int cmd, long arg) { return check(syscall3(SYS_FCNTL, fd, cmd, arg)); }
 int procinfo(struct aegis_procinfo *b, int max) { return check(syscall2(SYS_PROCINFO, b, max)); }

@@ -27,7 +27,13 @@ static struct {
     int params[4];
     int nparams;
     bool cursor_drawn;
+    bool hidden;                    // keep text, draw nothing (splash or a GUI owns the screen)
 } con;
+
+static struct display *out(void)
+{
+    return con.hidden ? NULL : con.d;
+}
 
 static struct cell *cell_at(uint32_t x, uint32_t y)
 {
@@ -38,7 +44,7 @@ static void draw_cell(uint32_t x, uint32_t y)
 {
     struct cell *c = cell_at(x, y);
 
-    fb_draw_glyph(con.d, x * FONT_WIDTH, y * FONT_HEIGHT, c->c ? c->c : ' ', c->fg, c->bg);
+    fb_draw_glyph(out(), x * FONT_WIDTH, y * FONT_HEIGHT, c->c ? c->c : ' ', c->fg, c->bg);
 }
 
 static void cursor_hide(void)
@@ -52,7 +58,7 @@ static void cursor_show(void)
 {
     uint32_t x = MIN(con.x, con.cols - 1);
 
-    fb_fill_rect(con.d, x * FONT_WIDTH, con.y * FONT_HEIGHT + FONT_HEIGHT - 2, FONT_WIDTH, 2, con.fg);
+    fb_fill_rect(out(), x * FONT_WIDTH, con.y * FONT_HEIGHT + FONT_HEIGHT - 2, FONT_WIDTH, 2, con.fg);
     con.cursor_drawn = true;
 }
 
@@ -65,7 +71,7 @@ static void clear_cells(uint32_t from_x, uint32_t from_y, uint32_t to_x, uint32_
         for (uint32_t x = x0; x <= x1 && x < con.cols; x++)
             *cell_at(x, y) = (struct cell){ ' ', con.fg, con.bg };
         if (x0 <= x1 && x0 < con.cols)
-            fb_fill_rect(con.d, x0 * FONT_WIDTH, y * FONT_HEIGHT,
+            fb_fill_rect(out(), x0 * FONT_WIDTH, y * FONT_HEIGHT,
                          (MIN(x1, con.cols - 1) - x0 + 1) * FONT_WIDTH, FONT_HEIGHT, con.bg);
     }
 }
@@ -93,12 +99,12 @@ void console_clear(void)
 {
     if (!con.d)
         return;
-    fb_fill_rect(con.d, 0, 0, con.d->width, con.d->height, con.bg);
+    fb_fill_rect(out(), 0, 0, con.d->width, con.d->height, con.bg);
     for (uint32_t i = 0; i < MAX_COLS * con.rows; i++)
         cells[i] = (struct cell){ ' ', con.fg, con.bg };
     con.x = con.y = 0;
     con.cursor_drawn = false;
-    fb_flush(con.d);
+    fb_flush(out());
 }
 
 void console_set_color(uint32_t fg, uint32_t bg)
@@ -112,7 +118,7 @@ static void scroll(void)
     memmove(cells, cells + MAX_COLS, sizeof(struct cell) * MAX_COLS * (con.rows - 1));
     for (uint32_t x = 0; x < con.cols; x++)
         *cell_at(x, con.rows - 1) = (struct cell){ ' ', con.fg, con.bg };
-    fb_scroll(con.d, FONT_HEIGHT, con.bg);
+    fb_scroll(out(), FONT_HEIGHT, con.bg);
 }
 
 static void newline(void)
@@ -284,5 +290,27 @@ void console_write(const char *s, size_t len)
     while (len--)
         put(*s++);
     cursor_show();
+    fb_flush(out());
+}
+
+// Shows or hides the text console. Showing it redraws every cell.
+void console_set_hidden(bool hidden)
+{
+    if (!con.d || con.hidden == hidden)
+        return;
+    con.hidden = hidden;
+    if (hidden)
+        return;
+    fb_fill_rect(con.d, 0, 0, con.d->width, con.d->height, con.default_bg);
+    for (uint32_t y = 0; y < con.rows; y++) {
+        for (uint32_t x = 0; x < con.cols; x++)
+            draw_cell(x, y);
+    }
+    cursor_show();
     fb_flush(con.d);
+}
+
+bool console_hidden(void)
+{
+    return con.hidden;
 }

@@ -100,6 +100,8 @@ int mprotect(void *addr, size_t len, int prot);
 int shm_create(size_t size, int flags);     // shared memory object; mmap it with MAP_SHARED
 int pipe(int fds[2]);
 int pipe2(int fds[2], int flags);
+// A pseudo-terminal: fds[0] is the master (the emulator's side), fds[1] the slave.
+int openpty(int fds[2], int flags);
 int poll(struct pollfd *fds, size_t n, int timeout_ms);
 int fcntl(int fd, int cmd, long arg);
 int procinfo(struct aegis_procinfo *buf, int max);

@@ -13,6 +13,12 @@ type=kernel
 path=\EFI\Aegis\kernel.elf
 cmdline=
 
+[verbose]
+title=Aegis (verbose boot)
+type=kernel
+path=\EFI\Aegis\kernel.elf
+cmdline=verbose
+
 [recovery]
 title=Aegis Recovery
 type=efi
