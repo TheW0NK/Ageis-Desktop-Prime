@@ -1,8 +1,23 @@
 # make              build the boot code, kernel and endpoint
 # make image        build a bootable GPT disk image in build/aegis.img
-# make run          boot the image in QEMU (q35, AHCI disk)
+# make run          boot the image in QEMU (q35, AHCI disk) with the devices below
+# make run-serial   the same, without a window (serial console on the terminal)
+# make test         boot the image and run a scripted smoke test
 #
 # Image options: AEGIS_USER=name AEGIS_PASSWORD=secret (defaults: user / aegis)
+#
+# QEMU device options:
+#   QEMU_INPUT=tablet   USB keyboard + absolute USB tablet (default; no mouse grab)
+#              usb      USB keyboard + relative USB mouse
+#              ps2      PS/2 keyboard and mouse only
+#   QEMU_NET=virtio     virtio-net with user-mode networking (default)
+#            e1000 | e1000e | none
+#   QEMU_AUDIO=hda      Intel HD Audio codec with output and input (default)
+#              ac97 | none
+#   QEMU_AUDIODEV=pa    host audio backend: pa, pipewire, alsa, sdl, coreaudio, dsound,
+#                       wav (writes build/audio.wav), none
+#   QEMU_CAMERA=VID:PID pass a real USB webcam through (QEMU has no virtual camera)
+#   QEMU_EXTRA=...      any other QEMU arguments
 
 AEGIS_USER     ?= user
 AEGIS_PASSWORD ?= aegis
@@ -10,7 +25,7 @@ IMAGE    := build/aegis.img
 OVMF_CODE := /usr/share/OVMF/OVMF_CODE_4M.fd
 OVMF_VARS := /usr/share/OVMF/OVMF_VARS_4M.fd
 
-.PHONY: all boot kernel endpoint image run clean
+.PHONY: all boot kernel endpoint image run run-serial test clean
 
 all: boot kernel endpoint
 
@@ -26,11 +41,58 @@ build/ovmf_vars.fd:
 	mkdir -p build
 	cp $(OVMF_VARS) $@
 
+QEMU_INPUT    ?= tablet
+QEMU_NET      ?= virtio
+QEMU_AUDIO    ?= hda
+QEMU_AUDIODEV ?= pa
+QEMU_CAMERA   ?=
+QEMU_EXTRA    ?=
+
+QEMU_DEVICES := -device qemu-xhci,id=xhci
+ifeq ($(QEMU_INPUT),tablet)
+QEMU_DEVICES += -device usb-kbd -device usb-tablet
+else ifeq ($(QEMU_INPUT),usb)
+QEMU_DEVICES += -device usb-kbd -device usb-mouse
+endif
+ifeq ($(QEMU_NET),none)
+QEMU_DEVICES += -nic none
+else ifeq ($(QEMU_NET),virtio)
+QEMU_DEVICES += -nic user,model=virtio-net-pci
+else
+QEMU_DEVICES += -nic user,model=$(QEMU_NET)
+endif
+ifneq ($(QEMU_AUDIO),none)
+ifeq ($(QEMU_AUDIODEV),wav)
+QEMU_DEVICES += -audiodev wav,id=snd0,path=build/audio.wav
+else
+QEMU_DEVICES += -audiodev $(QEMU_AUDIODEV),id=snd0
+endif
+ifeq ($(QEMU_AUDIO),hda)
+QEMU_DEVICES += -device intel-hda -device hda-duplex,audiodev=snd0
+else ifeq ($(QEMU_AUDIO),ac97)
+QEMU_DEVICES += -device AC97,audiodev=snd0
+endif
+endif
+ifneq ($(QEMU_CAMERA),)
+QEMU_DEVICES += -device usb-host,vendorid=0x$(word 1,$(subst :, ,$(QEMU_CAMERA))),productid=0x$(word 2,$(subst :, ,$(QEMU_CAMERA)))
+endif
+
+QEMU := qemu-system-x86_64 -machine q35 -m 1024 -smp 2 \
+	-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+	-drive if=pflash,format=raw,file=build/ovmf_vars.fd \
+	-drive format=raw,file=$(IMAGE) $(QEMU_DEVICES) $(QEMU_EXTRA)
+
 run: image build/ovmf_vars.fd
-	qemu-system-x86_64 -machine q35 -m 512 -smp 2 \
-		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
-		-drive if=pflash,format=raw,file=build/ovmf_vars.fd \
-		-drive format=raw,file=$(IMAGE) -net none -serial stdio
+	$(QEMU) -serial stdio
+
+run-serial: image build/ovmf_vars.fd
+	$(QEMU) -serial stdio -display none
+
+test: image
+	tools/qemu-test.py @login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ls /dev' @expect:input \
+		'uname' @expect:Aegis
+	tools/qemu-test.py --usb --tablet @login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'whoami' \
+		@expect:$(AEGIS_USER)
 
 clean:
 	$(MAKE) -C boot clean

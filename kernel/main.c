@@ -4,11 +4,14 @@
 #include "block.h"
 #include "bootinfo.h"
 #include "cpu.h"
+#include "devfs.h"
 #include "display.h"
+#include "input.h"
 #include "keyboard.h"
 #include "mem.h"
 #include "pci.h"
 #include "process.h"
+#include "random.h"
 #include "rtc.h"
 #include "sched.h"
 #include "serial.h"
@@ -84,6 +87,16 @@ static void mount_boot(void)
     }
 }
 
+static void mount_dev(void)
+{
+    int ret = vfs_mkdir("/dev", NULL, &root_cred, 0755);
+
+    devfs_set_time(rtc_now());
+    if ((ret == 0 || ret == -EEXIST) && (ret = vfs_mount("devfs", NULL, "/dev", false)) == 0)
+        return;
+    kprintf("Cannot mount /dev: error %d\n", ret);
+}
+
 static void kinit(void *arg)
 {
     (void)arg;
@@ -93,9 +106,12 @@ static void kinit(void *arg)
     virtio_blk_init();
     ext4_register();
     fat_register();
+    devfs_register_fs();
     mount_root();
-    if (vfs_root())
+    if (vfs_root()) {
         mount_boot();
+        mount_dev();
+    }
     smp_init();
 
     static char *argv[] = { "init", NULL };
@@ -145,10 +161,14 @@ void kmain(struct aegis_boot_info *info)
     sched_init();
     syscall_init();
 
+    random_init();
+    input_init();
+
     pci_init();
     kprintf("PCI: %lu device(s)\n", pci_device_count());
-    keyboard_init();
-    kprintf("Keyboard: %s\n", keyboard_present() ? "PS/2" : "no PS/2");
+    ps2_init();
+    kprintf("PS/2: %s, %s\n", ps2_keyboard_present() ? "keyboard" : "no keyboard",
+            ps2_mouse_present() ? "mouse" : "no mouse");
     kprintf("Displays: %u\n", display_count());
     kprintf("Command line: %s\n", cmdline);
 

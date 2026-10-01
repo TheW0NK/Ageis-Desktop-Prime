@@ -28,6 +28,7 @@ PASSWD
 cat > "$root"/etc/group <<GROUP
 root:x:0:root
 sudo:x:27:$user
+input:x:50:
 $user:x:1000:$user
 GROUP
 {

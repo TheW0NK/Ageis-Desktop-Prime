@@ -1,17 +1,24 @@
 #include "kernel.h"
 #include "apic.h"
 #include "cpu.h"
+#include "hid.h"
+#include "input.h"
+#include "keyboard.h"
 #include "mem.h"
 #include "pci.h"
+#include "random.h"
 #include "sched.h"
 #include "string.h"
-#include "tty.h"
+
+// xHCI host controller with USB HID devices (keyboards, mice, tablets, media
+// keys) on root ports. Devices may be plugged and unplugged at any time; a
+// single polling thread owns the controller once it is running.
 
 #define RING_SIZE       256
-#define MAX_KEYBOARDS   4
-#define POLL_MS         8
-#define REPEAT_DELAY    500
-#define REPEAT_RATE     40
+#define MAX_DEVICES     16
+#define MAX_IFACES      32
+#define MAX_PORTS       64
+#define POLL_MS         4
 
 #define TRB_NORMAL      1
 #define TRB_SETUP       2
@@ -19,13 +26,19 @@
 #define TRB_STATUS      4
 #define TRB_LINK        6
 #define TRB_ENABLE_SLOT 9
+#define TRB_DISABLE_SLOT 10
 #define TRB_ADDRESS     11
 #define TRB_CONFIGURE   12
+#define TRB_EVALUATE    13
 #define TRB_TRANSFER_EV 32
 #define TRB_COMMAND_EV  33
+#define TRB_PORT_EV     34
 
 #define TRB_IOC         (1U << 5)
 #define TRB_IDT         (1U << 6)
+
+#define PORTSC_KEEP     0x0E00C3E0U     // read-write bits, excluding PED and change bits
+#define PORTSC_CHANGES  0x00FE0000U
 
 struct trb {
     uint64_t param;
@@ -39,14 +52,24 @@ struct ring {
     uint32_t cycle;
 };
 
-struct keyboard {
-    uint32_t slot;
-    uint32_t dci;
+struct usb_device {
+    bool used;
+    uint32_t slot, port, speed;
+    struct ring ep0;
+    void *input, *output;
+    uint8_t *buf;
+};
+
+struct iface {
+    bool active;
+    struct usb_device *dev;
+    uint8_t number, dci;
     struct ring ring;
     uint8_t *report;
-    uint8_t last[8];
-    uint8_t held;
-    uint64_t held_since, last_repeat;
+    uint16_t report_len;
+    struct hid_device hid;
+    volatile bool leds_pending;
+    volatile uint32_t leds;
 };
 
 static struct {
@@ -57,8 +80,9 @@ static struct {
     struct ring cmd;
     struct trb *events;
     uint32_t ev_index, ev_cycle;
-    struct keyboard kbd[MAX_KEYBOARDS];
-    int nkbd;
+    struct usb_device devs[MAX_DEVICES];
+    struct iface ifaces[MAX_IFACES];
+    volatile uint64_t port_changed;
     bool present;
 } x;
 
@@ -85,6 +109,12 @@ static void *alloc_page_zero(void)
     if (p)
         memset((void *)p, 0, PAGE_SIZE);
     return (void *)p;
+}
+
+static void free_page(void *p)
+{
+    if (p)
+        pmm_free_page((uint64_t)p);
 }
 
 static bool ring_init(struct ring *r)
@@ -114,7 +144,6 @@ static void ring_push(struct ring *r, uint64_t param, uint32_t status, uint32_t 
     }
 }
 
-// Returns the next event, or NULL. The caller must call event_done().
 static struct trb *event_peek(void)
 {
     struct trb *e = &x.events[x.ev_index];
@@ -131,15 +160,57 @@ static void event_done(void)
     wr64(x.rt, 0x20 + 0x18, (uint64_t)&x.events[x.ev_index] | (1 << 3));
 }
 
-static struct trb xhci_wait_event(uint32_t type, uint32_t slot, uint32_t timeout_ms)
+static void queue_report(struct iface *f)
+{
+    ring_push(&f->ring, (uint64_t)f->report, f->report_len, (TRB_NORMAL << 10) | TRB_IOC);
+    x.db[f->dev->slot] = f->dci;
+}
+
+// Handles an event that nobody is waiting for.
+static void dispatch(const struct trb *e)
+{
+    uint32_t type = (e->control >> 10) & 0x3F, slot = e->control >> 24;
+    uint32_t dci = (e->control >> 16) & 0x1F;
+
+    if (type == TRB_PORT_EV) {
+        uint32_t port = (e->param >> 24) & 0xFF;
+
+        if (port >= 1 && port <= MAX_PORTS)
+            __atomic_fetch_or(&x.port_changed, 1ULL << (port - 1), __ATOMIC_RELAXED);
+        return;
+    }
+    if (type != TRB_TRANSFER_EV)
+        return;
+    for (int i = 0; i < MAX_IFACES; i++) {
+        struct iface *f = &x.ifaces[i];
+        uint32_t code = (e->status >> 24) & 0xFF;
+
+        if (!f->active || f->dev->slot != slot || f->dci != dci)
+            continue;
+        if (code == 1 || code == 13) {      // success, short packet
+            uint32_t got = f->report_len - MIN(e->status & 0xFFFFFF, (uint32_t)f->report_len);
+
+            random_mix(*(uint64_t *)f->report);
+            hid_report(&f->hid, f->report, got);
+        }
+        queue_report(f);
+        return;
+    }
+}
+
+static struct trb wait_event(uint32_t type, uint32_t slot, uint32_t timeout_ms)
 {
     struct trb none = { 0 };
+    uint64_t deadline = timer_uptime_ms() + timeout_ms;
 
-    for (uint64_t spins = 0; spins < (uint64_t)timeout_ms * 1000; spins++) {
+    for (uint64_t spins = 0;; spins++) {
         struct trb *e = event_peek();
 
         if (!e) {
-            for (int i = 0; i < 100; i++)
+            // The timer may not be running yet during early setup.
+            if (spins > (uint64_t)timeout_ms * 20000 || timer_uptime_ms() > deadline)
+                return none;
+            for (int i = 0; i < 50; i++)
                 __asm__ volatile ("pause");
             continue;
         }
@@ -147,8 +218,8 @@ static struct trb xhci_wait_event(uint32_t type, uint32_t slot, uint32_t timeout
         event_done();
         if (((copy.control >> 10) & 0x3F) == type && (!slot || (copy.control >> 24) == slot))
             return copy;
+        dispatch(&copy);
     }
-    return none;
 }
 
 static int command(uint64_t param, uint32_t control, uint32_t *slot_out)
@@ -157,7 +228,7 @@ static int command(uint64_t param, uint32_t control, uint32_t *slot_out)
 
     ring_push(&x.cmd, param, 0, control);
     x.db[0] = 0;
-    ev = xhci_wait_event(TRB_COMMAND_EV, 0, 500);
+    ev = wait_event(TRB_COMMAND_EV, 0, 500);
     if (((ev.status >> 24) & 0xFF) != 1)
         return -1;
     if (slot_out)
@@ -170,7 +241,7 @@ static uint32_t *ctx(void *base, int index)
     return (uint32_t *)((uint8_t *)base + index * x.ctx_size);
 }
 
-static int control(uint32_t slot, struct ring *ep0, uint8_t type, uint8_t req, uint16_t value,
+static int control(struct usb_device *d, uint8_t type, uint8_t req, uint16_t value,
                    uint16_t index, void *data, uint16_t len)
 {
     uint64_t setup = type | (uint64_t)req << 8 | (uint64_t)value << 16 | (uint64_t)index << 32
@@ -178,14 +249,15 @@ static int control(uint32_t slot, struct ring *ep0, uint8_t type, uint8_t req, u
     bool in = type & 0x80;
     uint32_t trt = len ? (in ? 3 : 2) : 0;
     struct trb ev;
+    uint32_t code;
 
-    ring_push(ep0, setup, 8, (TRB_SETUP << 10) | TRB_IDT | (trt << 16));
+    ring_push(&d->ep0, setup, 8, (TRB_SETUP << 10) | TRB_IDT | (trt << 16));
     if (len)
-        ring_push(ep0, (uint64_t)data, len, (TRB_DATA << 10) | (in ? 1 << 16 : 0));
-    ring_push(ep0, 0, 0, (TRB_STATUS << 10) | TRB_IOC | ((len && in) ? 0 : 1 << 16));
-    x.db[slot] = 1;
-    ev = xhci_wait_event(TRB_TRANSFER_EV, slot, 500);
-    uint32_t code = (ev.status >> 24) & 0xFF;
+        ring_push(&d->ep0, (uint64_t)data, len, (TRB_DATA << 10) | (in ? 1 << 16 : 0));
+    ring_push(&d->ep0, 0, 0, (TRB_STATUS << 10) | TRB_IOC | ((len && in) ? 0 : 1 << 16));
+    x.db[d->slot] = 1;
+    ev = wait_event(TRB_TRANSFER_EV, d->slot, 500);
+    code = (ev.status >> 24) & 0xFF;
     return (code == 1 || code == 13) ? 0 : -1;
 }
 
@@ -200,161 +272,281 @@ static uint32_t interval_for(uint32_t speed, uint8_t b_interval)
     return v;
 }
 
+static void set_leds(void *ctxp, uint32_t mods)
+{
+    struct iface *f = ctxp;
+
+    f->leds = mods;
+    f->leds_pending = true;
+}
+
+static void send_leds(struct iface *f)
+{
+    uint8_t *buf = f->dev->buf + 2048;
+    size_t n;
+
+    f->leds_pending = false;
+    n = hid_led_report(&f->hid, f->leds, buf, 64);
+    if (n)
+        control(f->dev, 0x21, 0x09, 0x0200 | f->hid.led_report_id, f->number, buf, n);
+}
+
+struct pending_iface {
+    uint8_t number, subclass, protocol;
+    uint8_t ep_addr, ep_interval;
+    uint16_t ep_mps, report_desc_len;
+};
+
+static void release_device(struct usb_device *d)
+{
+    for (int i = 0; i < MAX_IFACES; i++) {
+        struct iface *f = &x.ifaces[i];
+
+        if (f->active && f->dev == d) {
+            f->active = false;
+            hid_free(&f->hid);
+            input_unregister(f->hid.input);
+            free_page(f->ring.trbs);
+            free_page(f->report);
+        }
+    }
+    if (d->slot) {
+        command(0, (TRB_DISABLE_SLOT << 10) | (d->slot << 24), NULL);
+        x.dcbaa[d->slot] = 0;
+    }
+    free_page(d->ep0.trbs);
+    free_page(d->input);
+    free_page(d->output);
+    free_page(d->buf);
+    memset(d, 0, sizeof(*d));
+}
+
+static const char *kind_name(uint32_t kind)
+{
+    if (kind & INPUT_KIND_KEYBOARD)
+        return "keyboard";
+    if (kind & INPUT_KIND_TABLET)
+        return "tablet";
+    if (kind & INPUT_KIND_POINTER)
+        return "mouse";
+    return "input device";
+}
+
+static bool start_iface(struct usb_device *d, const struct pending_iface *p)
+{
+    struct iface *f = NULL;
+    uint8_t *desc = d->buf + 1024;
+    char name[32];
+
+    for (int i = 0; i < MAX_IFACES && !f; i++) {
+        if (!x.ifaces[i].active)
+            f = &x.ifaces[i];
+    }
+    if (!f)
+        return false;
+    memset(f, 0, sizeof(*f));
+    f->dev = d;
+    f->number = p->number;
+    f->dci = (p->ep_addr & 0xF) * 2 + 1;
+    f->report_len = MIN(MAX(p->ep_mps, (uint16_t)8), (uint16_t)1024);
+
+    control(d, 0x21, 0x0A, 0, p->number, NULL, 0);          // SET_IDLE: report on change only
+    if (!(p->report_desc_len && p->report_desc_len <= 1024
+          && control(d, 0x81, 6, 0x2200, p->number, desc, p->report_desc_len) == 0
+          && hid_parse(&f->hid, desc, p->report_desc_len))) {
+        // Fall back to the boot protocol, whose layout is fixed.
+        hid_free(&f->hid);
+        if (p->subclass != 1 || (p->protocol != 1 && p->protocol != 2))
+            return false;
+        control(d, 0x21, 0x0B, 0, p->number, NULL, 0);
+        if (!hid_parse(&f->hid, p->protocol == 1 ? hid_boot_keyboard_desc : hid_boot_mouse_desc,
+                       p->protocol == 1 ? hid_boot_keyboard_desc_len : hid_boot_mouse_desc_len))
+            return false;
+    }
+    if (!ring_init(&f->ring) || !(f->report = alloc_page_zero())) {
+        hid_free(&f->hid);
+        free_page(f->ring.trbs);
+        return false;
+    }
+    ksnprintf(name, sizeof(name), "USB %s (port %u)", kind_name(f->hid.kind), d->port);
+    f->hid.input = input_register(name, f->hid.kind,
+                                  f->hid.led_report_bytes ? set_leds : NULL, f);
+    f->active = true;
+    kprintf("USB: %s on port %u\n", kind_name(f->hid.kind), d->port);
+    return true;
+}
+
 static void setup_device(uint32_t port, uint32_t speed)
 {
-    uint8_t *buf = alloc_page_zero();
-    void *input = alloc_page_zero(), *output = alloc_page_zero();
-    struct ring ep0;
-    uint32_t slot, mps = speed == 4 ? 512 : speed == 3 ? 64 : 8;
-    uint8_t config_value = 0, iface = 0, ep_addr = 0, ep_interval = 0;
-    uint16_t ep_mps = 8, total;
-    bool found = false;
+    struct usb_device *d = NULL;
+    struct pending_iface ifs[8], *cur = NULL;
+    uint32_t mps = speed == 4 ? 512 : speed == 3 ? 64 : 8, slot, max_dci = 1;
+    bool any = false;
+    uint16_t total;
+    int nifs = 0;
+    uint8_t config_value;
+    uint8_t *buf;
 
-    if (!buf || !input || !output || !ring_init(&ep0) || x.nkbd == MAX_KEYBOARDS)
+    for (int i = 0; i < MAX_DEVICES && !d; i++) {
+        if (!x.devs[i].used)
+            d = &x.devs[i];
+    }
+    if (!d)
         return;
+    d->used = true;
+    d->port = port;
+    d->speed = speed;
+    if (!(d->buf = alloc_page_zero()) || !(d->input = alloc_page_zero())
+        || !(d->output = alloc_page_zero()) || !ring_init(&d->ep0))
+        goto fail;
+    buf = d->buf;
     if (command(0, TRB_ENABLE_SLOT << 10, &slot) || !slot || slot > x.max_slots)
-        return;
+        goto fail;
+    d->slot = slot;
 
-    x.dcbaa[slot] = (uint64_t)output;
-    ctx(input, 0)[1] = 0x3;
-    ctx(input, 1)[0] = (1U << 27) | (speed << 20);
-    ctx(input, 1)[1] = port << 16;
-    ctx(input, 2)[1] = (3 << 1) | (4 << 3) | (mps << 16);
-    *(uint64_t *)&ctx(input, 2)[2] = (uint64_t)ep0.trbs | 1;
-    ctx(input, 2)[4] = 8;
-    if (command((uint64_t)input, (TRB_ADDRESS << 10) | (slot << 24), NULL))
-        return;
+    x.dcbaa[slot] = (uint64_t)d->output;
+    ctx(d->input, 0)[1] = 0x3;
+    ctx(d->input, 1)[0] = (1U << 27) | (speed << 20);
+    ctx(d->input, 1)[1] = port << 16;
+    ctx(d->input, 2)[1] = (3 << 1) | (4 << 3) | (mps << 16);
+    *(uint64_t *)&ctx(d->input, 2)[2] = (uint64_t)d->ep0.trbs | 1;
+    ctx(d->input, 2)[4] = 8;
+    if (command((uint64_t)d->input, (TRB_ADDRESS << 10) | (slot << 24), NULL))
+        goto fail;
 
-    if (control(slot, &ep0, 0x80, 6, 0x0100, 0, buf, 8))
-        return;
+    if (control(d, 0x80, 6, 0x0100, 0, buf, 8))
+        goto fail;
     if (buf[7] && buf[7] != mps && speed < 3) {
         mps = buf[7];
-        ctx(input, 0)[1] = 0x2;
-        ctx(input, 2)[1] = (3 << 1) | (4 << 3) | (mps << 16);
-        command((uint64_t)input, (13 << 10) | (slot << 24), NULL);
+        ctx(d->input, 0)[1] = 0x2;
+        ctx(d->input, 2)[1] = (3 << 1) | (4 << 3) | (mps << 16);
+        command((uint64_t)d->input, (TRB_EVALUATE << 10) | (slot << 24), NULL);
     }
-    if (control(slot, &ep0, 0x80, 6, 0x0200, 0, buf, 9))
-        return;
-    total = MIN(*(uint16_t *)(buf + 2), (uint16_t)PAGE_SIZE);
+    if (control(d, 0x80, 6, 0x0200, 0, buf, 9))
+        goto fail;
+    total = MIN(*(uint16_t *)(buf + 2), (uint16_t)1024);
     config_value = buf[5];
-    if (control(slot, &ep0, 0x80, 6, 0x0200, 0, buf, total))
-        return;
+    if (control(d, 0x80, 6, 0x0200, 0, buf, total))
+        goto fail;
 
     for (uint32_t off = 0; off + 2 <= total && buf[off] >= 2; off += buf[off]) {
-        uint8_t *d = buf + off;
+        uint8_t *p = buf + off;
 
-        if (d[1] == 4) {
-            found = d[5] == 3 && d[6] == 1 && d[7] == 1;
-            iface = d[2];
-        } else if (d[1] == 5 && found && (d[2] & 0x80) && (d[3] & 3) == 3) {
-            ep_addr = d[2];
-            ep_mps = *(uint16_t *)(d + 4) & 0x7FF;
-            ep_interval = d[6];
-            break;
+        if (p[1] == 4) {
+            cur = NULL;
+            if (p[5] == 3 && nifs < 8) {
+                cur = &ifs[nifs++];
+                memset(cur, 0, sizeof(*cur));
+                cur->number = p[2];
+                cur->subclass = p[6];
+                cur->protocol = p[7];
+            }
+        } else if (p[1] == 0x21 && cur && p[0] >= 9) {
+            cur->report_desc_len = p[7] | p[8] << 8;
+        } else if (p[1] == 5 && cur && !cur->ep_addr && (p[2] & 0x80) && (p[3] & 3) == 3) {
+            cur->ep_addr = p[2];
+            cur->ep_mps = (p[4] | p[5] << 8) & 0x7FF;
+            cur->ep_interval = p[6];
         }
     }
-    if (!ep_addr)
-        return;
+    if (control(d, 0x00, 9, config_value, 0, NULL, 0))
+        goto fail;
 
-    control(slot, &ep0, 0x00, 9, config_value, 0, NULL, 0);
-    control(slot, &ep0, 0x21, 0x0B, 0, iface, NULL, 0);
-    control(slot, &ep0, 0x21, 0x0A, 0, iface, NULL, 0);
+    // One Configure Endpoint command adds every interrupt endpoint.
+    memset(d->input, 0, PAGE_SIZE);
+    memcpy(ctx(d->input, 1), ctx(d->output, 0), x.ctx_size);
+    for (int i = 0; i < nifs; i++) {
+        uint32_t dci = (ifs[i].ep_addr & 0xF) * 2 + 1;
 
-    struct keyboard *k = &x.kbd[x.nkbd];
-    uint32_t dci = (ep_addr & 0xF) * 2 + 1;
-
-    if (!ring_init(&k->ring))
-        return;
-    memset(input, 0, PAGE_SIZE);
-    ctx(input, 0)[1] = 1 | (1U << dci);
-    memcpy(ctx(input, 1), ctx(output, 0), x.ctx_size);
-    ctx(input, 1)[0] = (ctx(input, 1)[0] & ~(0x1FU << 27)) | (dci << 27);
-    ctx(input, 1 + dci)[0] = interval_for(speed, ep_interval) << 16;
-    ctx(input, 1 + dci)[1] = (3 << 1) | (7 << 3) | ((uint32_t)ep_mps << 16);
-    *(uint64_t *)&ctx(input, 1 + dci)[2] = (uint64_t)k->ring.trbs | 1;
-    ctx(input, 1 + dci)[4] = 8 | ((uint32_t)ep_mps << 16);
-    if (command((uint64_t)input, (TRB_CONFIGURE << 10) | (slot << 24), NULL))
-        return;
-
-    k->slot = slot;
-    k->dci = dci;
-    k->report = buf;
-    memset(buf, 0, 64);
-    ring_push(&k->ring, (uint64_t)k->report, 8, (TRB_NORMAL << 10) | TRB_IOC);
-    x.db[slot] = dci;
-    x.nkbd++;
-    kprintf("USB: keyboard on port %u\n", port);
-}
-
-static const char hid_normal[] = {
-    0, 0, 0, 0, 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-    'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
-    '\n', 27, '\b', '\t', ' ', '-', '=', '[', ']', '\\', 0, ';', '\'', '`', ',', '.', '/',
-};
-
-static const char hid_shift[] = {
-    0, 0, 0, 0, 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-    'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
-    '\n', 27, '\b', '\t', ' ', '_', '+', '{', '}', '|', 0, ':', '"', '~', '<', '>', '?',
-};
-
-static bool caps_lock;
-
-static void emit(uint8_t mods, uint8_t code)
-{
-    bool shift = mods & 0x22, ctrl = mods & 0x11;
-    const char *seq = NULL;
-    char c = 0;
-
-    switch (code) {
-    case 0x39: caps_lock = !caps_lock; return;
-    case 0x4F: seq = "\x1b[C"; break;
-    case 0x50: seq = "\x1b[D"; break;
-    case 0x51: seq = "\x1b[B"; break;
-    case 0x52: seq = "\x1b[A"; break;
-    case 0x4A: seq = "\x1b[H"; break;
-    case 0x4D: seq = "\x1b[F"; break;
-    case 0x4C: seq = "\x1b[3~"; break;
-    case 0x58: c = '\n'; break;
-    default:
-        if (code < sizeof(hid_normal))
-            c = shift ? hid_shift[code] : hid_normal[code];
-    }
-    if (seq) {
-        tty_input(seq, strlen(seq));
-        return;
-    }
-    if (caps_lock && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
-        c ^= 0x20;
-    if (ctrl && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')))
-        c &= 0x1F;
-    if (c)
-        tty_input(&c, 1);
-}
-
-static void handle_report(struct keyboard *k)
-{
-    uint8_t *r = k->report;
-
-    for (int i = 2; i < 8; i++) {
-        bool was_down = false;
-
-        if (r[i] < 4)
+        if (!ifs[i].ep_addr)
             continue;
-        for (int j = 2; j < 8; j++)
-            was_down |= k->last[j] == r[i];
-        if (!was_down) {
-            emit(r[0], r[i]);
-            k->held = r[i];
-            k->held_since = k->last_repeat = timer_uptime_ms();
-        }
+        any = true;
+        max_dci = MAX(max_dci, dci);
     }
-    bool still = false;
-    for (int i = 2; i < 8; i++)
-        still |= r[i] == k->held;
-    if (!still)
-        k->held = 0;
-    memcpy(k->last, r, 8);
+    if (!any)
+        goto fail;
+
+    int started = 0;
+    for (int i = 0; i < nifs; i++) {
+        if (ifs[i].ep_addr && start_iface(d, &ifs[i]))
+            started++;
+    }
+    if (!started)
+        goto fail;
+
+    ctx(d->input, 0)[1] = 1;
+    ctx(d->input, 1)[0] = (ctx(d->input, 1)[0] & ~(0x1FU << 27)) | (max_dci << 27);
+    for (int i = 0; i < MAX_IFACES; i++) {
+        struct iface *f = &x.ifaces[i];
+        const struct pending_iface *p = NULL;
+
+        if (!f->active || f->dev != d)
+            continue;
+        for (int j = 0; j < nifs && !p; j++) {
+            if (ifs[j].number == f->number)
+                p = &ifs[j];
+        }
+        ctx(d->input, 0)[1] |= 1U << f->dci;
+        ctx(d->input, 1 + f->dci)[0] = interval_for(speed, p->ep_interval) << 16;
+        ctx(d->input, 1 + f->dci)[1] = (3 << 1) | (7 << 3) | ((uint32_t)p->ep_mps << 16);
+        *(uint64_t *)&ctx(d->input, 1 + f->dci)[2] = (uint64_t)f->ring.trbs | 1;
+        ctx(d->input, 1 + f->dci)[4] = p->ep_mps | ((uint32_t)p->ep_mps << 16);
+    }
+    if (command((uint64_t)d->input, (TRB_CONFIGURE << 10) | (slot << 24), NULL))
+        goto fail;
+
+    for (int i = 0; i < MAX_IFACES; i++) {
+        struct iface *f = &x.ifaces[i];
+
+        if (f->active && f->dev == d)
+            queue_report(f);
+    }
+    return;
+
+fail:
+    release_device(d);
+}
+
+// Resets a newly connected port; returns its speed, or 0.
+static uint32_t reset_port(uint32_t port)
+{
+    uint32_t off = 0x400 + 0x10 * (port - 1);
+    uint32_t sc = rd(x.op, off);
+
+    if (!(sc & 1))
+        return 0;
+    if (!(sc & 2)) {
+        wr(x.op, off, (sc & PORTSC_KEEP) | (1 << 4));
+        for (int i = 0; i < 2000000 && !(rd(x.op, off) & (1 << 21)); i++)
+            __asm__ volatile ("pause");
+        sc = rd(x.op, off);
+        wr(x.op, off, (sc & PORTSC_KEEP) | (1 << 21));
+        sc = rd(x.op, off);
+    }
+    return (sc & 2) ? (sc >> 10) & 0xF : 0;
+}
+
+static void port_changed(uint32_t port)
+{
+    uint32_t off = 0x400 + 0x10 * (port - 1);
+    uint32_t sc = rd(x.op, off);
+    struct usb_device *d = NULL;
+    uint32_t speed;
+
+    wr(x.op, off, (sc & PORTSC_KEEP) | (sc & PORTSC_CHANGES));
+    for (int i = 0; i < MAX_DEVICES && !d; i++) {
+        if (x.devs[i].used && x.devs[i].port == port)
+            d = &x.devs[i];
+    }
+    if (!(sc & 1)) {
+        if (d) {
+            kprintf("USB: device on port %u removed\n", port);
+            release_device(d);
+        }
+        return;
+    }
+    if (!d && (sc & (1 << 17)) && (speed = reset_port(port)))
+        setup_device(port, speed);
 }
 
 static void poll_thread(void *arg)
@@ -362,34 +554,23 @@ static void poll_thread(void *arg)
     (void)arg;
     for (;;) {
         struct trb *e;
+        uint64_t changed;
 
         sched_sleep(POLL_MS);
         while ((e = event_peek())) {
-            uint32_t type = (e->control >> 10) & 0x3F, slot = e->control >> 24;
-            uint32_t dci = (e->control >> 16) & 0x1F;
+            struct trb copy = *e;
 
             event_done();
-            if (type != TRB_TRANSFER_EV)
-                continue;
-            for (int i = 0; i < x.nkbd; i++) {
-                struct keyboard *k = &x.kbd[i];
-
-                if (k->slot != slot || k->dci != dci)
-                    continue;
-                handle_report(k);
-                ring_push(&k->ring, (uint64_t)k->report, 8, (TRB_NORMAL << 10) | TRB_IOC);
-                x.db[slot] = dci;
-            }
+            dispatch(&copy);
         }
-
-        uint64_t now = timer_uptime_ms();
-        for (int i = 0; i < x.nkbd; i++) {
-            struct keyboard *k = &x.kbd[i];
-
-            if (k->held && now - k->held_since >= REPEAT_DELAY && now - k->last_repeat >= REPEAT_RATE) {
-                emit(k->last[0], k->held);
-                k->last_repeat = now;
-            }
+        changed = __atomic_exchange_n(&x.port_changed, 0, __ATOMIC_RELAXED);
+        for (uint32_t port = 1; changed && port <= x.max_ports && port <= MAX_PORTS; port++) {
+            if (changed & (1ULL << (port - 1)))
+                port_changed(port);
+        }
+        for (int i = 0; i < MAX_IFACES; i++) {
+            if (x.ifaces[i].active && x.ifaces[i].leds_pending)
+                send_leds(&x.ifaces[i]);
         }
     }
 }
@@ -485,22 +666,22 @@ static void controller_init(const struct pci_device *pci)
 
     for (uint32_t port = 1; port <= x.max_ports; port++) {
         uint32_t off = 0x400 + 0x10 * (port - 1);
-        uint32_t sc = rd(x.op, off);
+        uint32_t speed = reset_port(port);
 
-        if (!(sc & 1))
-            continue;
-        if (!(sc & 2)) {
-            wr(x.op, off, (sc & 0x0E00C3E0) | (1 << 4));
-            wait_bits(x.op, off, 1 << 21, 1 << 21, 200);
-            sc = rd(x.op, off);
-            wr(x.op, off, (sc & 0x0E00C3E0) | (1 << 21));
-            sc = rd(x.op, off);
-        }
-        if (sc & 2)
-            setup_device(port, (sc >> 10) & 0xF);
+        wr(x.op, off, (rd(x.op, off) & PORTSC_KEEP) | PORTSC_CHANGES);
+        if (speed)
+            setup_device(port, speed);
     }
-    if (x.nkbd)
-        thread_create("usbkbd", poll_thread, NULL);
+    // Port events raised by the resets above describe devices already set up.
+    struct trb *e;
+    while ((e = event_peek())) {
+        struct trb copy = *e;
+
+        event_done();
+        dispatch(&copy);
+    }
+    x.port_changed = 0;
+    thread_create("usb", poll_thread, NULL);
 }
 
 void xhci_init(void)
@@ -511,7 +692,11 @@ void xhci_init(void)
         controller_init(pci);
 }
 
-int xhci_keyboard_count(void)
+int xhci_device_count(void)
 {
-    return x.nkbd;
+    int n = 0;
+
+    for (int i = 0; i < MAX_IFACES; i++)
+        n += x.ifaces[i].active;
+    return n;
 }

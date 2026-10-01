@@ -3,9 +3,10 @@
 
 #include "kernel.h"
 
-void keyboard_init(void);
-bool keyboard_present(void);
+void ps2_init(void);
+bool ps2_keyboard_present(void);
+bool ps2_mouse_present(void);
 void xhci_init(void);
-int xhci_keyboard_count(void);
+int xhci_device_count(void);
 
 #endif

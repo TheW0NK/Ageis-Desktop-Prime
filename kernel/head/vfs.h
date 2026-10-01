@@ -32,6 +32,7 @@ struct vattr {
 };
 
 struct mount;
+struct file;
 
 struct vnode {
     struct mount *mount;
@@ -79,6 +80,9 @@ struct fs_ops {
     int (*statfs)(struct mount *m, struct aegis_statfs *out);
     int (*sync)(struct mount *m);
     int (*unmount)(struct mount *m);
+    // Optional: device filesystems return their own struct file (0 with *out
+    // left NULL falls back to an ordinary vnode file).
+    int (*open)(struct vnode *v, uint32_t flags, struct file **out);
 };
 
 struct mount {

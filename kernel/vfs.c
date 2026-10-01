@@ -922,6 +922,17 @@ int vfs_open(const char *path, struct vnode *cwd, const struct cred *c, uint32_t
         return ret;
     }
 
+    f = NULL;
+    if (v->mount->ops->open && (ret = v->mount->ops->open(v, flags, &f))) {
+        vput(v);
+        return ret;
+    }
+    if (f) {
+        f->vnode = v;
+        f->flags = flags;
+        *out = f;
+        return 0;
+    }
     f = file_alloc(NULL, flags);
     if (!f) {
         vput(v);
