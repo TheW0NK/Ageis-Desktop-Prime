@@ -1,0 +1,9 @@
+<window title="Counter" width="320" padding="16" spacing="12">
+  <label id="count" text="0" size="huge" textalign="center"/>
+  <hbox justify="center" spacing="8">
+    <button text="&#x2212;" onclick="down"/>
+    <button text="+" onclick="up" default="true"/>
+    <button text="Reset" onclick="reset"/>
+  </hbox>
+  <label id="note" dim="true" textalign="center"/>
+</window>

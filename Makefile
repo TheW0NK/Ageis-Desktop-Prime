@@ -90,7 +90,8 @@ run-serial: image build/ovmf_vars.fd
 
 test: image
 	tools/qemu-test.py @reject:FAIL @reject:PANIC @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \
-		'ls /dev' @expect:input 'uname' @expect:Aegis 'echo piped | cat' @expect:piped
+		'ls /dev' @expect:input 'uname' @expect:Aegis 'echo piped | cat' @expect:piped \
+		'apprun /usr/share/apprun/selftest.as' @expect:'selftest: ok'
 	tools/qemu-test.py --cpus 4 --timeout 180 @reject:FAIL @reject:PANIC \
 		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ktest' @expect:'ktest: all passed'
 	tools/qemu-test.py --usb --tablet @reject:PANIC @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \

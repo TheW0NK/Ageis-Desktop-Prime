@@ -33,6 +33,8 @@ struct ui_handler_entry {
 // ---- Windows ----
 
 struct ui_window *ui_load(const char *path, const struct ui_handler_entry *handlers, void *user);
+// Supplies handlers for on* names missing from the table (script apps).
+void ui_set_handler_resolver(ui_handler (*fn)(const char *name, void **user));
 struct ui_window *ui_load_string(const char *aui, const struct ui_handler_entry *handlers, void *user);
 // A window built in code: add children to ui_root(win).
 struct ui_window *ui_window_new(const char *title, int width, int height, uint32_t flags);

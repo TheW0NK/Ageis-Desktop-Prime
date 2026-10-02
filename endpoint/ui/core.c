@@ -274,6 +274,13 @@ static void store_attr(struct widget *w, const char *name, const char *value)
     w->attrs = a;
 }
 
+static ui_handler (*handler_resolver)(const char *name, void **user);
+
+void ui_set_handler_resolver(ui_handler (*fn)(const char *name, void **user))
+{
+    handler_resolver = fn;
+}
+
 static ui_handler find_handler(struct ui_window *win, const char *name)
 {
     if (!win || !win->handlers)
@@ -337,9 +344,13 @@ void widget_set_attr(struct widget *w, const char *name, const char *value)
         w->focusable = attr_bool(value);
     } else if (!strncmp(name, "on", 2) && name[2]) {
         ui_handler fn = find_handler(w->win, value);
+        void *user = w->win ? w->win->user : NULL;
 
+        // Handlers not in the table may come from elsewhere (scripts).
+        if (!fn && *value && handler_resolver)
+            fn = handler_resolver(value, &user);
         if (fn)
-            ui_set_handler(w, name + 2, fn, w->win ? w->win->user : NULL);
+            ui_set_handler(w, name + 2, fn, user);
         else if (*value)
             dprintf(STDERR_FILENO, "ui: no handler named \"%s\" for %s\n", value, name);
     }

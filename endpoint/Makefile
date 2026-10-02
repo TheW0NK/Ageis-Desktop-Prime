@@ -42,7 +42,7 @@ MATH_FLAGS := -std=c99 -O2 -ffreestanding -nostdinc -isystem $(shell $(CC) -prin
               -fno-asynchronous-unwind-tables -w
 
 # Graphics: drawing, fonts (stb_truetype) and images (stb_image).
-GFX_SRCS  := $(wildcard gfx/*.c ui/*.c)
+GFX_SRCS  := $(wildcard gfx/*.c ui/*.c script/*.c)
 GFX_OBJS  := $(addprefix $(BUILD)/,$(GFX_SRCS:.c=.o))
 GFX_LIB   := $(BUILD)/libgfx.a
 LIBS      := $(LIBC) $(GFX_LIB) $(SSL_LIB) $(MATH_LIB)
@@ -75,6 +75,10 @@ $(BUILD)/bearssl/%.o: $(SSL_DIR)/src/%.c
 
 $(SSL_LIB): $(SSL_OBJS)
 	$(AR) rcs $@ $^
+
+$(BUILD)/script/%.o: script/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/ui/%.o: ui/%.c
 	@mkdir -p $(dir $@)
