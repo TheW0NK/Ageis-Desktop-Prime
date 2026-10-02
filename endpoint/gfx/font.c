@@ -43,6 +43,8 @@ struct glyph {
 
 struct font {
     struct family *fam;
+    char name[40];
+    bool oblique;                   // slanted by shearing the glyphs ("-italic")
     int px;
     float scale;
     int ascent, descent, line_gap;
@@ -58,6 +60,7 @@ static const struct {
     { FONT_MONO, "DejaVuSansMono.ttf" },
     { FONT_MONO_BOLD, "DejaVuSansMono-Bold.ttf" },
     { FONT_SERIF, "DejaVuSerif.ttf" },
+    { FONT_SERIF_BOLD, "DejaVuSerif-Bold.ttf" },
     { "fallback-cjk", "NotoSansCJK-Regular.ttc" },
 };
 
@@ -124,22 +127,33 @@ struct font *font_get(const char *name, int px)
 {
     struct family *fam;
     struct font *f;
+    char base[40];
+    size_t len = strlen(name);
+    bool oblique = false;
 
     if (px < 4)
         px = 4;
     mutex_lock(&lock);
     for (f = fonts; f; f = f->next) {
-        if (f->px == px && !strcmp(f->fam->name, name)) {
+        if (f->px == px && !strcmp(f->name, name)) {
             mutex_unlock(&lock);
             return f;
         }
     }
-    if (!(fam = family(name)) && !(fam = family(FONT_SANS))) {
+    // "sans-italic", "serif-bold-italic": the upright face, slanted.
+    strlcpy(base, name, sizeof(base));
+    if (len > 7 && len < sizeof(base) && !strcmp(name + len - 7, "-italic")) {
+        base[len - 7] = 0;
+        oblique = true;
+    }
+    if (!(fam = family(base)) && !(fam = family(FONT_SANS))) {
         mutex_unlock(&lock);
         return NULL;
     }
     if ((f = calloc(1, sizeof(*f)))) {
         f->fam = fam;
+        strlcpy(f->name, name, sizeof(f->name));
+        f->oblique = oblique;
         f->px = px;
         f->scale = stbtt_ScaleForPixelHeight(&fam->info, px);
         stbtt_GetFontVMetrics(&fam->info, &f->ascent, &f->descent, &f->line_gap);
@@ -161,6 +175,37 @@ int font_ascent(struct font *f)
 int font_line_height(struct font *f)
 {
     return f ? f->ascent - f->descent + f->line_gap : 16;
+}
+
+// Slants a glyph for a synthetic italic: each row moves right by its height
+// above the baseline times SLANT, blending the fractional part.
+#define SLANT 0.21f
+
+static void shear(struct glyph *g)
+{
+    float lo = -(g->yoff + g->h - 1) * SLANT, hi = -g->yoff * SLANT;
+    int left = (int)floorf(lo), w = g->w + (int)ceilf(hi) - left + 1;
+    uint8_t *out = calloc((size_t)w * g->h, 1);
+
+    if (!out)
+        return;
+    for (int y = 0; y < g->h; y++) {
+        float shift = -(g->yoff + y) * SLANT - left;
+        int whole = (int)floorf(shift);
+        int frac = (int)((shift - whole) * 256);
+
+        for (int x = 0; x < g->w; x++) {
+            int v = g->bitmap[y * g->w + x], o = y * w + x + whole;
+
+            out[o] = MIN(255, out[o] + (v * (256 - frac) >> 8));
+            if (x + whole + 1 < w)
+                out[o + 1] = MIN(255, out[o + 1] + (v * frac >> 8));
+        }
+    }
+    free(g->bitmap);
+    g->bitmap = out;
+    g->xoff += left;
+    g->w = w;
 }
 
 static struct glyph *glyph(struct font *f, uint32_t cp)
@@ -196,8 +241,11 @@ static struct glyph *glyph(struct font *f, uint32_t cp)
     g->h = y1 - y0;
     g->xoff = x0;
     g->yoff = y0;
-    if (g->w > 0 && g->h > 0 && (g->bitmap = malloc((size_t)g->w * g->h)))
+    if (g->w > 0 && g->h > 0 && (g->bitmap = malloc((size_t)g->w * g->h))) {
         stbtt_MakeGlyphBitmap(&fam->info, g->bitmap, g->w, g->h, g->w, scale, scale, index);
+        if (f->oblique)
+            shear(g);
+    }
     g->next = f->cache[bucket];
     f->cache[bucket] = g;
     return g;

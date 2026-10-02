@@ -80,6 +80,8 @@ struct font;
 #define FONT_MONO       "mono"
 #define FONT_MONO_BOLD  "mono-bold"
 #define FONT_SERIF      "serif"
+#define FONT_SERIF_BOLD "serif-bold"
+// Any font name with "-italic" added ("sans-bold-italic") is that font slanted.
 
 struct font *font_get(const char *name, int px);
 int font_ascent(struct font *f);
