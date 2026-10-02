@@ -261,6 +261,7 @@ bool wm_next_event(struct wm_event *ev, int timeout_ms)
         ev->buttons = m.c;
         ev->kind = m.d;
         ev->detail = (int32_t)m.flags;
+        ev->mods = m.parent;
         break;
     case WM_CONFIGURE:
         ev->type = WM_EV_RESIZE;

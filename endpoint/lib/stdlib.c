@@ -149,6 +149,130 @@ int isalnum(int c) { return isalpha(c) || isdigit(c); }
 int isprint(int c) { return c >= 0x20 && c < 0x7F; }
 int toupper(int c) { return c >= 'a' && c <= 'z' ? c - 32 : c; }
 int tolower(int c) { return c >= 'A' && c <= 'Z' ? c + 32 : c; }
+int isupper(int c) { return c >= 'A' && c <= 'Z'; }
+int islower(int c) { return c >= 'a' && c <= 'z'; }
+int isxdigit(int c) { return isdigit(c) || ((c | 32) >= 'a' && (c | 32) <= 'f'); }
+int ispunct(int c) { return isprint(c) && !isalnum(c) && c != ' '; }
+
+double strtod(const char *s, char **end)
+{
+    const char *p = s, *start;
+    double v = 0, scale = 1;
+    bool neg = false, any = false;
+    int exp = 0;
+
+    while (isspace(*p))
+        p++;
+    if (*p == '-' || *p == '+')
+        neg = *p++ == '-';
+    start = p;
+    if ((p[0] | 32) == 'i' && (p[1] | 32) == 'n' && (p[2] | 32) == 'f') {
+        if (end)
+            *end = (char *)p + 3;
+        return neg ? -__builtin_inf() : __builtin_inf();
+    }
+    if ((p[0] | 32) == 'n' && (p[1] | 32) == 'a' && (p[2] | 32) == 'n') {
+        if (end)
+            *end = (char *)p + 3;
+        return __builtin_nan("");
+    }
+    for (; isdigit(*p); p++, any = true)
+        v = v * 10 + (*p - '0');
+    if (*p == '.') {
+        for (p++; isdigit(*p); p++, any = true) {
+            scale /= 10;
+            v += (*p - '0') * scale;
+        }
+    }
+    if (!any) {
+        if (end)
+            *end = (char *)s;
+        return 0;
+    }
+    (void)start;
+    if ((*p | 32) == 'e' && (isdigit(p[1]) || ((p[1] == '-' || p[1] == '+') && isdigit(p[2])))) {
+        bool eneg = false;
+
+        p++;
+        if (*p == '-' || *p == '+')
+            eneg = *p++ == '-';
+        for (; isdigit(*p); p++)
+            exp = exp < 10000 ? exp * 10 + (*p - '0') : exp;
+        if (eneg)
+            exp = -exp;
+    }
+    // Scaling by powers of ten in steps keeps the rounding error small.
+    {
+        double p10 = 10;
+        int e = exp < 0 ? -exp : exp;
+
+        for (double f = 1; e; e >>= 1, p10 *= p10) {
+            if (e & 1)
+                f *= p10;
+            if (e == 1) {
+                v = exp < 0 ? v / f : v * f;
+                break;
+            }
+        }
+    }
+    if (end)
+        *end = (char *)p;
+    return neg ? -v : v;
+}
+
+double atof(const char *s)
+{
+    return strtod(s, NULL);
+}
+
+static void swap_bytes(char *a, char *b, size_t n)
+{
+    while (n--) {
+        char t = *a;
+
+        *a++ = *b;
+        *b++ = t;
+    }
+}
+
+static void sift(char *base, size_t start, size_t end, size_t size, int (*cmp)(const void *, const void *))
+{
+    size_t root = start;
+
+    while (root * 2 + 1 <= end) {
+        size_t child = root * 2 + 1, top = root;
+
+        if (cmp(base + top * size, base + child * size) < 0)
+            top = child;
+        if (child + 1 <= end && cmp(base + top * size, base + (child + 1) * size) < 0)
+            top = child + 1;
+        if (top == root)
+            return;
+        swap_bytes(base + root * size, base + top * size, size);
+        root = top;
+    }
+}
+
+// Insertion sort for short arrays (stable), heap sort otherwise.
+void qsort(void *array, size_t n, size_t size, int (*cmp)(const void *, const void *))
+{
+    char *base = array;
+
+    if (n < 2)
+        return;
+    if (n <= 16) {
+        for (size_t i = 1; i < n; i++)
+            for (size_t j = i; j > 0 && cmp(base + (j - 1) * size, base + j * size) > 0; j--)
+                swap_bytes(base + (j - 1) * size, base + j * size, size);
+        return;
+    }
+    for (size_t start = (n - 2) / 2 + 1; start-- > 0;)
+        sift(base, start, n - 1, size, cmp);
+    for (size_t end = n - 1; end > 0; end--) {
+        swap_bytes(base, base + end * size, size);
+        sift(base, 0, end - 1, size, cmp);
+    }
+}
 
 unsigned long strtoul(const char *s, char **end, int base)
 {

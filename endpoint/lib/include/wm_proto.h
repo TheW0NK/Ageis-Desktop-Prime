@@ -40,7 +40,8 @@ enum wm_type {
     WM_KEY,                 // window, a = key code, b = 0 up / 1 down / 2 repeat, c = modifiers,
                             // text = UTF-8 typed, if any
     WM_POINTER,             // window, a = x, b = y (content coordinates), c = buttons held,
-                            // d = WM_PTR_*, flags = button (BTN_*) or wheel delta
+                            // d = WM_PTR_*, flags = button (BTN_*) or wheel delta,
+                            // parent = keyboard modifiers
     WM_FRAME,               // window: the last damage is on screen
     WM_POPUP_DONE,          // window: a popup was dismissed by a click outside it
     WM_LIST_ADD,            // window = global id, text = title, a = state, b = pid

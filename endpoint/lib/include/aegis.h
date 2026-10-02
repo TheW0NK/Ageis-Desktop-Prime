@@ -200,6 +200,9 @@ char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
 char *strstr(const char *haystack, const char *needle);
 char *strdup(const char *s);
+char *strndup(const char *s, size_t max);
+int strcasecmp(const char *a, const char *b);
+int strncasecmp(const char *a, const char *b, size_t n);
 size_t strlcpy(char *dst, const char *src, size_t size);
 const char *strerror(int err);
 
@@ -222,6 +225,13 @@ int isalnum(int c);
 int isprint(int c);
 int toupper(int c);
 int tolower(int c);
+int isupper(int c);
+int islower(int c);
+int isxdigit(int c);
+int ispunct(int c);
+double strtod(const char *s, char **end);
+double atof(const char *s);
+void qsort(void *base, size_t n, size_t size, int (*cmp)(const void *, const void *));
 
 // stdio.h
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
@@ -234,6 +244,22 @@ int putchar(int c);
 int fputs_fd(const char *s, int fd);
 void perror(const char *msg);
 ssize_t read_line(int fd, char *buf, size_t size);
+
+// time.h
+struct tm {
+    int tm_sec, tm_min, tm_hour;
+    int tm_mday, tm_mon, tm_year;   // month 0-11, years since 1900
+    int tm_wday, tm_yday, tm_isdst;
+    long tm_gmtoff;
+    const char *tm_zone;
+};
+struct tm *gmtime_r(const int64_t *t, struct tm *tm);
+struct tm *localtime_r(const int64_t *t, struct tm *tm);
+int64_t timegm(const struct tm *tm);
+int64_t mktime(struct tm *tm);
+size_t strftime(char *buf, size_t size, const char *fmt, const struct tm *tm);
+int timezone_offset(void);          // seconds east of UTC
+const char *timezone_name(void);
 
 // Directory reading.
 struct dir_stream {

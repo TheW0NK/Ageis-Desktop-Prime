@@ -146,6 +146,36 @@ char *strdup(const char *s)
     return d ? memcpy(d, s, len) : NULL;
 }
 
+char *strndup(const char *s, size_t max)
+{
+    size_t len = strnlen(s, max);
+    char *d = malloc(len + 1);
+
+    if (!d)
+        return NULL;
+    memcpy(d, s, len);
+    d[len] = 0;
+    return d;
+}
+
+int strcasecmp(const char *a, const char *b)
+{
+    while (*a && tolower((unsigned char)*a) == tolower((unsigned char)*b))
+        a++, b++;
+    return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+}
+
+int strncasecmp(const char *a, const char *b, size_t n)
+{
+    for (; n; n--, a++, b++) {
+        int d = tolower((unsigned char)*a) - tolower((unsigned char)*b);
+
+        if (d || !*a)
+            return d;
+    }
+    return 0;
+}
+
 const char *strerror(int err)
 {
     switch (err) {

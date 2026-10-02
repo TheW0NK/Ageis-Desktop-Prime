@@ -7,10 +7,11 @@ int title_button_at(struct window *w, int x, int y);
 enum drag { DRAG_NONE, DRAG_MOVE, DRAG_RESIZE };
 
 static enum drag drag;
+static uint32_t mods;
 static struct window *drag_window, *grab, *pointer_window, *press_window;
 static int drag_x, drag_y, press_button;
 static struct rect drag_start;
-static uint32_t buttons, mods;
+static uint32_t buttons;
 static uint64_t last_resize_ms;
 int pointer_x, pointer_y;
 
@@ -76,8 +77,18 @@ static void pointer_event(struct window *w, int type, uint32_t flags)
 
     if (!w || !w->owner)
         return;
+    struct wm_msg m = { 0 };
+
     c = window_content(w);
-    send_window(w, WM_POINTER, pointer_x - c.x, pointer_y - c.y, buttons, type, flags);
+    m.type = WM_POINTER;
+    m.window = w->cid;
+    m.a = pointer_x - c.x;
+    m.b = pointer_y - c.y;
+    m.c = buttons;
+    m.d = type;
+    m.flags = flags;
+    m.parent = mods;
+    send_msg(w->owner, &m);
 }
 
 static void update_hover(struct window *w)
