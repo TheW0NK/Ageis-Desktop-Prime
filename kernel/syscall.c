@@ -1153,6 +1153,29 @@ static int64_t sys_netconfig(struct process *p, int op, int index, uint64_t uinf
     return ret;
 }
 
+static int64_t sys_inspect(int pid, int what, uint64_t ubuf, uint64_t size)
+{
+    size_t rec = what == INSPECT_THREADS ? sizeof(struct aegis_threadinfo)
+               : what == INSPECT_MAPS ? sizeof(struct aegis_mapinfo)
+               : what == INSPECT_FILES ? sizeof(struct aegis_fileinfo) : 1;
+    int max = MIN(size, (uint64_t)65536) / rec, n;
+    void *k;
+
+    if (what == INSPECT_MEMORY && size < 8)
+        return -EINVAL;
+    if (!(k = kzalloc(MAX(max * rec, (size_t)8))))
+        return -ENOMEM;
+    if (what == INSPECT_MEMORY && copy_from_user(k, ubuf, 8)) {
+        kfree(k);
+        return -EFAULT;
+    }
+    n = process_inspect(pid, what, k, max);
+    if (n > 0 && copy_to_user(ubuf, k, n * rec))
+        n = -EFAULT;
+    kfree(k);
+    return n;
+}
+
 static int64_t sys_procinfo(uint64_t ubuf, uint64_t max)
 {
     struct aegis_procinfo *k;
@@ -1284,6 +1307,7 @@ static int64_t dispatch(struct process *p, struct interrupt_frame *f)
     case SYS_NETCONFIG:     return sys_netconfig(p, a, b, c);
     case SYS_OPENPTY:       return sys_openpty(p, a, b);
     case SYS_BECOME:        return account_become(p, (uint32_t)a);
+    case SYS_INSPECT:       return sys_inspect((int)a, (int)b, c, d);
     default:                return -ENOSYS;
     }
 }

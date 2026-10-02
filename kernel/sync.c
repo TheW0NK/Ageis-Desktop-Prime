@@ -104,6 +104,17 @@ void mutex_lock(struct mutex *m)
     }
 }
 
+bool mutex_trylock(struct mutex *m)
+{
+    uint64_t flags = spin_lock_irqsave(&m->lock);
+    bool got = !m->owner;
+
+    if (got)
+        m->owner = sched_current();
+    spin_unlock_irqrestore(&m->lock, flags);
+    return got;
+}
+
 void mutex_unlock(struct mutex *m)
 {
     uint64_t flags = spin_lock_irqsave(&m->lock);

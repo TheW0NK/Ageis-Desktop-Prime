@@ -54,6 +54,7 @@ int process_thread_create(struct process *p, uint64_t entry, uint64_t stack, uin
 int process_count(void);
 void process_list(void);
 int process_info(struct aegis_procinfo *out, int max);
+int process_inspect(int pid, int what, void *out, int max);
 uint32_t process_thread_total(void);
 
 // Signals. `by` is the sender's credentials, or NULL for the kernel.

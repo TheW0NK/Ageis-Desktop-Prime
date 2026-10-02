@@ -58,5 +58,7 @@ void wake_up_locked(struct wait_queue *q);
 
 void mutex_lock(struct mutex *m);
 void mutex_unlock(struct mutex *m);
+// Takes the mutex if it is free; never sleeps.
+bool mutex_trylock(struct mutex *m);
 
 #endif

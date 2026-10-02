@@ -88,7 +88,8 @@
 #define SYS_NETCONFIG   82      // op, interface index, struct aegis_netif *
 #define SYS_OPENPTY     83      // int fds[2] (master, slave), flags (O_CLOEXEC)
 #define SYS_BECOME      84      // uid: root only; become that account (uid, gid, groups)
-#define SYS_COUNT       85
+#define SYS_INSPECT     85      // pid, what, buffer, size (see abi/proc.h)
+#define SYS_COUNT       86
 
 #define WNOHANG         1       // SYS_WAIT options (third argument)
 

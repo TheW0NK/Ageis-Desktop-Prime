@@ -87,6 +87,8 @@ int login(const char *user, const char *password);
 int sudo(const char *password);
 // Root only: turn into another account (uid, gid and groups).
 int become(uint32_t uid);
+// A look inside a process (threads, memory map, files, memory): abi/proc.h.
+int inspect(int pid, int what, void *buf, size_t size);
 int reboot(int cmd);
 int uname(struct aegis_utsname *u);
 int kill(int pid, int sig);

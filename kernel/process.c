@@ -583,3 +583,146 @@ void process_list(void)
                 p->name);
     spin_unlock_irqrestore(&process_tree.lock, flags);
 }
+
+// ---- Inspection (debuggers) ----
+
+static bool may_inspect(struct process *self, struct process *p)
+{
+    return self->cred.euid == 0 || self->cred.uid == p->cred.uid;
+}
+
+static uint32_t file_kind(struct file *f)
+{
+    if (!f->vnode)
+        return FILE_KIND_OTHER;
+    if (S_ISDIR(f->vnode->mode))
+        return FILE_KIND_DIR;
+    if (S_ISCHR(f->vnode->mode) || (f->vnode->mode & S_IFMT) == S_IFBLK)
+        return FILE_KIND_DEVICE;
+    return S_ISREG(f->vnode->mode) ? FILE_KIND_FILE : FILE_KIND_OTHER;
+}
+
+// Fills out (in kernel memory) with up to max records; returns the count or
+// an error.
+int process_inspect(int pid, int what, void *out, int max)
+{
+    struct process *self = process_current(), *p;
+    uint64_t flags = spin_lock_irqsave(&process_tree.lock);
+    int n = 0;
+
+    for (p = process_all; p && p->pid != pid; p = p->next_all)
+        ;
+    if (!p || p->zombie) {
+        spin_unlock_irqrestore(&process_tree.lock, flags);
+        return -ESRCH;
+    }
+    if (!may_inspect(self, p)) {
+        spin_unlock_irqrestore(&process_tree.lock, flags);
+        return -EPERM;
+    }
+    switch (what) {
+    case INSPECT_THREADS:
+        for (struct thread *t = p->threads; t && n < max; t = t->proc_next, n++) {
+            struct aegis_threadinfo *i = (struct aegis_threadinfo *)out + n;
+            struct interrupt_frame *fr = (struct interrupt_frame *)(t->kstack_top - sizeof(*fr));
+
+            memset(i, 0, sizeof(*i));
+            i->tid = t->id;
+            i->state = p->stopped ? 3 : t->state == THREAD_RUNNING ? 0 : t->state == THREAD_READY ? 1
+                     : t->state == THREAD_DEAD ? 4 : 2;
+            i->on_cpu = t->on_cpu;
+            i->cpu_ms = t->ticks * 1000 / TIMER_HZ;
+            i->fs_base = t->fs_base;
+            // The frame saved when the thread last came in from user mode.
+            if (t->user && t->kstack) {
+                i->rip = fr->rip;
+                i->rsp = fr->rsp;
+                i->rbp = fr->rbp;
+                i->rflags = fr->rflags;
+                i->rax = fr->rax;
+                i->rbx = fr->rbx;
+                i->rcx = fr->rcx;
+                i->rdx = fr->rdx;
+                i->rsi = fr->rsi;
+                i->rdi = fr->rdi;
+                i->r8 = fr->r8;
+                i->r9 = fr->r9;
+                i->r10 = fr->r10;
+                i->r11 = fr->r11;
+                i->r12 = fr->r12;
+                i->r13 = fr->r13;
+                i->r14 = fr->r14;
+                i->r15 = fr->r15;
+            }
+            memcpy(i->name, t->name, MIN(sizeof(i->name) - 1, sizeof(t->name)));
+        }
+        break;
+    case INSPECT_MAPS:
+        if (!p->mm) {
+            break;
+        }
+        // Never sleep under the tree lock: if the map is being changed, ask
+        // the caller to try again.
+        if (!mutex_trylock(&p->mm->lock)) {
+            spin_unlock_irqrestore(&process_tree.lock, flags);
+            return -EAGAIN;
+        }
+        for (struct vma *v = p->mm->vmas; v && n < max; v = v->next, n++) {
+            struct aegis_mapinfo *i = (struct aegis_mapinfo *)out + n;
+
+            memset(i, 0, sizeof(*i));
+            i->start = v->start;
+            i->end = v->end;
+            i->prot = v->prot;
+            i->kind = v->type == VMA_FILE ? MAP_KIND_FILE : v->type == VMA_SHM ? MAP_KIND_SHARED
+                    : v->type == VMA_PHYS ? MAP_KIND_DEVICE : MAP_KIND_ANON;
+            i->offset = v->type == VMA_PHYS ? 0 : v->offset;
+            i->ino = v->vnode ? v->vnode->ino : 0;
+        }
+        mutex_unlock(&p->mm->lock);
+        break;
+    case INSPECT_FILES:
+        for (int fd = 0; fd < MAX_FDS && n < max; fd++) {
+            struct file *f = p->fds[fd];
+            struct aegis_fileinfo *i;
+
+            if (!f)
+                continue;
+            i = (struct aegis_fileinfo *)out + n++;
+            memset(i, 0, sizeof(*i));
+            i->fd = fd;
+            i->flags = f->flags;
+            i->offset = f->offset;
+            i->kind = file_kind(f);
+            if (f->vnode) {
+                i->mode = f->vnode->mode;
+                i->ino = f->vnode->ino;
+                i->size = f->vnode->size;
+            }
+        }
+        break;
+    case INSPECT_MEMORY: {
+        // out holds the address on entry and the bytes on return.
+        uint64_t addr = *(uint64_t *)out, space = p->space;
+        uint8_t *dst = out;
+        int done = 0;
+
+        while (done < max) {
+            uint64_t va = addr + done, phys = paging_translate_in(space, va);
+            int chunk = MIN(max - done, (int)(PAGE_SIZE - (va & (PAGE_SIZE - 1))));
+
+            // Only pages that are present; this never faults anything in.
+            if (!phys || !user_range_ok(va, chunk))
+                break;
+            memcpy(dst + done, (void *)phys, chunk);
+            done += chunk;
+        }
+        n = done;
+        break;
+    }
+    default:
+        n = -EINVAL;
+    }
+    spin_unlock_irqrestore(&process_tree.lock, flags);
+    return n;
+}
