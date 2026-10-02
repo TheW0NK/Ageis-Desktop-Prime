@@ -769,7 +769,7 @@ bool ui_menu_shortcut(struct ui_window *win, struct wm_event *ev)
 
     if (!win->root || !ev->value)
         return false;
-    if (ev->key == KEY_F1 + 9 && !ev->mods && (w = find_tag(win->root, "menubar")) && ui_widget_shown(w)) {
+    if (ev->key == KEY_F1 + 9 && !(ev->mods & MOD_KEYS) && (w = find_tag(win->root, "menubar")) && ui_widget_shown(w)) {
         // F10 opens the menu bar.
         win->focus_visible = true;
         menubar_open(w, 0);

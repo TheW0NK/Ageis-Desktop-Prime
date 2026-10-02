@@ -1048,7 +1048,7 @@ static bool button_pointer(struct widget *w, struct wm_event *ev)
 
 static bool activate_key(struct wm_event *ev)
 {
-    return ev->value == 1 && (ev->key == KEY_SPACE || ev->key == KEY_ENTER || ev->key == KEY_KPENTER) && !ev->mods;
+    return ev->value == 1 && (ev->key == KEY_SPACE || ev->key == KEY_ENTER || ev->key == KEY_KPENTER) && !(ev->mods & MOD_KEYS);
 }
 
 static bool button_key(struct widget *w, struct wm_event *ev)

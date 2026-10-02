@@ -91,6 +91,8 @@ struct ui_window {
     struct ui_window *popup;
     struct widget *popup_owner;
     bool is_popup;
+    bool dialog_done;
+    int dialog_result;
     bool (*on_close)(struct ui_window *, void *);
     void *on_close_user;
     void (*on_key)(struct ui_window *, struct wm_event *, void *);

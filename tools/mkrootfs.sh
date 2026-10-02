@@ -47,6 +47,11 @@ mkdir -p "$root"/etc/ssl/certs "$root"/usr/share/fonts
 cp "$here"/../third_party/fonts/*.ttf "$root"/usr/share/fonts/
 cp "$here"/../third_party/ca-certificates.pem "$root"/etc/ssl/certs/ca-bundle.pem
 
+mkdir -p "$root"/var/log
+cat > "$root"/etc/crontab <<CRONTAB
+# System jobs: schedule, account, command. Edit with the Cron Jobs app.
+#   minute hour day month weekday  user  command
+CRONTAB
 cat > "$root"/etc/passwd <<PASSWD
 root:x:0:0:root:/root:/bin/terminal
 $user:x:1000:1000:$user:/users/$user/home:/bin/terminal
@@ -77,5 +82,7 @@ fakeroot sh -c "
     chmod 0644 '$root'/etc/passwd '$root'/etc/group '$root'/etc/motd '$root'/etc/hostname '$root'/etc/hosts \\
           '$root'/etc/ssl/certs/ca-bundle.pem
     chmod 0600 '$root'/etc/shadow
+    chmod 0644 '$root'/etc/crontab
+    chmod 0755 '$root'/var '$root'/var/log
     '$here'/mkimage.sh '$out' '$esp' '$root' $size
 "

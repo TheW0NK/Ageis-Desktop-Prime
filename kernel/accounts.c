@@ -257,6 +257,26 @@ int account_login(struct process *p, const char *name, const char *password)
     return 0;
 }
 
+// Root becomes another account without its password (services that run
+// jobs for users). Real and effective ids and groups all change.
+int account_become(struct process *p, uint32_t uid)
+{
+    struct account a;
+    struct cred c = { 0 };
+    struct group_query q;
+
+    if (p->cred.euid != 0)
+        return -EPERM;
+    if (account_by_uid(uid, &a))
+        return -ENOENT;
+    c.uid = c.euid = a.uid;
+    c.gid = c.egid = a.gid;
+    q = (struct group_query){ a.name, &c, NULL, false };
+    each_line("/etc/group", 4, group_scan, &q);
+    p->cred = c;
+    return 0;
+}
+
 int account_sudo(struct process *p, const char *password)
 {
     struct account a;

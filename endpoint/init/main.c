@@ -1,7 +1,7 @@
 #include "aegis.h"
 
 // The first process. It keeps these running:
-//  - the privilege helper (/sbin/privd),
+//  - the privilege helper (/sbin/privd) and the job scheduler (/sbin/crond),
 //  - the text console's shell (the login prompt shown with Ctrl+Alt+F2),
 //  - the display (/sbin/compositor, which starts the sign-in screen).
 // Either is started again when it exits. If the display keeps failing (no
@@ -10,6 +10,7 @@
 #define TERMINAL    "/bin/terminal"
 #define COMPOSITOR  "/sbin/compositor"
 #define PRIVD       "/sbin/privd"
+#define CROND       "/sbin/crond"
 
 struct service {
     const char *path;
@@ -34,6 +35,7 @@ int main(int argc, char **argv)
 {
     struct service services[] = {
         { PRIVD, { "privd", NULL }, -1, 0, 0, false },
+        { CROND, { "crond", NULL }, -1, 0, 0, false },
         { TERMINAL, { "terminal", NULL }, -1, 0, 0, false },
         { COMPOSITOR, { "compositor", NULL }, -1, 0, 0, false },
     };
@@ -45,7 +47,7 @@ int main(int argc, char **argv)
     setenv("PATH", "/bin:/sbin");
     // No screen to draw on: text mode only.
     if (stat("/dev/fb0", &st) < 0)
-        services[2].disabled = true;
+        services[3].disabled = true;
     for (int i = 0; i < n; i++)
         if (!services[i].disabled)
             start(&services[i]);

@@ -49,6 +49,8 @@ struct input_event {
 #define MOD_SHIFT       (MOD_LSHIFT | MOD_RSHIFT)
 #define MOD_ALT         (MOD_LALT | MOD_RALT)
 #define MOD_META        (MOD_LMETA | MOD_RMETA)
+// The modifiers that are held down (not the lock states).
+#define MOD_KEYS        (MOD_CTRL | MOD_SHIFT | MOD_ALT | MOD_META)
 
 // Key codes 0x00-0xE7 are USB HID keyboard usages (page 0x07).
 #define KEY_A           0x04    // A..Z are 0x04..0x1D

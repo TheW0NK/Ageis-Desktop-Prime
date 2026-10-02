@@ -16,5 +16,6 @@ int account_by_name(const char *name, struct account *out);
 int account_by_uid(uint32_t uid, struct account *out);
 int account_login(struct process *p, const char *name, const char *password);
 int account_sudo(struct process *p, const char *password);
+int account_become(struct process *p, uint32_t uid);
 
 #endif

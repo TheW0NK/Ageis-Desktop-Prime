@@ -85,6 +85,8 @@ uint32_t getegid(void);
 int seteuid(uint32_t uid);
 int login(const char *user, const char *password);
 int sudo(const char *password);
+// Root only: turn into another account (uid, gid and groups).
+int become(uint32_t uid);
 int reboot(int cmd);
 int uname(struct aegis_utsname *u);
 int kill(int pid, int sig);
@@ -319,6 +321,21 @@ int group_set_member(const char *group, const char *user, bool member);
 // Any user: through /sbin/privd.
 #define PRIVD_SOCKET "@aegis/privd"
 int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
+
+// Cron schedules (lib/cron.c).
+struct cron_job {
+    char schedule[64];
+    char user[32];                  // /etc/crontab only
+    char command[256];
+    char name[64];
+    bool enabled;
+};
+bool cron_matches(const char *schedule, const struct tm *tm);
+bool cron_parse(char *line, bool with_user, struct cron_job *job);
+void cron_format(const struct cron_job *job, bool with_user, char *out, size_t size);
+int64_t cron_next(const char *schedule, int64_t after);
+// /users/<name>/system/appdata/cron/<file> ("crontab", "log").
+void cron_user_path(const struct user_info *u, const char *file, char *out, size_t size);
 
 // Whole trees (lib/fileops.c).
 int copy_path(const char *src, const char *dst);

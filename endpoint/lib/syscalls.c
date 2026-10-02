@@ -128,6 +128,7 @@ uint32_t getegid(void) { return syscall0(SYS_GETEGID); }
 int seteuid(uint32_t uid) { return check(syscall1(SYS_SETEUID, uid)); }
 int login(const char *u, const char *p) { return check(syscall2(SYS_LOGIN, u, p)); }
 int sudo(const char *p) { return check(syscall1(SYS_SUDO, p)); }
+int become(uint32_t uid) { return check(syscall1(SYS_BECOME, uid)); }
 int reboot(int cmd) { return check(syscall1(SYS_REBOOT, cmd)); }
 int uname(struct aegis_utsname *u) { return check(syscall1(SYS_UNAME, u)); }
 int kill(int pid, int sig) { return check(syscall2(SYS_KILL, pid, sig)); }

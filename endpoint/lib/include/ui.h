@@ -152,6 +152,8 @@ void ui_canvas_set(struct widget *w, ui_paint_fn paint, ui_input_fn input, void 
 struct widget *ui_create(struct ui_window *win, const char *tag);
 void ui_add(struct widget *parent, struct widget *child);
 void ui_remove(struct widget *w);
+int ui_children(struct widget *w);
+struct widget *ui_child(struct widget *w, int index);
 struct widget *ui_parse_into(struct widget *parent, const char *aui);
 
 // ---- Dialogs ----
@@ -161,6 +163,12 @@ struct widget *ui_parse_into(struct widget *parent, const char *aui);
 int ui_message(struct ui_window *parent, const char *title, const char *text, const char *buttons);
 // Asks for a line of text; returns a malloc'd string or NULL if cancelled.
 char *ui_prompt(struct ui_window *parent, const char *title, const char *text, const char *initial);
+// Runs a window loaded by the app as a modal dialog over parent until a
+// handler calls ui_dialog_end(); returns that code (-1 if closed). The
+// window is closed afterwards; its widgets can still be read until the
+// event loop runs again.
+int ui_dialog_run(struct ui_window *dlg, struct ui_window *parent);
+void ui_dialog_end(struct ui_window *dlg, int result);
 // Asks for a password (shown as bullets); free the result.
 char *ui_prompt_password(struct ui_window *parent, const char *title, const char *text);
 // Makes this program an administrator (root) after asking for the user's

@@ -179,6 +179,16 @@ void ui_remove(struct widget *w)
     widget_free(w);
 }
 
+int ui_children(struct widget *w)
+{
+    return w ? ui_child_count(w) : 0;
+}
+
+struct widget *ui_child(struct widget *w, int index)
+{
+    return w ? ui_child_at(w, index) : NULL;
+}
+
 int ui_child_count(struct widget *w)
 {
     int n = 0;
@@ -927,7 +937,7 @@ static void key_event(struct ui_window *win, struct wm_event *ev)
         if (ev->key == KEY_TAB && !(ev->mods & (MOD_CTRL | MOD_ALT))) {
             ui_focus_next(win, ev->mods & MOD_SHIFT);
             handled = true;
-        } else if ((ev->key == KEY_ENTER || ev->key == KEY_KPENTER) && !ev->mods) {
+        } else if ((ev->key == KEY_ENTER || ev->key == KEY_KPENTER) && !(ev->mods & MOD_KEYS)) {
             struct widget *b = find_flagged(win->root, "default");
 
             if (b && ev->value == 1) {

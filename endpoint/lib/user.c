@@ -201,6 +201,9 @@ int user_setting_set(const struct user_info *u, const char *key, const char *val
         return -1;
     }
     close(fd);
+    // Written by an administrator: the file still belongs to the user.
+    if (geteuid() == 0)
+        chown(tmp, u->uid, u->gid);
     // Replace in one step so readers never see half a value.
     return rename(tmp, path);
 }

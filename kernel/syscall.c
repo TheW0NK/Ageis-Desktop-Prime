@@ -1283,6 +1283,7 @@ static int64_t dispatch(struct process *p, struct interrupt_frame *f)
     case SYS_FCNTL:         return sys_fcntl(p, a, b, c);
     case SYS_NETCONFIG:     return sys_netconfig(p, a, b, c);
     case SYS_OPENPTY:       return sys_openpty(p, a, b);
+    case SYS_BECOME:        return account_become(p, (uint32_t)a);
     default:                return -ENOSYS;
     }
 }

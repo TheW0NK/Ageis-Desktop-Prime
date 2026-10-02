@@ -81,6 +81,23 @@ static void show_user(int i)
     ui_window_set_backdrop(win, backdrop, NULL);
 }
 
+// Accounts may have been added or removed while someone was signed in.
+static void load_users(void)
+{
+    struct widget *list = ui_get(win, "users");
+
+    nusers = user_list(users, 32);
+    ui_list_clear(list);
+    for (int i = 0; i < nusers; i++)
+        ui_list_add(list, users[i].display);
+    ui_set_visible(list, nusers > 1);
+    if (current >= nusers)
+        current = 0;
+    if (nusers > 1)
+        ui_list_select(list, current);
+    show_user(current);
+}
+
 static void user_changed(struct widget *w, void *u)
 {
     (void)u;
@@ -142,6 +159,7 @@ static bool watch_session(void *u)
     ui_set_text(ui_get(win, "password"), "");
     set_error("");
     set_busy(false);
+    load_users();
     ui_window_show(win);
     ui_focus(ui_get(win, "password"));
     return false;
@@ -273,14 +291,8 @@ int main(void)
     ui_set_theme("dark");
     if (!(win = ui_load_string_named(page, handlers, NULL, "greeter")))
         return 1;
-    nusers = user_list(users, 32);
-    list = ui_get(win, "users");
-    for (int i = 0; i < nusers; i++)
-        ui_list_add(list, users[i].display);
-    if (nusers > 1) {
-        ui_set_visible(list, true);
-        ui_list_select(list, 0);
-    }
+    (void)list;
+    load_users();
     {
         char host[64];
         int fd = open("/etc/hostname", O_RDONLY);
@@ -291,7 +303,6 @@ int main(void)
             close(fd);
     }
     ui_canvas_set(ui_get(win, "avatar"), paint_avatar, NULL, NULL);
-    show_user(0);
     tick(NULL);
     ui_timer(1000, tick, NULL);
     ui_window_show(win);

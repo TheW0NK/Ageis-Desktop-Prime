@@ -186,6 +186,45 @@ bool ui_elevate(struct ui_window *parent, const char *why)
     return false;
 }
 
+// ---- Dialogs built by apps ----
+
+static bool app_dialog_closed(struct ui_window *win, void *user)
+{
+    (void)user;
+    win->dialog_done = true;
+    win->dialog_result = -1;
+    return false;
+}
+
+int ui_dialog_run(struct ui_window *dlg, struct ui_window *parent)
+{
+    int result;
+
+    if (!dlg)
+        return -1;
+    if (!dlg->wm) {
+        dlg->parent = parent;
+        dlg->flags = (dlg->flags & ~WM_ROLE_MASK) | WM_ROLE_DIALOG;
+    }
+    dlg->modal = true;
+    dlg->dialog_done = false;
+    ui_on_close(dlg, app_dialog_closed, NULL);
+    ui_window_show(dlg);
+    while (!dlg->dialog_done && wm_connected())
+        ui_iterate(-1);
+    result = dlg->dialog_result;
+    ui_window_close(dlg);
+    return result;
+}
+
+void ui_dialog_end(struct ui_window *dlg, int result)
+{
+    if (!dlg)
+        return;
+    dlg->dialog_done = true;
+    dlg->dialog_result = result;
+}
+
 // ---- File chooser ----
 
 struct entry {
