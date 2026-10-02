@@ -31,5 +31,7 @@ int pci_enable_msix(const struct pci_device *d, int count, irq_handler_t handler
 
 // Sound (drivers/hda.c): /dev/audio.
 void hda_init(void);
+// The test camera (drivers/vcam.c): /dev/video0.
+void vcam_init(void);
 
 #endif

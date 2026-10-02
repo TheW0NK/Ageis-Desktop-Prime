@@ -39,6 +39,12 @@ struct mm {
     uint64_t resident;              // pages present
     uint64_t mapped;                // bytes covered by VMAs
     uint32_t users;                 // threads using this space
+    // The last ranges removed, for reports of faults on missing mappings.
+    struct {
+        uint64_t start, end, when;
+        uint32_t tid;
+    } unmapped[8];
+    unsigned unmapped_next;
 };
 
 struct mm *mm_create(void);

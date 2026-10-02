@@ -63,7 +63,7 @@ cat > "$root"/etc/group <<GROUP
 root:x:0:root
 adm:x:4:$user
 sudo:x:27:$user
-video:x:44:
+video:x:44:$user
 audio:x:63:$user
 input:x:50:
 $user:x:1000:$user

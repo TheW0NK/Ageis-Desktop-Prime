@@ -115,6 +115,7 @@ static void kinit(void *arg)
     }
     display_devfs_init();
     hda_init();
+    vcam_init();
     smp_init();
     net_init();
     virtio_net_init();

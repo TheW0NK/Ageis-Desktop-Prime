@@ -1,4 +1,6 @@
 #include "vm.h"
+#include "apic.h"
+#include "sched.h"
 #include "mem.h"
 #include "process.h"
 #include "smp.h"
@@ -308,6 +310,14 @@ int vm_munmap(struct mm *mm, uint64_t addr, uint64_t len)
         return -EINVAL;
     mutex_lock(&mm->lock);
     ret = unmap_locked(mm, addr, addr + ALIGN_UP(len, PAGE_SIZE));
+    {
+        unsigned i = mm->unmapped_next++ % 8;
+
+        mm->unmapped[i].start = addr;
+        mm->unmapped[i].end = addr + ALIGN_UP(len, PAGE_SIZE);
+        mm->unmapped[i].when = timer_uptime_ms();
+        mm->unmapped[i].tid = sched_current() ? sched_current()->id : 0;
+    }
     mutex_unlock(&mm->lock);
     return ret;
 }
@@ -371,8 +381,10 @@ static bool fault_locked(struct mm *mm, struct vma *v, uint64_t addr, bool write
     switch (v->type) {
     case VMA_ANON:
     case VMA_FILE:
-        if (!(phys = pmm_alloc_page()))
+        if (!(phys = pmm_alloc_page())) {
+            kprintf("vm: out of memory for a page at 0x%lx (%lu pages free)\n", va, pmm_free_count());
             return false;
+        }
         memset((void *)phys, 0, PAGE_SIZE);
         fresh = true;
         if (v->type == VMA_FILE) {
@@ -395,6 +407,7 @@ static bool fault_locked(struct mm *mm, struct vma *v, uint64_t addr, bool write
     if (!phys)
         return false;
     if (!paging_map_page_in(mm->space, va, phys, pte_flags(v))) {
+        kprintf("vm: cannot map 0x%lx (page tables: %lu pages free)\n", va, pmm_free_count());
         if (fresh)
             pmm_free_page(phys);
         return false;
@@ -413,6 +426,27 @@ bool vm_fault(struct mm *mm, uint64_t addr, bool write)
     mutex_lock(&mm->lock);
     if ((v = find_vma(mm, addr)))
         ok = fault_locked(mm, v, addr, write);
+    else if (addr >= MMAP_BASE && addr < MMAP_END) {
+        kprintf("vm: no mapping at 0x%lx (thread %lu, now %lu ms)\n", addr,
+                sched_current() ? sched_current()->id : 0, timer_uptime_ms());
+        for (int i = 0; i < 8; i++)
+            if (mm->unmapped[i].end && addr >= mm->unmapped[i].start && addr < mm->unmapped[i].end)
+                kprintf("vm:   unmapped 0x%lx-0x%lx by thread %u at %lu ms\n", mm->unmapped[i].start,
+                        mm->unmapped[i].end, mm->unmapped[i].tid, mm->unmapped[i].when);
+        {
+            uint64_t sum = 0;
+            int count = 0;
+
+            for (struct vma *n = mm->vmas; n; n = n->next) {
+                sum += n->end - n->start;
+                count++;
+                if (n->start >= MMAP_BASE)
+                    kprintf("vm:   vma 0x%lx-0x%lx type %d\n", n->start, n->end, n->type);
+            }
+            kprintf("vm:   %d vmas, %lu bytes listed, %lu bytes recorded, %u users\n", count, sum, mm->mapped,
+                    mm->users);
+        }
+    }
     mutex_unlock(&mm->lock);
     return ok;
 }
