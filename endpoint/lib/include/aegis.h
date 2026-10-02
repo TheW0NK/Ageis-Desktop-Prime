@@ -294,6 +294,7 @@ struct app_info {
     char id[32];
     char name[64];
     char exec[128];
+    char exec_arg[160];             // an argument given in the exec line
     char icon[32];
     char suite[32];                 // System, Administrative, Default, Development
     char description[128];

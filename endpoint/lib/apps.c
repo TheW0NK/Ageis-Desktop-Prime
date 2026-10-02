@@ -36,8 +36,16 @@ static void parse(const char *path, const char *id, struct app_info *a)
         val = eq + 1;
         if (!strcmp(key, "name"))
             strlcpy(a->name, val, sizeof(a->name));
-        else if (!strcmp(key, "exec"))
+        else if (!strcmp(key, "exec")) {
+            // "exec=PROGRAM ARGUMENT": one argument may follow the program.
+            char *space = strchr(val, ' ');
+
+            if (space) {
+                *space = 0;
+                strlcpy(a->exec_arg, space + 1, sizeof(a->exec_arg));
+            }
             strlcpy(a->exec, val, sizeof(a->exec));
+        }
         else if (!strcmp(key, "icon"))
             strlcpy(a->icon, val, sizeof(a->icon));
         else if (!strcmp(key, "suite"))
@@ -61,14 +69,24 @@ static int by_name(const void *x, const void *y)
     return strcasecmp(((const struct app_info *)x)->name, ((const struct app_info *)y)->name);
 }
 
-int app_list(struct app_info *out, int max)
+// Apps installed for one user (made in App Maker) live in their appdata.
+static void user_apps_dir(char *out, size_t size)
 {
-    struct dir_stream *d = opendir(APPS_DIR);
+    struct user_info u;
+
+    if (user_current(&u) == 0)
+        user_path(&u, "system/appdata/applications", out, size);
+    else
+        out[0] = 0;
+}
+
+static int scan(const char *dir, struct app_info *out, int n, int max)
+{
+    struct dir_stream *d = opendir(dir);
     struct aegis_dirent *e;
-    int n = 0;
 
     if (!d)
-        return 0;
+        return n;
     while (n < max && (e = readdir(d))) {
         size_t len = strlen(e->name);
         char path[300], id[64];
@@ -77,25 +95,40 @@ int app_list(struct app_info *out, int max)
             continue;
         memcpy(id, e->name, len - 4);
         id[len - 4] = 0;
-        snprintf(path, sizeof(path), APPS_DIR "/%s", e->name);
+        snprintf(path, sizeof(path), "%s/%s", dir, e->name);
         parse(path, id, &out[n]);
         // Apps that belong to a switched-off feature are left out.
         if (out[n].exec[0] && (!out[n].feature[0] || feature_enabled(out[n].feature)))
             n++;
     }
     closedir(d);
+    return n;
+}
+
+int app_list(struct app_info *out, int max)
+{
+    char user_dir[256];
+    int n = scan(APPS_DIR, out, 0, max);
+
+    user_apps_dir(user_dir, sizeof(user_dir));
+    if (*user_dir)
+        n = scan(user_dir, out, n, max);
     qsort(out, n, sizeof(*out), by_name);
     return n;
 }
 
 int app_find(const char *id, struct app_info *out)
 {
-    char path[300];
+    char path[300], dir[256];
     struct aegis_stat st;
 
     snprintf(path, sizeof(path), APPS_DIR "/%s.app", id);
-    if (stat(path, &st) < 0)
-        return -1;
+    if (stat(path, &st) < 0) {
+        user_apps_dir(dir, sizeof(dir));
+        snprintf(path, sizeof(path), "%s/%s.app", dir, id);
+        if (!*dir || stat(path, &st) < 0)
+            return -1;
+    }
     parse(path, id, out);
     return out->exec[0] ? 0 : -1;
 }
@@ -157,5 +190,5 @@ int launch(const char *path, const char *arg)
 
 int app_launch(const struct app_info *a, const char *arg)
 {
-    return launch(a->exec, arg);
+    return launch(a->exec, a->exec_arg[0] ? a->exec_arg : arg);
 }

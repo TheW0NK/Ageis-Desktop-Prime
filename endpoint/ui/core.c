@@ -189,6 +189,16 @@ struct widget *ui_child(struct widget *w, int index)
     return w ? ui_child_at(w, index) : NULL;
 }
 
+struct widget *ui_parent(struct widget *w)
+{
+    return w ? w->parent : NULL;
+}
+
+const char *ui_tag(struct widget *w)
+{
+    return w ? w->tag : "";
+}
+
 int ui_child_count(struct widget *w)
 {
     int n = 0;
@@ -682,6 +692,8 @@ static void repaint(struct ui_window *win)
     else
         gfx_fill(&g, g.clip, win->is_popup ? ui_theme.surface : ui_theme.window);
     ui_paint_widget(win->root, &g);
+    if (win->overlay)
+        win->overlay(win, &g, win->overlay_user);
     if (win->is_popup)
         gfx_outline(&g, (struct rect){ 0, 0, win->wm->width, win->wm->height }, 1, ui_theme.border);
     wm_present(win->wm, r);
@@ -859,6 +871,10 @@ static void pointer_event(struct ui_window *win, struct wm_event *ev)
     if (blocked_by_modal(win))
         return;
     target = win->capture ? win->capture : ui_hit(win->root, ev->x, ev->y);
+    // A filter may take pointer events before any widget sees them.
+    if (win->pointer_filter && !win->capture
+        && win->pointer_filter(win, ui_hit(win->root, ev->x, ev->y), ev, win->pointer_filter_user))
+        return;
     if (ev->kind == WM_PTR_MOVE || ev->kind == WM_PTR_ENTER) {
         if (!win->capture) {
             struct widget *h = ui_hit(win->root, ev->x, ev->y);
@@ -1185,6 +1201,26 @@ void ui_window_set_backdrop(struct ui_window *win,
     win->backdrop = fn;
     win->backdrop_user = user;
     if (win->wm)
+        ui_damage(win, (struct rect){ 0, 0, win->wm->width, win->wm->height });
+}
+
+void ui_window_set_overlay(struct ui_window *win, void (*fn)(struct ui_window *, struct gfx *, void *),
+                           void *user)
+{
+    win->overlay = fn;
+    win->overlay_user = user;
+}
+
+void ui_on_pointer(struct ui_window *win,
+                   bool (*fn)(struct ui_window *, struct widget *, struct wm_event *, void *), void *user)
+{
+    win->pointer_filter = fn;
+    win->pointer_filter_user = user;
+}
+
+void ui_window_redraw(struct ui_window *win)
+{
+    if (win && win->wm)
         ui_damage(win, (struct rect){ 0, 0, win->wm->width, win->wm->height });
 }
 

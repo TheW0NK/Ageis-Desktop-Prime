@@ -99,6 +99,10 @@ struct ui_window {
     void *on_key_user;
     const struct ui_handler_entry *handlers;
     void (*backdrop)(struct ui_window *, struct gfx *, struct rect, void *);
+    void (*overlay)(struct ui_window *, struct gfx *, void *);
+    void *overlay_user;
+    bool (*pointer_filter)(struct ui_window *, struct widget *, struct wm_event *, void *);
+    void *pointer_filter_user;
     void *backdrop_user;
     void *user;
     struct ui_window *next;

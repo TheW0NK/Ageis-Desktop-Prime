@@ -63,6 +63,13 @@ void *ui_window_user(struct ui_window *win);
 // Draws the window's background instead of the theme colour (wallpapers).
 void ui_window_set_backdrop(struct ui_window *win,
                             void (*fn)(struct ui_window *, struct gfx *, struct rect, void *), void *user);
+// Draws over the widgets after each repaint (selection outlines).
+void ui_window_set_overlay(struct ui_window *win, void (*fn)(struct ui_window *, struct gfx *, void *), void *user);
+// Sees pointer events first, with the widget under the pointer; returning
+// true keeps them from the widgets (designers).
+void ui_on_pointer(struct ui_window *win,
+                   bool (*fn)(struct ui_window *, struct widget *hit, struct wm_event *, void *), void *user);
+void ui_window_redraw(struct ui_window *win);
 // Called when the user closes the window; return false to keep it open.
 void ui_on_close(struct ui_window *win, bool (*fn)(struct ui_window *, void *), void *user);
 // Called after the default handling of every key press in the window.
@@ -156,6 +163,8 @@ void ui_add(struct widget *parent, struct widget *child);
 void ui_remove(struct widget *w);
 int ui_children(struct widget *w);
 struct widget *ui_child(struct widget *w, int index);
+struct widget *ui_parent(struct widget *w);
+const char *ui_tag(struct widget *w);
 struct widget *ui_parse_into(struct widget *parent, const char *aui);
 
 // ---- Dialogs ----

@@ -31,6 +31,8 @@ static struct widget *tiles[96], *headers[5], *grids[5];
 static int napps;
 static uint64_t hidden_at;
 
+static void rebuild_tiles(void);
+
 static void launch_app(struct widget *w, void *u)
 {
     struct app_info *a = u;
@@ -176,36 +178,25 @@ void launcher_toggle(void)
     // open it again.
     if (uptime_ms() - hidden_at < 300)
         return;
+    rebuild_tiles();
     ui_set_text(ui_get(win, "search"), "");
     filter(ui_get(win, "search"), NULL);
     ui_window_show(win);
     ui_focus(ui_get(win, "search"));
 }
 
-void launcher_init(struct ui_window *panel)
+// The app tiles, rebuilt each time the launcher opens so newly installed
+// apps show up.
+static void rebuild_tiles(void)
 {
-    static const struct ui_handler_entry handlers[] = {
-        { "search", filter }, { "first", first }, { "signout", signout }, { "restart", restart },
-        { "poweroff", poweroff }, { NULL, NULL },
-    };
-    struct widget *box;
+    struct widget *box = ui_get(win, "apps");
 
-    if (!(win = ui_load_string_named(page, handlers, NULL, "launcher")))
-        return;
-    ui_window_set_size(win, WIDTH, HEIGHT);
-    ui_window_set_parent(win, panel);
-    // Above the panel, at its left edge (relative to the panel's content).
-    ui_window_move(win, 4, -HEIGHT - 6);
-    ui_window_hide(win);
-    ui_on_close(win, dismissed, NULL);
-    ui_on_key(win, key, NULL);
-    // The launcher is a popup that takes the keyboard.
-    ui_window_set_flags(win, WM_ROLE_POPUP | WM_FLAG_KEYBOARD);
-    ui_set_text(ui_get(win, "name"), me.display);
-    ui_canvas_set(ui_get(win, "avatar"), paint_avatar, NULL, NULL);
-
+    while (ui_children(box))
+        ui_remove(ui_child(box, 0));
+    memset(tiles, 0, sizeof(tiles));
+    memset(headers, 0, sizeof(headers));
+    memset(grids, 0, sizeof(grids));
     napps = app_list(apps, 96);
-    box = ui_get(win, "apps");
     for (int s = 0; s < 5; s++) {
         int count = 0;
 
@@ -240,5 +231,29 @@ void launcher_init(struct ui_window *panel)
         if (!tiles[i]) {
             tiles[i] = ui_create(win, "spacer");
             ui_set_visible(tiles[i], false);
+            ui_add(box, tiles[i]);
         }
+}
+
+void launcher_init(struct ui_window *panel)
+{
+    static const struct ui_handler_entry handlers[] = {
+        { "search", filter }, { "first", first }, { "signout", signout }, { "restart", restart },
+        { "poweroff", poweroff }, { NULL, NULL },
+    };
+    if (!(win = ui_load_string_named(page, handlers, NULL, "launcher")))
+        return;
+    ui_window_set_size(win, WIDTH, HEIGHT);
+    ui_window_set_parent(win, panel);
+    // Above the panel, at its left edge (relative to the panel's content).
+    ui_window_move(win, 4, -HEIGHT - 6);
+    ui_window_hide(win);
+    ui_on_close(win, dismissed, NULL);
+    ui_on_key(win, key, NULL);
+    // The launcher is a popup that takes the keyboard.
+    ui_window_set_flags(win, WM_ROLE_POPUP | WM_FLAG_KEYBOARD);
+    ui_set_text(ui_get(win, "name"), me.display);
+    ui_canvas_set(ui_get(win, "avatar"), paint_avatar, NULL, NULL);
+
+    rebuild_tiles();
 }
