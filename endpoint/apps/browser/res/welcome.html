@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome tour</title>
+<style>
+  :root { --accent: #2f6fdf; --soft: #eef3fc; --ink: #1f2329; }
+  body { font-family: sans-serif; color: var(--ink); margin: 0; background: #fafbfc; }
+  header { background: linear-gradient(#2f6fdf, #2457b5); color: white; padding: 28px 40px; }
+  header h1 { margin: 0; font-size: 30px; }
+  header p { margin: 6px 0 0; opacity: .85; }
+  nav { background: white; border-bottom: 1px solid #e3e6eb; padding: 10px 40px; }
+  nav a { margin-right: 18px; color: var(--accent); text-decoration: none; font-weight: bold; }
+  main { max-width: 900px; margin: 0 auto; padding: 8px 40px 40px; }
+  h2 { border-bottom: 2px solid var(--soft); padding-bottom: 4px; margin-top: 32px; }
+  .note { background: var(--soft); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 4px; }
+  code { background: #f0f1f4; padding: 1px 4px; border-radius: 3px; }
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; }
+  .card { flex: 1; min-width: 180px; background: white; border: 1px solid #e3e6eb; border-radius: 8px; padding: 14px; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; color: var(--accent); }
+  .card p { margin: 0; font-size: 14px; color: #5b6270; }
+  table { border-collapse: collapse; width: 100%; background: white; }
+  th { background: var(--accent); color: white; text-align: left; }
+  th, td { padding: 6px 10px; border: 1px solid #dfe3e9; }
+  tr:nth-child(even) td { background: #f6f8fb; }
+  .num { text-align: right; font-family: monospace; }
+  .pics { display: flex; gap: 10px; }
+  .pics img { width: 32%; border-radius: 6px; border: 1px solid #ccd; }
+  form { background: white; border: 1px solid #e3e6eb; border-radius: 8px; padding: 14px 18px; }
+  label { display: inline-block; width: 110px; }
+  .row { margin: 8px 0; }
+  pre { background: #1f2329; color: #e6e8eb; padding: 12px; border-radius: 6px; }
+  blockquote { font-family: serif; font-style: italic; font-size: 18px; color: #4a5160; }
+  .center { text-align: center; }
+  .pill { display: inline-block; background: #e5efff; color: #1d4fa8; border-radius: 999px; padding: 2px 10px;
+          font-size: 13px; margin: 2px; }
+  footer { text-align: center; color: #8a909c; font-size: 12px; padding: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Welcome to the web on Aegis</h1>
+  <p>Everything on this page is laid out and drawn by the browser built into Aegis.</p>
+</header>
+<nav>
+  <a href="#text">Text</a><a href="#lists">Lists</a><a href="#tables">Tables</a>
+  <a href="#boxes">Boxes</a><a href="#pictures">Pictures</a><a href="#forms">Forms</a>
+</nav>
+<main>
+  <h2 id="text">Text</h2>
+  <p>Paragraphs wrap to the window. Text can be <b>bold</b>, <i>italic</i>, <b><i>both</i></b>,
+  <u>underlined</u>, <s>struck through</s>, <mark>highlighted</mark>, <small>small</small>,
+  or <code>code</code>. Links like <a href="about:home">the start page</a> are underlined.
+  Water is H<sub>2</sub>O and E = mc<sup>2</sup>. Characters: &copy; &mdash; &euro; &hellip; &rarr; caf&eacute;.</p>
+  <p class="note">Notes, borders, rounded corners and backgrounds come from CSS, including
+  <code>var(--accent)</code> custom properties.</p>
+  <blockquote>&ldquo;Simplicity is prerequisite for reliability.&rdquo; &mdash; Edsger Dijkstra</blockquote>
+  <pre>int main(void)
+{
+    printf("Hello from Aegis\n");
+    return 0;
+}</pre>
+
+  <h2 id="lists">Lists</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>Bullets</h3>
+      <ul><li>Files</li><li>Pictures<ul><li>Nested</li><li>Circles</li></ul></li><li>Music</li></ul>
+    </div>
+    <div class="card">
+      <h3>Numbers</h3>
+      <ol><li>Boot</li><li>Sign in</li><li>Browse</li></ol>
+    </div>
+    <div class="card">
+      <h3>Roman</h3>
+      <ol style="list-style-type: upper-roman"><li>First</li><li>Second</li><li>Third</li><li>Fourth</li></ol>
+    </div>
+  </div>
+
+  <h2 id="tables">Tables</h2>
+  <table>
+    <thead><tr><th>Program</th><th>Suite</th><th class="num">Size (KB)</th></tr></thead>
+    <tbody>
+      <tr><td>Terminal</td><td>System</td><td class="num">212</td></tr>
+      <tr><td>Web Browser</td><td>Default</td><td class="num">498</td></tr>
+      <tr><td>Window Builder</td><td>Development</td><td class="num">305</td></tr>
+      <tr><td colspan="2"><b>Total</b></td><td class="num"><b>1015</b></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="boxes">Flexible boxes</h2>
+  <div class="cards">
+    <div class="card"><h3>Grow</h3><p>These cards share the width with <code>flex: 1</code>.</p></div>
+    <div class="card"><h3>Wrap</h3><p>On a narrow window they wrap onto more rows.</p></div>
+    <div class="card"><h3>Gap</h3><p>The space between them comes from <code>gap</code>.</p></div>
+  </div>
+  <p class="center"><span class="pill">HTML</span><span class="pill">CSS</span><span class="pill">HTTP</span>
+  <span class="pill">HTTPS</span><span class="pill">PNG</span><span class="pill">JPEG</span></p>
+
+  <h2 id="pictures">Pictures</h2>
+  <div class="pics">
+    <img src="/usr/share/backgrounds/Mountains.png" alt="Mountains">
+    <img src="/usr/share/backgrounds/Sea.png" alt="Sea">
+    <img src="/usr/share/backgrounds/Aurora.png" alt="Aurora">
+  </div>
+
+  <h2 id="forms">Forms</h2>
+  <form action="welcome.html" method="get">
+    <div class="row"><label>Name</label><input type="text" name="name" placeholder="Ada Lovelace"></div>
+    <div class="row"><label>Password</label><input type="password" name="secret" value="hunter2"></div>
+    <div class="row"><label>Language</label>
+      <select name="lang"><option>English</option><option>Espa&ntilde;ol</option><option>Fran&ccedil;ais</option>
+      <option>Deutsch</option><option>中文</option></select></div>
+    <div class="row"><label>Options</label>
+      <input type="checkbox" name="news" checked> Newsletter
+      <input type="radio" name="size" value="s"> Small <input type="radio" name="size" value="l" checked> Large</div>
+    <div class="row"><label>Message</label><textarea name="msg" rows="3" cols="40">Hello!</textarea></div>
+    <div class="row"><label></label><input type="submit" value="Send"> <input type="reset">
+      <button type="submit" name="b" value="1">A button</button></div>
+  </form>
+</main>
+<footer>Aegis Web Browser &middot; HTML, CSS and pictures without scripts</footer>
+</body>
+</html>

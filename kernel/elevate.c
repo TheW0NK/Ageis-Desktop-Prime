@@ -145,6 +145,28 @@ static int exception_signal(uint64_t vector)
     return SIGSEGV;
 }
 
+// Registers and likely return addresses (words on the stack that point into
+// the program's code) of a crashed thread, for the log and the debugger.
+static void report_user_state(struct interrupt_frame *f)
+{
+    uint64_t words[96];
+    int shown = 0;
+
+    kprintf("  crash: rax=%lx rbx=%lx rcx=%lx rdx=%lx rsi=%lx rdi=%lx\n", f->rax, f->rbx, f->rcx, f->rdx,
+            f->rsi, f->rdi);
+    kprintf("  crash: rsp=%lx rbp=%lx r12=%lx r13=%lx r14=%lx r15=%lx\n", f->rsp, f->rbp, f->r12, f->r13,
+            f->r14, f->r15);
+    if (copy_from_user(words, f->rsp, sizeof(words)))
+        return;
+    kprintf("  crash: called from");
+    for (int i = 0; i < 96 && shown < 10; i++)
+        if (words[i] >= USER_REGION_BASE && words[i] < USER_REGION_BASE + 0x10000000ULL) {
+            kprintf(" %lx", words[i]);
+            shown++;
+        }
+    kprintf("\n");
+}
+
 static void user_exception(struct interrupt_frame *frame)
 {
     struct process *p = process_current();
@@ -174,8 +196,12 @@ static void user_exception(struct interrupt_frame *frame)
         kprintf("%s (pid %d, thread %lu) crashed: %s at 0x%lx", p->name, p->pid, t->id,
                 exception_report_name(frame->vector), frame->rip);
         if (frame->vector == 14)
-            kprintf(", address 0x%lx", read_cr2());
+            kprintf(", address 0x%lx (%s, %s)", read_cr2(), frame->error_code & 1 ? "protection" : "not present",
+                    frame->error_code & 2 ? "write" : "read");
         kprintf("\n");
+        sti();
+        report_user_state(frame);
+        cli();
     }
     signal_thread(t, sig);
 }

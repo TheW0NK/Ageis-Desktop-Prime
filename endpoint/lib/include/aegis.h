@@ -204,6 +204,9 @@ char *strncat(char *dst, const char *src, size_t n);
 char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
 char *strstr(const char *haystack, const char *needle);
+size_t strspn(const char *s, const char *accept);
+size_t strcspn(const char *s, const char *reject);
+char *strpbrk(const char *s, const char *accept);
 char *strdup(const char *s);
 char *strndup(const char *s, size_t max);
 int strcasecmp(const char *a, const char *b);
@@ -242,6 +245,7 @@ void qsort(void *base, size_t n, size_t size, int (*cmp)(const void *, const voi
 // stdio.h
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap);
 int snprintf(char *buf, size_t size, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+int sprintf(char *buf, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 int vdprintf(int fd, const char *fmt, va_list ap);
 int dprintf(int fd, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 int printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));

@@ -364,6 +364,18 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
     return n;
 }
 
+// Like snprintf without a size: the caller makes sure the buffer is big enough.
+int sprintf(char *buf, const char *fmt, ...)
+{
+    va_list ap;
+    int n;
+
+    va_start(ap, fmt);
+    n = vsnprintf(buf, (size_t)-1 >> 1, fmt, ap);
+    va_end(ap);
+    return n;
+}
+
 int vdprintf(int fd, const char *fmt, va_list ap)
 {
     char buf[1024];

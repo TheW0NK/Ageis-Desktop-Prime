@@ -57,7 +57,7 @@ reset a forgotten password but cannot recover the encrypted credentials.
 | 3. Networking | Done for IPv4 and TLS. IPv6 is deferred until something needs it. |
 | 4. Graphics and windowing | Done: compositor, libgfx, AUI and toolkit, sign-in screen, desktop shell, Terminal. Ctrl+Alt+F2 shows the text console, Ctrl+Alt+F1 returns. |
 | 5. Audio and camera | Planned |
-| 9. Apps | Next, ahead of 5–8: the apps exercise the toolkit, and audio, users and packaging plug into them. |
+| 9. Apps | In progress. Done: every System, Administrative and Development app, and from Default: Notepad, Calculator, Clock, Image Viewer and the Web Browser (its own HTML parser, CSS cascade with variables and media queries, block/inline/float/table/flex layout, forms, HTTP/HTTPS, cookies). Left: Email, then Audio player and Camera with phase 5. |
 | 6.–11. | Planned |
 
 ## Phases
