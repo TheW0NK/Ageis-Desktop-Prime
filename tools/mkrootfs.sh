@@ -29,6 +29,9 @@ echo default > "$ud"/system/settings/background
 # Sample pictures, also offered as backgrounds.
 "$here"/mksamples.py "$root"/usr/share/backgrounds
 cp "$root"/usr/share/backgrounds/*.png "$ud"/home/Images/
+# Sample music: one tune made here, and Ogg and MP3 versions of others.
+"$here"/mkmusic.py "$ud/home/Music/Aegis Theme.wav" theme
+cp "$here"/samples/*.ogg "$here"/samples/*.mp3 "$ud"/home/Music/
 cp "$endpoint"/sbin/* "$root"/sbin/
 cp "$endpoint"/bin/* "$root"/bin/
 cp -r "$here"/../endpoint/rootfs/. "$root"/
@@ -61,6 +64,7 @@ root:x:0:root
 adm:x:4:$user
 sudo:x:27:$user
 video:x:44:
+audio:x:63:$user
 input:x:50:
 $user:x:1000:$user
 GROUP

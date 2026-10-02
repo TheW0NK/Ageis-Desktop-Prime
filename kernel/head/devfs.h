@@ -5,6 +5,7 @@
 
 #define DEVFS_GID_ADM       4
 #define DEVFS_GID_INPUT     50
+#define DEVFS_GID_AUDIO     63
 
 // Returns 0 and a new file in *out, or a negative errno.
 typedef int (*devfs_open_fn)(void *ctx, uint32_t flags, struct file **out);

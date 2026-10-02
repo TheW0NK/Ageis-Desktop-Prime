@@ -330,6 +330,20 @@ int group_set_member(const char *group, const char *user, bool member);
 #define PRIVD_SOCKET "@aegis/privd"
 int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
 
+// Sound: the audio server (lib/audio.c). audio_open returns a descriptor
+// to write 16-bit little-endian PCM to; closing it ends the stream.
+struct audio_stream {
+    int id, volume;
+    char name[64];
+};
+int audio_open(const char *name, int rate, int channels);
+ssize_t audio_write(int fd, const void *pcm, size_t bytes);
+int audio_get_volume(bool *muted);              // 0..100, or -1 without a server
+int audio_set_volume(int volume);
+int audio_set_mute(bool mute);
+int audio_streams(struct audio_stream *out, int max);
+int audio_set_stream_volume(int id, int volume);
+
 // Base64.
 size_t base64_encode(const void *in, size_t len, char *out);    // out: 4 * ((len + 2) / 3) + 1 bytes
 ssize_t base64_decode(const char *in, size_t len, void *out);   // out: at least len * 3 / 4 bytes

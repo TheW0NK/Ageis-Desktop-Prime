@@ -336,6 +336,7 @@ int account_add(const char *name, const char *display, const char *password, boo
     snprintf(line, sizeof(line), "%s:%s:", name, hash);
     if (rewrite("/etc/shadow", NULL, NULL, line) < 0)
         return -1;
+    group_set_member("audio", name, true);
     if (admin) {
         group_set_member("sudo", name, true);
         group_set_member("adm", name, true);
@@ -380,6 +381,7 @@ int account_remove(const char *name, bool remove_files)
     }
     group_set_member("sudo", name, false);
     group_set_member("adm", name, false);
+    group_set_member("audio", name, false);
     if (rewrite("/etc/passwd", drop_line, (void *)name, NULL) < 0
         || rewrite("/etc/shadow", drop_line, (void *)name, NULL) < 0
         || rewrite("/etc/group", drop_line, (void *)name, NULL) < 0)

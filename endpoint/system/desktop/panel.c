@@ -1,7 +1,7 @@
 #include "desktop.h"
 
-// The taskbar: launcher button, a button per open window, clock, and the
-// session menu.
+// The taskbar: launcher button, a button per open window, the volume,
+// clock, and the session menu.
 
 struct task {
     uint32_t id;
@@ -20,6 +20,7 @@ static const char page[] =
     "    <button id='start' flat='true' symbol='apps' iconsize='22' text='Apps' onclick='launcher'/>"
     "    <separator/>"
     "    <hbox id='tasks' expand='1' spacing='4'/>"
+    "    <button id='volume' flat='true' symbol='volume' iconsize='20'/>"
     "    <button id='clock' flat='true' text='' onclick='clock'/>"
     "    <button id='session' flat='true' symbol='power' iconsize='20' menu='sessionmenu'/>"
     "  </hbox>"
@@ -206,6 +207,8 @@ static void panel_key(struct ui_window *w, struct wm_event *ev, void *u)
 {
     (void)w;
     (void)u;
+    if (volume_key(ev))
+        return;
     // The Meta key on its own opens the launcher.
     if ((ev->key == KEY_LEFTMETA || ev->key == KEY_RIGHTMETA) && ev->value == 0)
         launcher_toggle();
@@ -229,6 +232,7 @@ void panel_start(void)
     tick(NULL);
     ui_timer(1000, tick, NULL);
     launcher_init(panel);
+    volume_init(panel, ui_get(panel, "volume"));
     ui_window_show(panel);
     wm_subscribe();
 }

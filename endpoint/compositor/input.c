@@ -280,9 +280,11 @@ static void key(uint16_t code, int value)
     for (struct window *w = windows; w; w = w->next)
         if (w->role == WM_ROLE_POPUP && (w->flags & WM_FLAG_KEYBOARD) && w->visible && w->owner)
             target = w;
-    // The Meta key alone, and media keys, go to panels (the launcher).
+    // The Meta key alone, and media and volume keys, go to panels (the launcher
+    // and the volume control).
     if (!target || (target->role != WM_ROLE_POPUP
-                    && (code == KEY_LEFTMETA || code == KEY_RIGHTMETA || code >= 0x100))) {
+                    && (code == KEY_LEFTMETA || code == KEY_RIGHTMETA || code >= 0x100 || code == KEY_MUTE
+                        || code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN))) {
         for (struct window *w = windows; w; w = w->next) {
             if (w->role == WM_ROLE_PANEL && w->owner) {
                 target = w;

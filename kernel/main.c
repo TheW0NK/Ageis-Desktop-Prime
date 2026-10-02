@@ -114,6 +114,7 @@ static void kinit(void *arg)
         mount_dev();
     }
     display_devfs_init();
+    hda_init();
     smp_init();
     net_init();
     virtio_net_init();

@@ -1,7 +1,8 @@
 #include "aegis.h"
 
 // The first process. It keeps these running:
-//  - the privilege helper (/sbin/privd) and the job scheduler (/sbin/crond),
+//  - the privilege helper (/sbin/privd), the job scheduler (/sbin/crond) and
+//    the audio server (/sbin/audiod),
 //  - the text console's shell (the login prompt shown with Ctrl+Alt+F2),
 //  - the display (/sbin/compositor, which starts the sign-in screen).
 // Either is started again when it exits. If the display keeps failing (no
@@ -11,6 +12,7 @@
 #define COMPOSITOR  "/sbin/compositor"
 #define PRIVD       "/sbin/privd"
 #define CROND       "/sbin/crond"
+#define AUDIOD      "/sbin/audiod"
 
 struct service {
     const char *path;
@@ -36,6 +38,7 @@ int main(int argc, char **argv)
     struct service services[] = {
         { PRIVD, { "privd", NULL }, -1, 0, 0, false },
         { CROND, { "crond", NULL }, -1, 0, 0, false },
+        { AUDIOD, { "audiod", NULL }, -1, 0, 0, false },
         { TERMINAL, { "terminal", NULL }, -1, 0, 0, false },
         { COMPOSITOR, { "compositor", NULL }, -1, 0, 0, false },
     };
@@ -47,9 +50,9 @@ int main(int argc, char **argv)
     setenv("PATH", "/bin:/sbin");
     // No screen to draw on: text mode only (and then the console must run).
     if (stat("/dev/fb0", &st) < 0)
-        services[3].disabled = true;
+        services[4].disabled = true;
     else if (!feature_enabled("console"))
-        services[2].disabled = true;
+        services[3].disabled = true;
     if (!feature_enabled("cron"))
         services[1].disabled = true;
     for (int i = 0; i < n; i++)

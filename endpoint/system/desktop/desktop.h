@@ -29,4 +29,9 @@ void launcher_toggle(void);
 bool launcher_shown(void);
 void launcher_refresh_user(void);
 
+// volume.c
+void volume_init(struct ui_window *panel, struct widget *button);
+// Handles the volume keys; false for other keys.
+bool volume_key(struct wm_event *ev);
+
 #endif

@@ -30,7 +30,7 @@ SSL_FLAGS := -std=c11 -O2 -ffreestanding -nostdinc -isystem $(shell $(CC) -print
              -fpie -fno-stack-protector -fno-asynchronous-unwind-tables -w \
              -DBR_USE_URANDOM=0 -DBR_USE_UNIX_TIME=0 -DBR_USE_WIN32_RAND=0 -DBR_USE_WIN32_TIME=0 \
              -DBR_RDRAND=0 -DBR_AES_X86NI=0 -DBR_SSE2=0 -DBR_POWER8=0 -DBR_64=1 -DBR_LOMUL=1 -DAEGIS_NO_MINMAX
-CFLAGS    += -I$(SSL_DIR)/inc -I../third_party/musl-math/include -I../third_party/stb
+CFLAGS    += -I$(SSL_DIR)/inc -I../third_party/musl-math/include -I../third_party/stb -I../third_party/minimp3
 
 # The math library from musl.
 MATH_DIR   := ../third_party/musl-math
@@ -42,7 +42,7 @@ MATH_FLAGS := -std=c99 -O2 -ffreestanding -nostdinc -isystem $(shell $(CC) -prin
               -fno-asynchronous-unwind-tables -w
 
 # Graphics: drawing, fonts (stb_truetype) and images (stb_image).
-GFX_SRCS  := $(wildcard gfx/*.c ui/*.c script/*.c)
+GFX_SRCS  := $(wildcard gfx/*.c ui/*.c script/*.c sound/*.c)
 GFX_OBJS  := $(addprefix $(BUILD)/,$(GFX_SRCS:.c=.o))
 GFX_LIB   := $(BUILD)/libgfx.a
 LIBS      := $(LIBC) $(GFX_LIB) $(SSL_LIB) $(MATH_LIB)
@@ -88,6 +88,10 @@ $(BUILD)/gfx/%.o: gfx/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -Ilib/include/compat -Wno-sign-compare -Wno-unused-function -Wno-unused-parameter \
 		-Wno-implicit-fallthrough -Wno-missing-field-initializers -c $< -o $@
+
+$(BUILD)/sound/%.o: sound/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Ilib/include/compat -w -c $< -o $@
 
 $(GFX_LIB): $(GFX_OBJS)
 	$(AR) rcs $@ $^

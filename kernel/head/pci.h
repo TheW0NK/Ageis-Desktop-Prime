@@ -29,4 +29,7 @@ int pci_alloc_vector(irq_handler_t handler);
 int pci_enable_msi(const struct pci_device *d, irq_handler_t handler);
 int pci_enable_msix(const struct pci_device *d, int count, irq_handler_t handler);
 
+// Sound (drivers/hda.c): /dev/audio.
+void hda_init(void);
+
 #endif
