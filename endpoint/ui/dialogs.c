@@ -133,6 +133,59 @@ char *ui_prompt(struct ui_window *parent, const char *title, const char *text, c
     return result;
 }
 
+char *ui_prompt_password(struct ui_window *parent, const char *title, const char *text)
+{
+    struct modal m = { 0 };
+    struct widget *p, *in;
+    char *result = NULL;
+
+    if (!(m.win = dialog_window(parent, title, text_dialog_width(text))))
+        return NULL;
+    p = ui_create(m.win, "p");
+    ui_set_text(p, text);
+    ui_add(m.win->root, p);
+    in = ui_create(m.win, "password");
+    ui_add(m.win->root, in);
+    add_buttons(m.win, "OK|Cancel", &m);
+    m.win->focus = in;
+    run_modal(&m);
+    if (m.result == 0)
+        result = strdup(ui_text(in));
+    return result;
+}
+
+// Gets administrator rights for this program: asks for the user's password
+// and calls sudo(). Returns true once the program runs as root.
+bool ui_elevate(struct ui_window *parent, const char *why)
+{
+    struct user_info u;
+    char text[400];
+
+    if (geteuid() == 0)
+        return true;
+    if (user_current(&u) < 0 || !user_in_group(u.name, "sudo")) {
+        snprintf(text, sizeof(text), "%s\n\nThis needs an administrator. Your account is not one.",
+                 why ? why : "This change affects the whole computer.");
+        ui_message(parent, "Administrator needed", text, "OK");
+        return false;
+    }
+    for (int tries = 0; tries < 3; tries++) {
+        char *pw;
+        int r;
+
+        snprintf(text, sizeof(text), "%s Enter your password to continue.",
+                 tries ? "That password is not right." : why ? why : "This change affects the whole computer.");
+        if (!(pw = ui_prompt_password(parent, "Administrator", text)))
+            return false;
+        r = sudo(pw);
+        memset(pw, 0, strlen(pw));
+        free(pw);
+        if (r == 0)
+            return true;
+    }
+    return false;
+}
+
 // ---- File chooser ----
 
 struct entry {

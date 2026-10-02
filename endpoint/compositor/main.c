@@ -519,6 +519,17 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
             }
         }
         break;
+    case WM_SETTING_CHANGED:
+        m->text[WM_TEXT_MAX - 1] = 0;
+        if (!strncmp(m->text, "theme=", 6))
+            set_frame_theme(m->text + 6);
+        // Pass it on to the user's other programs.
+        r.type = WM_SETTING;
+        strlcpy(r.text, m->text, sizeof(r.text));
+        for (struct client *k = clients; k; k = k->next)
+            if (k != c && (k->uid == c->uid || c->uid == 0))
+                send_msg(k, &r);
+        break;
     case WM_BEGIN_MOVE:
         if (w && window_framed(w))
             begin_move(w);

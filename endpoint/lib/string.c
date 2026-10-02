@@ -146,6 +146,16 @@ char *strdup(const char *s)
     return d ? memcpy(d, s, len) : NULL;
 }
 
+char *strncat(char *dst, const char *src, size_t n)
+{
+    char *d = dst + strlen(dst);
+
+    while (n-- && *src)
+        *d++ = *src++;
+    *d = 0;
+    return dst;
+}
+
 size_t strlcat(char *dst, const char *src, size_t size)
 {
     size_t len = strnlen(dst, size);

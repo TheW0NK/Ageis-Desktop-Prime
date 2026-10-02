@@ -212,6 +212,11 @@ bool attr_bool(const char *v)
     return !v || !*v || !strcmp(v, "true") || !strcmp(v, "yes") || !strcmp(v, "1") || !strcmp(v, "on");
 }
 
+bool ui_attr_true(const char *v)
+{
+    return v && attr_bool(v);
+}
+
 static enum align parse_align(const char *v)
 {
     if (!strcmp(v, "start") || !strcmp(v, "left") || !strcmp(v, "top"))
@@ -1105,6 +1110,21 @@ void ui_window_set_title(struct ui_window *win, const char *title)
         wm_set_title(win->wm, win->title);
 }
 
+// Resizes the window to fit its content (keeping a requested width).
+void ui_window_fit(struct ui_window *win)
+{
+    int w, h, saved_h;
+
+    if (!win || !win->root)
+        return;
+    saved_h = win->height;
+    win->height = 0;
+    ui_window_measure(win, &w, &h);
+    win->height = saved_h;
+    if (win->wm && (w != win->wm->width || h != win->wm->height))
+        wm_resize(win->wm, w, h);
+}
+
 void ui_window_set_flags(struct ui_window *win, uint32_t flags)
 {
     if (win && !win->wm)
@@ -1251,6 +1271,7 @@ static struct ui_window *window_for(struct wm_window *wm)
     return NULL;
 }
 
+bool follow_theme;
 static void (*system_event)(struct wm_event *, void *);
 static void *system_event_user;
 
@@ -1264,6 +1285,14 @@ static void dispatch(struct wm_event *ev)
 {
     struct ui_window *win = ev->window ? window_for(ev->window) : NULL;
 
+    if (ev->type == WM_EV_SETTING) {
+        // Every app follows theme changes unless it chose its own theme.
+        if (!strncmp(ev->msg.text, "theme=", 6) && follow_theme)
+            ui_set_theme(ev->msg.text + 6);
+        if (system_event)
+            system_event(ev, system_event_user);
+        return;
+    }
     if ((ev->type == WM_EV_LIST || ev->type == WM_EV_SCREEN) && system_event) {
         system_event(ev, system_event_user);
         return;

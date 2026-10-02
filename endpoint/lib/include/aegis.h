@@ -196,6 +196,7 @@ int strncmp(const char *a, const char *b, size_t n);
 char *strcpy(char *dst, const char *src);
 char *strncpy(char *dst, const char *src, size_t n);
 char *strcat(char *dst, const char *src);
+char *strncat(char *dst, const char *src, size_t n);
 char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
 char *strstr(const char *haystack, const char *needle);
@@ -302,6 +303,26 @@ int app_for_file(const char *name, struct app_info *out);
 int app_launch(const struct app_info *a, const char *arg);
 // Starts a program with its standard streams on /dev/null; returns the pid.
 int launch(const char *path, const char *arg);
+
+// Accounts (lib/accounts.c). Changes need root.
+int password_hash(const char *password, char *out, size_t size);
+bool password_matches(const char *hash, const char *password);
+int account_check_password(const char *name, const char *password);
+int account_set_password(const char *name, const char *password);
+int account_set_display_name(const char *name, const char *display);
+int account_add(const char *name, const char *display, const char *password, bool admin);
+int account_remove(const char *name, bool remove_files);
+bool account_is_admin(const char *name);
+int group_set_member(const char *group, const char *user, bool member);
+// Any user: through /sbin/privd.
+#define PRIVD_SOCKET "@aegis/privd"
+int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
+
+// Whole trees (lib/fileops.c).
+int copy_path(const char *src, const char *dst);
+int remove_path(const char *path);
+int move_path(const char *src, const char *dst);
+void unique_name(const char *dir, const char *name, char *out, size_t size);
 
 // Directory reading.
 struct dir_stream {

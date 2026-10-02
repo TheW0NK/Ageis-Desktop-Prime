@@ -10,11 +10,29 @@ static struct rect cursor_drawn;
 // Theme.
 #define DESKTOP_TOP     RGB(0x24324A)
 #define DESKTOP_BOTTOM  RGB(0x0F1726)
-#define FRAME_ACTIVE    RGB(0xE8ECF2)
-#define FRAME_INACTIVE  RGB(0xF4F6F9)
-#define FRAME_BORDER    RGB(0xBCC5D1)
-#define TITLE_ACTIVE    RGB(0x1D2633)
-#define TITLE_INACTIVE  RGB(0x8A94A3)
+// Frame colours follow the session's theme (WM_SETTING_CHANGED theme=...).
+struct frame_theme {
+    color_t active, inactive, border, title, title_dim, content;
+};
+
+static const struct frame_theme frame_themes[] = {
+    { RGB(0xE8ECF2), RGB(0xF4F6F9), RGB(0xBCC5D1), RGB(0x1D2633), RGB(0x8A94A3), RGB(0xF4F6F9) },     // light
+    { RGB(0x2B313A), RGB(0x22272E), RGB(0x48505B), RGB(0xE6EAF0), RGB(0x8892A0), RGB(0x1E2228) },     // dark
+    { RGB(0x000000), RGB(0x000000), RGB(0xFFFFFF), RGB(0xFFE600), RGB(0xFFFFFF), RGB(0x000000) },     // contrast
+};
+static const struct frame_theme *ft = &frame_themes[0];
+
+void set_frame_theme(const char *name)
+{
+    ft = &frame_themes[!strcmp(name, "dark") ? 1 : !strncmp(name, "high", 4) || !strcmp(name, "contrast") ? 2 : 0];
+    damage((struct rect){ 0, 0, screen.width, screen.height });
+}
+
+#define FRAME_ACTIVE    (ft->active)
+#define FRAME_INACTIVE  (ft->inactive)
+#define FRAME_BORDER    (ft->border)
+#define TITLE_ACTIVE    (ft->title)
+#define TITLE_INACTIVE  (ft->title_dim)
 #define CLOSE_HOVER     RGB(0xE5534B)
 #define BUTTON_HOVER    ARGB(40, 0, 0, 0)
 
@@ -173,9 +191,9 @@ static void draw_content(struct gfx *g, struct window *w)
         }
         // Content smaller than the window (while it catches up with a resize).
         if (from.w < c.w)
-            gfx_fill(g, (struct rect){ c.x + from.w, c.y, c.w - from.w, c.h }, RGB(0xF4F6F9));
+            gfx_fill(g, (struct rect){ c.x + from.w, c.y, c.w - from.w, c.h }, ft->content);
         if (from.h < c.h)
-            gfx_fill(g, (struct rect){ c.x, c.y + from.h, from.w, c.h - from.h }, RGB(0xF4F6F9));
+            gfx_fill(g, (struct rect){ c.x, c.y + from.h, from.w, c.h - from.h }, ft->content);
         return;
     }
     if (w->role == WM_ROLE_POPUP)

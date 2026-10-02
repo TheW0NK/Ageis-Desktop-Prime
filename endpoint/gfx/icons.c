@@ -701,7 +701,14 @@ static void draw_file_icon(struct gfx *g, const char *name, struct rect r)
 
 void icon_draw(struct gfx *g, const char *name, struct rect r)
 {
-    const struct symbol *s = find(name);
+    const struct symbol *s;
+
+    // "glyph:name" is a symbol in the accent colour (sidebars, lists).
+    if (!strncmp(name, "glyph:", 6)) {
+        icon_draw_glyph(g, name + 6, r, RGB(0x3D7BFF));
+        return;
+    }
+    s = find(name);
     int size = MIN(r.w, r.h);
     struct rect tile = { r.x + (r.w - size) / 2, r.y + (r.h - size) / 2, size, size };
 

@@ -16,6 +16,7 @@ struct column {
 struct list {
     char **items;
     struct surface **icons;
+    bool *shared;                   // icons the list does not own
     int n, cap;
     int sy, hover;
     struct column cols[MAX_COLS];
@@ -29,6 +30,13 @@ struct list {
 static struct list *L(struct widget *w)
 {
     return w->data;
+}
+
+static void drop_icon(struct list *l, int i)
+{
+    if (!l->shared[i])
+        surface_destroy(l->icons[i]);
+    l->icons[i] = NULL;
 }
 
 static bool is_list(struct widget *w)
@@ -154,7 +162,7 @@ void ui_list_clear(struct widget *w)
     l = L(w);
     for (int i = 0; i < l->n; i++) {
         free(l->items[i]);
-        surface_destroy(l->icons[i]);
+        drop_icon(l, i);
     }
     l->n = 0;
     l->sy = 0;
@@ -183,11 +191,19 @@ int ui_list_add(struct widget *w, const char *text)
         if (!(icons = realloc(l->icons, cap * sizeof(*icons))))
             return -1;
         l->icons = icons;
+        {
+            bool *sh = realloc(l->shared, cap * sizeof(bool));
+
+            if (!sh)
+                return -1;
+            l->shared = sh;
+        }
         l->cap = cap;
     }
     if (!(l->items[l->n] = strdup(text ? text : "")))
         return -1;
     l->icons[l->n] = NULL;
+    l->shared[l->n] = false;
     if (!strcmp(w->tag, "dropdown") && w->win)
         ui_relayout(w->win);
     ui_redraw(w);
@@ -222,9 +238,10 @@ void ui_list_remove(struct widget *w, int i)
     if (!is_list(w) || i < 0 || i >= (l = L(w))->n)
         return;
     free(l->items[i]);
-    surface_destroy(l->icons[i]);
+    drop_icon(l, i);
     memmove(l->items + i, l->items + i + 1, (l->n - i - 1) * sizeof(char *));
     memmove(l->icons + i, l->icons + i + 1, (l->n - i - 1) * sizeof(*l->icons));
+    memmove(l->shared + i, l->shared + i + 1, (l->n - i - 1) * sizeof(bool));
     l->n--;
     if (w->value >= l->n)
         w->value = l->n - 1;
@@ -254,8 +271,18 @@ void ui_list_set_icon(struct widget *w, int i, struct surface *icon)
         surface_destroy(icon);
         return;
     }
-    surface_destroy(L(w)->icons[i]);
+    drop_icon(L(w), i);
     L(w)->icons[i] = icon;
+    ui_redraw(w);
+}
+
+void ui_list_set_icon_shared(struct widget *w, int i, struct surface *icon)
+{
+    if (!is_list(w) || i < 0 || i >= L(w)->n)
+        return;
+    drop_icon(L(w), i);
+    L(w)->icons[i] = icon;
+    L(w)->shared[i] = true;
     ui_redraw(w);
 }
 
@@ -630,12 +657,13 @@ static void list_free(struct widget *w)
         return;
     for (int i = 0; i < l->n; i++) {
         free(l->items[i]);
-        surface_destroy(l->icons[i]);
+        drop_icon(l, i);
     }
     for (int i = 0; i < l->ncols; i++)
         free(l->cols[i].title);
     free(l->items);
     free(l->icons);
+    free(l->shared);
     free(l);
 }
 

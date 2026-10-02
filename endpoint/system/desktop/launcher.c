@@ -151,6 +151,14 @@ static void key(struct ui_window *w, struct wm_event *ev, void *u)
         ui_window_hide(w);
 }
 
+void launcher_refresh_user(void)
+{
+    if (!win)
+        return;
+    ui_set_text(ui_get(win, "name"), me.display);
+    ui_redraw(ui_get(win, "avatar"));
+}
+
 bool launcher_shown(void)
 {
     return win && ui_wm_window(win) && ui_wm_window(win)->visible;

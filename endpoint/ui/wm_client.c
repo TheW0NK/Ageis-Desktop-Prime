@@ -192,6 +192,14 @@ void wm_subscribe(void)
     send_simple(WM_SUBSCRIBE, NULL, 0, 0, 0, 0);
 }
 
+void wm_setting_changed(const char *key, const char *value)
+{
+    struct wm_msg m = { WM_SETTING_CHANGED, 0, 0, 0, 0, 0, 0, 0, { 0 } };
+
+    snprintf(m.text, sizeof(m.text), "%s=%s", key, value);
+    wm_send(&m);
+}
+
 void wm_activate(uint32_t id, bool toggle)
 {
     struct wm_msg m = { WM_ACTIVATE, id, toggle, 0, 0, 0, 0, 0, { 0 } };
@@ -294,6 +302,10 @@ bool wm_next_event(struct wm_event *ev, int timeout_ms)
     case WM_LIST_REMOVE:
     case WM_LIST_CHANGE:
         ev->type = WM_EV_LIST;
+        ev->window = NULL;
+        break;
+    case WM_SETTING:
+        ev->type = WM_EV_SETTING;
         ev->window = NULL;
         break;
     case WM_SCREEN:

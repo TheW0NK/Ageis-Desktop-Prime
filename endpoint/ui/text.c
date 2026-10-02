@@ -986,6 +986,47 @@ static void edit_free(struct widget *w)
     free(e);
 }
 
+// Runs an editing command: undo, redo, cut, copy, paste, selectall, delete.
+void ui_edit_command(struct widget *w, const char *cmd)
+{
+    struct edit *e;
+
+    if (!w || w->cls->measure != edit_measure)
+        return;
+    e = E(w);
+    if (!strcmp(cmd, "selectall")) {
+        e->anchor = 0;
+        move_to(w, e->len, true);
+    } else if (!strcmp(cmd, "copy")) {
+        copy_selection(w);
+    } else if (!strcmp(cmd, "cut")) {
+        copy_selection(w);
+        if (has_selection(e) && !e->password)
+            replace(w, sel_start(e), sel_end(e), "", 0, 0);
+    } else if (!strcmp(cmd, "paste")) {
+        insert_text(w, ui_clipboard_get(), 0);
+    } else if (!strcmp(cmd, "delete")) {
+        if (has_selection(e))
+            replace(w, sel_start(e), sel_end(e), "", 0, 0);
+    } else if (!strcmp(cmd, "undo")) {
+        restore(w, e->undo, &e->nundo, e->redo, &e->nredo);
+    } else if (!strcmp(cmd, "redo")) {
+        restore(w, e->redo, &e->nredo, e->undo, &e->nundo);
+    }
+}
+
+int ui_textarea_selection(struct widget *w, int *start, int *end)
+{
+    struct edit *e;
+
+    if (!w || w->cls->measure != edit_measure)
+        return -1;
+    e = E(w);
+    *start = sel_start(e);
+    *end = sel_end(e);
+    return 0;
+}
+
 void ui_textarea_insert(struct widget *w, const char *text)
 {
     if (w && w->cls->measure == edit_measure)

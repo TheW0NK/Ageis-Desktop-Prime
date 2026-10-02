@@ -82,6 +82,19 @@ static void window_list(struct wm_event *ev, void *u)
     struct task *t;
 
     (void)u;
+    if (ev->type == WM_EV_SETTING) {
+        if (!strncmp(m->text, "background=", 11))
+            background_reload();
+        else if (!strncmp(m->text, "name=", 5) || !strncmp(m->text, "picture=", 8)) {
+            char who[128];
+
+            user_current(&me);
+            snprintf(who, sizeof(who), "Signed in as %s", me.display);
+            ui_set_text(ui_get(panel, "who"), who);
+            launcher_refresh_user();
+        }
+        return;
+    }
     if (ev->type != WM_EV_LIST)
         return;
     switch (m->type) {

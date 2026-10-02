@@ -44,6 +44,8 @@ void ui_window_hide(struct ui_window *win);
 void ui_window_close(struct ui_window *win);
 void ui_window_set_title(struct ui_window *win, const char *title);
 void ui_window_set_size(struct ui_window *win, int width, int height);
+// Resizes the window to its content's natural height.
+void ui_window_fit(struct ui_window *win);
 // Position before showing: screen coordinates, or for popups relative to
 // the parent window's content.
 void ui_window_move(struct ui_window *win, int x, int y);
@@ -92,6 +94,8 @@ void ui_focus(struct widget *w);
 bool ui_is_focused_widget(struct widget *w);
 void ui_set_attr(struct widget *w, const char *name, const char *value);
 const char *ui_attr(struct widget *w, const char *name);
+// True for "true", "yes", "1" or "on" (false for NULL).
+bool ui_attr_true(const char *value);
 void ui_redraw(struct widget *w);
 void ui_relayout(struct ui_window *win);
 void ui_set_handler(struct widget *w, const char *event, ui_handler fn, void *user);
@@ -110,6 +114,8 @@ int ui_list_selected(struct widget *w);
 void ui_list_select(struct widget *w, int index);
 // An image shown at the start of each row (optional).
 void ui_list_set_icon(struct widget *w, int index, struct surface *icon);
+// The same for an icon the list must not free (from icon_get()).
+void ui_list_set_icon_shared(struct widget *w, int index, struct surface *icon);
 // Copies one column of a row into buf and returns buf.
 const char *ui_list_column(struct widget *w, int index, int column, char *buf, size_t size);
 
@@ -122,6 +128,9 @@ void ui_image_set(struct widget *w, struct surface *s, bool owned);
 
 // Text areas.
 void ui_textarea_insert(struct widget *w, const char *text);
+// Text fields: "undo", "redo", "cut", "copy", "paste", "selectall", "delete".
+void ui_edit_command(struct widget *w, const char *cmd);
+int ui_textarea_selection(struct widget *w, int *start, int *end);
 int ui_textarea_cursor(struct widget *w);
 void ui_textarea_select(struct widget *w, int start, int end);
 bool ui_textarea_modified(struct widget *w);
@@ -152,6 +161,11 @@ struct widget *ui_parse_into(struct widget *parent, const char *aui);
 int ui_message(struct ui_window *parent, const char *title, const char *text, const char *buttons);
 // Asks for a line of text; returns a malloc'd string or NULL if cancelled.
 char *ui_prompt(struct ui_window *parent, const char *title, const char *text, const char *initial);
+// Asks for a password (shown as bullets); free the result.
+char *ui_prompt_password(struct ui_window *parent, const char *title, const char *text);
+// Makes this program an administrator (root) after asking for the user's
+// password; false if they cancel or are not an administrator.
+bool ui_elevate(struct ui_window *parent, const char *why);
 // File chooser. save: ask for a new name. Returns a malloc'd path or NULL.
 char *ui_file_dialog(struct ui_window *parent, const char *title, const char *start_dir, bool save,
                      const char *suggested_name);

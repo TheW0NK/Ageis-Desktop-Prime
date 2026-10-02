@@ -75,7 +75,11 @@ static void box_arrange(struct widget *w)
             continue;
         }
         len = h ? c->pref_w : c->pref_h;
-        if (c->expand && extra > 0 && weights) {
+        // A fixed size along the box's direction wins over expand.
+        if (c->expand && (h ? c->fixed_w : c->fixed_h) >= 0) {
+            weights -= c->expand;
+            shrinkable -= len;
+        } else if (c->expand && extra > 0 && weights) {
             int share = extra * c->expand / weights;
 
             extra -= share;
@@ -91,7 +95,7 @@ static void box_arrange(struct widget *w)
             len -= MAX(give, 0);
         }
         pref_cross = h ? c->pref_h : c->pref_w;
-        if (c->align == ALIGN_STRETCH) {
+        if (c->align == ALIGN_STRETCH && (h ? c->fixed_h : c->fixed_w) < 0) {
             cross = cross_len;
         } else {
             cross = MIN(pref_cross, cross_len);

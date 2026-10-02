@@ -52,8 +52,11 @@ void ui_set_theme(const char *name)
 }
 
 // Reads the theme from the user's settings (or AEGIS_THEME) once.
+extern bool follow_theme;
+
 void ui_load_user_theme(void)
 {
+    follow_theme = true;
     const char *env = getenv("AEGIS_THEME");
     char path[256], buf[64];
     const char *home = getenv("HOME");

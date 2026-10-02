@@ -18,6 +18,13 @@ int main(void)
         dprintf(STDERR_FILENO, "desktop: no display\n");
         return 1;
     }
+    {
+        char theme[32];
+
+        // Window frames follow the user's theme.
+        if (user_setting_get(&me, "theme", theme, sizeof(theme)) > 0)
+            wm_setting_changed("theme", theme);
+    }
     background_start();
     panel_start();
     code = ui_run();

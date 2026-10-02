@@ -297,7 +297,7 @@ static void input(struct widget *w, struct wm_event *ev, void *u)
 
 // ---- Keeping up with changes ----
 
-static void load_wallpaper(void)
+void background_reload(void)
 {
     char spec[256];
 
@@ -316,7 +316,7 @@ static bool poll_changes(void *u)
     struct aegis_stat st;
 
     (void)u;
-    load_wallpaper();
+    background_reload();
     if (stat(desktop_dir, &st) == 0 && st.mtime != desktop_mtime) {
         desktop_mtime = st.mtime;
         scan();
@@ -336,7 +336,7 @@ void background_start(void)
     canvas = ui_create(win, "canvas");
     ui_add(ui_root(win), canvas);
     ui_canvas_set(canvas, paint, input, NULL);
-    load_wallpaper();
+    background_reload();
     scan();
     if (stat(desktop_dir, &st) == 0)
         desktop_mtime = st.mtime;

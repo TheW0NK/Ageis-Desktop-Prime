@@ -15,6 +15,7 @@ extern struct user_info me;
 
 // background.c
 void background_start(void);
+void background_reload(void);
 // Opens a file, folder or .shortcut the way a double click would.
 void open_path(const char *path);
 
@@ -26,5 +27,6 @@ void end_session(int code);
 void launcher_init(struct ui_window *panel);
 void launcher_toggle(void);
 bool launcher_shown(void);
+void launcher_refresh_user(void);
 
 #endif

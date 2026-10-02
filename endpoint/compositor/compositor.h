@@ -65,6 +65,7 @@ bool window_framed(struct window *w);
 int cursor_for_point(struct window *w, int x, int y);
 void set_cursor_shape(int shape);
 int screenshot(const char *path);
+void set_frame_theme(const char *name);
 
 // input.c
 int input_open_device(void);

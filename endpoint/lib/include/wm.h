@@ -24,7 +24,7 @@ struct wm_window {
 
 enum wm_event_type {
     WM_EV_NONE, WM_EV_KEY, WM_EV_POINTER, WM_EV_RESIZE, WM_EV_CLOSE, WM_EV_FOCUS,
-    WM_EV_FRAME, WM_EV_POPUP_DONE, WM_EV_LIST, WM_EV_SCREEN,
+    WM_EV_FRAME, WM_EV_POPUP_DONE, WM_EV_LIST, WM_EV_SCREEN, WM_EV_SETTING,
 };
 
 struct wm_event {
@@ -74,5 +74,7 @@ bool wm_connected(void);
 // For panels: window list updates arrive as WM_EV_LIST events.
 void wm_subscribe(void);
 void wm_activate(uint32_t global_id, bool toggle);
+// Tells the session's programs (and the window frames) that a setting changed.
+void wm_setting_changed(const char *key, const char *value);
 
 #endif

@@ -131,6 +131,7 @@ static bool watch_session(void *u)
         struct wm_msg m = { WM_SET_SESSION, 0, -1, 0, 0, 0, 0, 0, { 0 } };
 
         wm_send(&m);
+        wm_setting_changed("theme", "light");
     }
     if (WIFEXITED(status) && WEXITSTATUS(status) == 10)
         power(REBOOT_POWEROFF);

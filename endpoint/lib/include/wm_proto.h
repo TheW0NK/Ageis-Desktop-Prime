@@ -31,6 +31,7 @@ enum wm_type {
     WM_SET_SESSION,         // a = uid allowed to connect (greeter only, root)
     WM_BEGIN_MOVE,          // window: start dragging the window with the pointer
     WM_SCREENSHOT,          // text = path to save a PNG of the screen
+    WM_SETTING_CHANGED,     // text = "key=value": tell the session's programs (theme, background, ...)
 
     // Compositor to client.
     WM_WELCOME = 64,        // a = screen width, b = screen height, c = work area height
@@ -49,6 +50,7 @@ enum wm_type {
     WM_LIST_CHANGE,         // window = global id, text = title, a = state
     WM_ERROR,               // a = errno, text = message
     WM_SCREEN,              // a = width, b = height after a mode change
+    WM_SETTING,             // text = "key=value" from WM_SETTING_CHANGED
 };
 
 // Window roles (in flags).
