@@ -240,7 +240,27 @@ static uint32_t kmsg_poll(struct file *f, struct poll_table *pt)
     return f->offset < klog_head() ? POLLIN : 0;
 }
 
-static const struct file_ops kmsg_ops = { .read = kmsg_read, .poll = kmsg_poll };
+// Root's programs (services) add lines to the log by writing here.
+static int64_t kmsg_write(struct file *f, const void *buf, size_t size)
+{
+    char line[512];
+    size_t n = MIN(size, sizeof(line) - 1);
+
+    (void)f;
+    memcpy(line, buf, n);
+    line[n] = 0;
+    // One message per write; drop a trailing newline, add our own.
+    while (n && (line[n - 1] == '\n' || line[n - 1] == '\r'))
+        line[--n] = 0;
+    for (size_t i = 0; i < n; i++)
+        if ((unsigned char)line[i] < 0x20 && line[i] != '\t')
+            line[i] = ' ';
+    if (n)
+        kprintf("%s\n", line);
+    return size;
+}
+
+static const struct file_ops kmsg_ops = { .read = kmsg_read, .write = kmsg_write, .poll = kmsg_poll };
 
 // Waking readers from kprintf itself is unsafe (it runs under scheduler
 // locks), so a thread announces new log data instead.

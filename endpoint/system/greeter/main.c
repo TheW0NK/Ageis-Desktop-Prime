@@ -127,6 +127,8 @@ static bool watch_session(void *u)
         return true;
     session_pid = -1;
     close_pipes();
+    syslog("greeter", "session of %s ended (status %d)", users[current].name,
+           WIFEXITED(status) ? WEXITSTATUS(status) : -1);
     {
         struct wm_msg m = { WM_SET_SESSION, 0, -1, 0, 0, 0, 0, 0, { 0 } };
 
@@ -159,11 +161,12 @@ static void session_reply(int fd, void *u)
         ui_window_hide(win);
         ui_set_text(ui_get(win, "password"), "");
         dprintf(session_in, "go\n");
-        dprintf(STDERR_FILENO, "greeter: signed in %s\n", users[current].name);
+        syslog("greeter", "signed in %s", users[current].name);
         ui_unwatch_fd(fd);
         ui_timer(300, watch_session, NULL);
         return;
     }
+    syslog("greeter", "sign-in failed for %s", users[current].name);
     set_error(n > 0 && strstr(line, "password") ? "That password is not right." : "Signing in failed.");
     set_busy(false);
     close_pipes();
@@ -293,7 +296,7 @@ int main(void)
     ui_timer(1000, tick, NULL);
     ui_window_show(win);
     ui_focus(ui_get(win, "password"));
-    dprintf(STDERR_FILENO, "greeter: ready\n");
+    syslog("greeter", "ready");
     // The greeter never closes itself: the display ends with it.
     while (wm_connected())
         ui_run();

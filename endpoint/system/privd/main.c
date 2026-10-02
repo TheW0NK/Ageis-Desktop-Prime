@@ -44,11 +44,13 @@ static void handle(int fd)
         if (strlen(fields[2]) < 4) {
             reply(fd, "error The new password is too short.");
         } else if (account_check_password(u.name, fields[1]) < 0) {
+            syslog("privd", "wrong current password for %s", u.name);
             msleep(1500);
             reply(fd, "error The current password is not right.");
         } else if (account_set_password(u.name, fields[2]) < 0) {
             reply(fd, "error The password could not be saved.");
         } else {
+            syslog("privd", "password changed for %s", u.name);
             reply(fd, "ok");
         }
         memset(req, 0, sizeof(req));

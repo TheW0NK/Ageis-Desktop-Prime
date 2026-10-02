@@ -243,7 +243,7 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
 
     for (; *fmt; fmt++) {
         bool left = false, alt = false;
-        char pad = ' ';
+        char pad = ' ', sign = 0;
         int width = 0, length = 0, precision = -1;
 
         if (*fmt != '%') {
@@ -255,6 +255,10 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
                 left = true;
             else if (*fmt == '#')
                 alt = true;
+            else if (*fmt == '+')
+                sign = '+';
+            else if (*fmt == ' ' && !sign)
+                sign = ' ';
             else if (*fmt == '0')
                 pad = '0';
             else
@@ -284,6 +288,11 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
         case 'd':
         case 'i': {
             int64_t v = length ? va_arg(ap, int64_t) : va_arg(ap, int);
+
+            if (v >= 0 && sign) {
+                put(&o, sign);
+                width--;
+            }
             put_number(&o, v < 0 ? -(uint64_t)v : (uint64_t)v, v < 0, 10, false, width, left, pad);
             break;
         }
@@ -318,7 +327,15 @@ int vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
         case 'E':
         case 'g':
         case 'G':
-            put_double(&o, va_arg(ap, double), *fmt == 'F' ? 'f' : *fmt, precision, width, left, pad, alt);
+        {
+            double v = va_arg(ap, double);
+
+            if (sign && !(v < 0)) {
+                put(&o, sign);
+                width--;
+            }
+            put_double(&o, v, *fmt == 'F' ? 'f' : *fmt, precision, width, left, pad, alt);
+        }
             break;
         case '%':
             put(&o, '%');
@@ -474,5 +491,25 @@ void closedir(struct dir_stream *d)
     if (d) {
         close(d->fd);
         free(d);
+    }
+}
+
+// Adds a line to the system log (/dev/kmsg, root only); others write to
+// standard error.
+void syslog(const char *tag, const char *fmt, ...)
+{
+    char line[480];
+    int n, fd;
+    va_list ap;
+
+    n = snprintf(line, sizeof(line), "%s: ", tag);
+    va_start(ap, fmt);
+    vsnprintf(line + n, sizeof(line) - n, fmt, ap);
+    va_end(ap);
+    if ((fd = open("/dev/kmsg", O_WRONLY)) >= 0) {
+        write(fd, line, strlen(line));
+        close(fd);
+    } else {
+        dprintf(STDERR_FILENO, "%s\n", line);
     }
 }

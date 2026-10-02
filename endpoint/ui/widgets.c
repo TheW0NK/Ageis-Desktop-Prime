@@ -1517,10 +1517,11 @@ static bool canvas_key(struct widget *w, struct wm_event *ev)
     if (!c || !c->input)
         return false;
     // Tab moves the focus unless the canvas wants it (terminals).
-    if (ev->key == KEY_TAB && !(ui_attr(w, "wanttab") && attr_bool(ui_attr(w, "wanttab"))))
+    if (ev->key == KEY_TAB && !ui_attr_true(ui_attr(w, "wanttab")))
         return false;
     c->input(w, ev, c->user);
-    return true;
+    // Keys go on to shortcuts unless the canvas takes them all.
+    return ui_attr_true(ui_attr(w, "wantkeys")) || ui_attr_true(ui_attr(w, "wanttab"));
 }
 
 static const struct wclass canvas_class = { "canvas", .init = canvas_init, .measure = canvas_measure,

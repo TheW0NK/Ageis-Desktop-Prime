@@ -246,6 +246,8 @@ int putchar(int c);
 int fputs_fd(const char *s, int fd);
 void perror(const char *msg);
 ssize_t read_line(int fd, char *buf, size_t size);
+// A line in the system log (root), or on standard error.
+void syslog(const char *tag, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 // time.h
 struct tm {

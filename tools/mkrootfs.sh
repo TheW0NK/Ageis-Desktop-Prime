@@ -26,6 +26,9 @@ echo "$user" > "$ud"/system/settings/name
 echo light > "$ud"/system/settings/theme
 echo en > "$ud"/system/settings/language
 echo default > "$ud"/system/settings/background
+# Sample pictures, also offered as backgrounds.
+"$here"/mksamples.py "$root"/usr/share/backgrounds
+cp "$root"/usr/share/backgrounds/*.png "$ud"/home/Images/
 cp "$endpoint"/sbin/* "$root"/sbin/
 cp "$endpoint"/bin/* "$root"/bin/
 cp -r "$here"/../endpoint/rootfs/. "$root"/
