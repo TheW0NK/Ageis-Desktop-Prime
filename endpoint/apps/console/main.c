@@ -128,7 +128,7 @@ static void fill_groups(struct widget *t)
 
     if (fd < 0)
         return;
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         char *f[4] = { line, NULL, NULL, NULL }, row[600];
         int k = 1;
 
@@ -221,7 +221,7 @@ static void add_crontab(struct widget *t, const char *path, bool system, const c
 
     if (fd < 0)
         return;
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         char row[700];
 
         if (!cron_parse(line, system, &j))

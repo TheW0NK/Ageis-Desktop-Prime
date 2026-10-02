@@ -192,7 +192,7 @@ static void load_jobs(void)
     free_other();
     if (fd < 0)
         return;
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         char copy[512];
 
         strlcpy(copy, line, sizeof(copy));

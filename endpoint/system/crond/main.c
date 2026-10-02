@@ -98,7 +98,7 @@ static void run_file(const char *path, bool system, uint32_t owner, const struct
         close(fd);
         return;
     }
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         bool due;
 
         if (!cron_parse(line, system, &job) || !job.enabled)

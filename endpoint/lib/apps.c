@@ -26,7 +26,7 @@ static void parse(const char *path, const char *id, struct app_info *a)
     strlcpy(a->tier, "basic", sizeof(a->tier));
     if (fd < 0)
         return;
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         char *eq = strchr(line, '=');
         char *key = line, *val;
 
@@ -50,6 +50,8 @@ static void parse(const char *path, const char *id, struct app_info *a)
             strlcpy(a->tier, val, sizeof(a->tier));
         else if (!strcmp(key, "hidden"))
             a->hidden = !strcmp(val, "true");
+        else if (!strcmp(key, "feature"))
+            strlcpy(a->feature, val, sizeof(a->feature));
     }
     close(fd);
 }
@@ -77,7 +79,8 @@ int app_list(struct app_info *out, int max)
         id[len - 4] = 0;
         snprintf(path, sizeof(path), APPS_DIR "/%s", e->name);
         parse(path, id, &out[n]);
-        if (out[n].exec[0])
+        // Apps that belong to a switched-off feature are left out.
+        if (out[n].exec[0] && (!out[n].feature[0] || feature_enabled(out[n].feature)))
             n++;
     }
     closedir(d);

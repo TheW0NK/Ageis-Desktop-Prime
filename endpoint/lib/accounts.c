@@ -119,7 +119,7 @@ static int rewrite(const char *path, const char *(*edit)(const char *line, void 
         close(in);
         return -1;
     }
-    while (read_line(in, line, sizeof(line)) > 0) {
+    while (read_line(in, line, sizeof(line)) >= 0) {
         const char *r = edit ? edit(line, ctx) : line;
 
         if (r)
@@ -210,7 +210,7 @@ int account_check_password(const char *name, const char *password)
 
     if (fd < 0)
         return -1;
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         if (!strncmp(line, name, n) && line[n] == ':') {
             char *end = strchr(line + n + 1, ':');
 

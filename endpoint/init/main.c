@@ -45,9 +45,13 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
     setenv("PATH", "/bin:/sbin");
-    // No screen to draw on: text mode only.
+    // No screen to draw on: text mode only (and then the console must run).
     if (stat("/dev/fb0", &st) < 0)
         services[3].disabled = true;
+    else if (!feature_enabled("console"))
+        services[2].disabled = true;
+    if (!feature_enabled("cron"))
+        services[1].disabled = true;
     for (int i = 0; i < n; i++)
         if (!services[i].disabled)
             start(&services[i]);

@@ -299,6 +299,7 @@ struct app_info {
     char description[128];
     char opens[128];                // file types: ".txt;.md"
     char tier[16];                  // basic, elevated, system, powersudo
+    char feature[24];               // shown only while this feature is on
     bool hidden;
 };
 int app_list(struct app_info *out, int max);        // sorted by name
@@ -336,6 +337,16 @@ void cron_format(const struct cron_job *job, bool with_user, char *out, size_t s
 int64_t cron_next(const char *schedule, int64_t after);
 // /users/<name>/system/appdata/cron/<file> ("crontab", "log").
 void cron_user_path(const struct user_info *u, const char *file, char *out, size_t size);
+
+// Optional features (lib/features.c), in /etc/features.conf.
+struct feature {
+    const char *id, *name, *description;
+    bool default_on;
+    bool needs_restart;
+};
+int feature_list(const struct feature **out);
+bool feature_enabled(const char *id);
+int feature_set(const char *id, bool on);          // root
 
 // Whole trees (lib/fileops.c).
 int copy_path(const char *src, const char *dst);

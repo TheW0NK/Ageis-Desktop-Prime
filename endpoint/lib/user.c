@@ -54,7 +54,7 @@ static bool each_user(bool (*fn)(char **f, void *ctx), void *ctx)
 
     if (fd < 0)
         return false;
-    while (!found && read_line(fd, line, sizeof(line)) > 0) {
+    while (!found && read_line(fd, line, sizeof(line)) >= 0) {
         char *f[7];
 
         if (line[0] == '#' || split(line, f, 7) != 7)
@@ -143,7 +143,7 @@ bool user_in_group(const char *name, const char *group)
 
     if (fd < 0)
         return false;
-    while (!found && read_line(fd, line, sizeof(line)) > 0) {
+    while (!found && read_line(fd, line, sizeof(line)) >= 0) {
         char *f[4], *m;
 
         if (split(line, f, 4) != 4 || strcmp(f[0], group))

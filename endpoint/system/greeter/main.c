@@ -195,10 +195,10 @@ static void session_reply(int fd, void *u)
     ui_focus(ui_get(win, "password"));
 }
 
-static int start_session(void)
+static int start_session(bool automatic)
 {
     int to[2], from[2], saved_in, saved_out, pid;
-    char *argv[] = { "session", NULL };
+    char *argv[] = { "session", automatic ? "--auto" : NULL, NULL };
 
     if (pipe(to) < 0)
         return -1;
@@ -240,7 +240,7 @@ static void signin(struct widget *w, void *u)
     if (!nusers || session_pid > 0)
         return;
     set_error("");
-    if (start_session() < 0) {
+    if (start_session(false) < 0) {
         set_error("Signing in is not possible right now.");
         return;
     }
@@ -308,6 +308,18 @@ int main(void)
     ui_window_show(win);
     ui_focus(ui_get(win, "password"));
     syslog("greeter", "ready");
+    // Automatic sign-in, once per boot, for the first administrator.
+    if (feature_enabled("autologin")) {
+        for (int i = 0; i < nusers; i++) {
+            if (account_is_admin(users[i].name) && start_session(true) == 0) {
+                current = i;
+                set_busy(true);
+                dprintf(session_in, "%s\n\n", users[i].name);
+                ui_watch_fd(session_out, session_reply, NULL);
+                break;
+            }
+        }
+    }
     // The greeter never closes itself: the display ends with it.
     while (wm_connected())
         ui_run();

@@ -580,3 +580,87 @@ int cmd_sync(int argc, char **argv)
     }
     return 0;
 }
+
+// grep [-ivnc] TEXT [FILE...]: lines containing TEXT (no patterns).
+static bool contains(const char *line, const char *text, bool nocase)
+{
+    size_t n = strlen(text);
+
+    for (; *line; line++)
+        if (nocase ? !strncasecmp(line, text, n) : !strncmp(line, text, n))
+            return true;
+    return !n;
+}
+
+static int grep_fd(int fd, const char *name, const char *text, bool nocase, bool invert, bool numbers,
+                   bool count, bool names)
+{
+    char line[4096];
+    ssize_t n;
+    int found = 0, lineno = 0;
+
+    while ((n = read_line(fd, line, sizeof(line))) >= 0) {
+        bool hit;
+
+        lineno++;
+        hit = contains(line, text, nocase) != invert;
+        if (!hit)
+            continue;
+        found++;
+        if (count)
+            continue;
+        if (names)
+            printf("%s:", name);
+        if (numbers)
+            printf("%d:", lineno);
+        printf("%s\n", line);
+    }
+    if (count) {
+        if (names)
+            printf("%s:", name);
+        printf("%d\n", found);
+    }
+    return found;
+}
+
+int cmd_grep(int argc, char **argv)
+{
+    bool nocase = false, invert = false, numbers = false, count = false;
+    int i = 1, found = 0;
+    const char *text;
+
+    for (; i < argc && argv[i][0] == '-' && argv[i][1]; i++) {
+        for (const char *f = argv[i] + 1; *f; f++) {
+            if (*f == 'i')
+                nocase = true;
+            else if (*f == 'v')
+                invert = true;
+            else if (*f == 'n')
+                numbers = true;
+            else if (*f == 'c')
+                count = true;
+            else {
+                dprintf(STDERR_FILENO, "grep: unknown option -%c\n", *f);
+                return 2;
+            }
+        }
+    }
+    if (i >= argc) {
+        dprintf(STDERR_FILENO, "usage: grep [-ivnc] TEXT [FILE...]\n");
+        return 2;
+    }
+    text = argv[i++];
+    if (i >= argc)
+        return grep_fd(STDIN_FILENO, "-", text, nocase, invert, numbers, count, false) ? 0 : 1;
+    for (int k = i; k < argc; k++) {
+        int fd = open(argv[k], O_RDONLY);
+
+        if (fd < 0) {
+            fail("grep", argv[k]);
+            continue;
+        }
+        found += grep_fd(fd, argv[k], text, nocase, invert, numbers, count, argc - i > 1);
+        close(fd);
+    }
+    return found ? 0 : 1;
+}

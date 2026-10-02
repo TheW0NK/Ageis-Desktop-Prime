@@ -640,7 +640,7 @@ static void load_identity(void)
         char *f[7];
         int k = 0;
 
-        if (n <= 0)
+        if (n < 0)
             break;
         f[k++] = line;
         for (char *p = line; *p && k < 7; p++) {

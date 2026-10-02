@@ -38,11 +38,12 @@ static void redirect_output(const struct user_info *u)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    bool automatic = argc > 1 && !strcmp(argv[1], "--auto");
     char name[64], pass[256], go[16];
     struct user_info u;
-    char *argv[] = { "desktop", NULL };
+    char *desktop_argv[] = { "desktop", NULL };
     char theme[32], lang[16];
     int pid, status;
 
@@ -59,7 +60,14 @@ int main(void)
     }
     // While still root: make sure the user's folders exist and are theirs.
     user_setup_dirs(&u);
-    if (login(name, pass) < 0) {
+    if (automatic) {
+        // Only when an administrator switched automatic sign-in on.
+        if (!feature_enabled("autologin") || !account_is_admin(name) || become(u.uid) < 0) {
+            reply("fail %s\n", "auto");
+            return 1;
+        }
+        syslog("session", "signed in %s automatically", name);
+    } else if (login(name, pass) < 0) {
         memset(pass, 0, sizeof(pass));
         reply("fail %s\n", "password");
         return 1;
@@ -79,7 +87,7 @@ int main(void)
     if (chdir(u.home) < 0)
         chdir("/");
     redirect_output(&u);
-    if ((pid = spawn(DESKTOP, argv, environ)) < 0) {
+    if ((pid = spawn(DESKTOP, desktop_argv, environ)) < 0) {
         dprintf(STDERR_FILENO, "session: cannot start %s: %s\n", DESKTOP, strerror(errno));
         return 1;
     }

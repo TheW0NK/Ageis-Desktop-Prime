@@ -160,7 +160,7 @@ static bool hosts_lookup(const char *name, uint32_t *addr)
 
     if (fd < 0)
         return false;
-    while (!found && read_line(fd, line, sizeof(line)) > 0) {
+    while (!found && read_line(fd, line, sizeof(line)) >= 0) {
         char *p = line, *ip, *h;
 
         while (isspace(*p))

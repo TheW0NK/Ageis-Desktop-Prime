@@ -434,18 +434,30 @@ void perror(const char *msg)
         dprintf(STDERR_FILENO, "%s\n", strerror(errno));
 }
 
+// Reads one line without its newline. Returns its length (0 for an empty
+// line), or -1 at the end of the input (or on an error) with nothing read.
 ssize_t read_line(int fd, char *buf, size_t size)
 {
     size_t n = 0;
+    bool any = false;
 
     while (n + 1 < size) {
         char c;
         ssize_t r = read(fd, &c, 1);
 
-        if (r < 0)
-            return n ? (ssize_t)n : -1;
-        if (r == 0)
+        if (r < 0) {
+            if (!n && !any)
+                return -1;
             break;
+        }
+        if (r == 0) {
+            if (!n && !any) {
+                buf[0] = '\0';
+                return -1;
+            }
+            break;
+        }
+        any = true;
         if (c == '\n')
             break;
         buf[n++] = c;

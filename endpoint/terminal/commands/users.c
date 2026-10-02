@@ -10,7 +10,7 @@ static bool lookup(const char *path, int key, const char *value, int want, char 
 
     if (fd < 0)
         return false;
-    while (!found && read_line(fd, line, sizeof(line)) > 0) {
+    while (!found && read_line(fd, line, sizeof(line)) >= 0) {
         char *f[7];
         int k = 0;
 

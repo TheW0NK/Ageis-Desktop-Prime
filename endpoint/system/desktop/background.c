@@ -33,7 +33,7 @@ static void read_shortcut(const char *path, char *name, size_t nsize, char *app,
 
     if (fd < 0)
         return;
-    while (read_line(fd, line, sizeof(line)) > 0) {
+    while (read_line(fd, line, sizeof(line)) >= 0) {
         char *eq = strchr(line, '=');
 
         if (!eq)

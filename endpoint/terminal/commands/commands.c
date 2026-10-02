@@ -22,6 +22,7 @@ const struct command commands[] = {
     { "pwd",        "",                     "Print the current directory", cmd_pwd },
     { "ls",         "[-la] [PATH...]",      "List directory contents", cmd_ls },
     { "cat",        "[FILE...]",            "Print files (or standard input)", cmd_cat },
+    { "grep",       "[-ivnc] TEXT [FILE...]", "Print lines containing TEXT", cmd_grep },
     { "mkdir",      "[-p] DIR...",          "Create directories", cmd_mkdir },
     { "rmdir",      "DIR...",               "Remove empty directories", cmd_rmdir },
     { "rm",         "[-rf] PATH...",        "Remove files or directories", cmd_rm },
