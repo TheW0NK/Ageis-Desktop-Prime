@@ -685,6 +685,13 @@ static void do_login(void)
         if (read_secret("Password: ", pass, sizeof(pass)) < 0)
             continue;
         if (login(name, pass) == 0) {
+            struct user_info u;
+            char key[65];
+
+            // Unlock the user's stored passwords for this session.
+            if (user_by_name(name, &u) == 0 && cred_unlock(&u, pass, key, sizeof(key)) == 0)
+                setenv("AEGIS_CRED_KEY", key);
+            memset(key, 0, sizeof(key));
             memset(pass, 0, sizeof(pass));
             break;
         }

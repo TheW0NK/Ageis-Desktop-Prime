@@ -71,6 +71,15 @@ int main(int argc, char **argv)
         memset(pass, 0, sizeof(pass));
         reply("fail %s\n", "password");
         return 1;
+    } else {
+        // The password also unlocks the user's stored passwords.
+        char key[65];
+
+        if (cred_unlock(&u, pass, key, sizeof(key)) == 0)
+            setenv("AEGIS_CRED_KEY", key);
+        else
+            syslog("session", "the credential store of %s could not be unlocked", name);
+        memset(key, 0, sizeof(key));
     }
     memset(pass, 0, sizeof(pass));
     dprintf(STDOUT_FILENO, "ok %u\n", u.uid);

@@ -276,6 +276,13 @@ static void on_password(struct widget *w, void *u)
         ui_set_text(ui_get(win, "pwstatus"), err);
         return;
     }
+    {
+        // Stored passwords follow: their key is resealed with the new one.
+        struct user_info me;
+
+        if (user_current(&me) == 0)
+            cred_rewrap(&me, old, n1);
+    }
     ui_set_text(ui_get(win, "oldpw"), "");
     ui_set_text(ui_get(win, "newpw"), "");
     ui_set_text(ui_get(win, "newpw2"), "");

@@ -330,6 +330,19 @@ int group_set_member(const char *group, const char *user, bool member);
 #define PRIVD_SOCKET "@aegis/privd"
 int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
 
+// Base64.
+size_t base64_encode(const void *in, size_t len, char *out);    // out: 4 * ((len + 2) / 3) + 1 bytes
+ssize_t base64_decode(const char *in, size_t len, void *out);   // out: at least len * 3 / 4 bytes
+
+// Encrypted credentials (creds.c). Signing in unlocks the store: cred_unlock
+// gives the session key as 64 hex digits for AEGIS_CRED_KEY.
+int cred_unlock(const struct user_info *u, const char *password, char *hex_out, size_t size);
+int cred_rewrap(const struct user_info *u, const char *old_password, const char *new_password);
+bool cred_unlocked(void);
+int cred_set(const char *name, const char *secret);
+char *cred_get(const char *name);                   // free it; NULL if missing or locked
+int cred_delete(const char *name);
+
 // Cron schedules (lib/cron.c).
 struct cron_job {
     char schedule[64];

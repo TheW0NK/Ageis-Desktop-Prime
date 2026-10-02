@@ -106,13 +106,13 @@ $(CRT0): lib/crt0.asm
 $(LIBC): $(LIB_OBJS)
 	$(AR) rcs $@ $^
 
-$(BUILD)/sbin/init: $(CRT0) $(BUILD)/init/main.o $(LIBC)
+$(BUILD)/sbin/init: $(CRT0) $(BUILD)/init/main.o $(LIBC) $(SSL_LIB)
 	@mkdir -p $(dir $@)
-	$(LD) $(LDFLAGS) $^ -o $@
+	$(LD) $(LDFLAGS) $(CRT0) $(BUILD)/init/main.o --start-group $(LIBC) $(SSL_LIB) --end-group -o $@
 
-$(BUILD)/bin/terminal: $(CRT0) $(addprefix $(BUILD)/,$(TERMINAL_SRCS:.c=.o)) $(LIBC)
+$(BUILD)/bin/terminal: $(CRT0) $(addprefix $(BUILD)/,$(TERMINAL_SRCS:.c=.o)) $(LIBC) $(SSL_LIB)
 	@mkdir -p $(dir $@)
-	$(LD) $(LDFLAGS) $^ -o $@
+	$(LD) $(LDFLAGS) $(CRT0) $(addprefix $(BUILD)/,$(TERMINAL_SRCS:.c=.o)) --start-group $(LIBC) $(SSL_LIB) --end-group -o $@
 
 $(BUILD)/sbin/compositor: $(CRT0) $(addprefix $(BUILD)/,$(COMPOSITOR_SRCS:.c=.o)) $(LIBS)
 	@mkdir -p $(dir $@)
