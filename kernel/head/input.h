@@ -27,6 +27,8 @@ void input_init(void);
 
 struct file *input_open(void);
 int input_device_count(void);
+// True while Ctrl+Alt+F2 has put the text console in front of the GUI.
+bool input_text_mode(void);
 const char *input_device_name(int dev, uint32_t *kind);
 
 #endif

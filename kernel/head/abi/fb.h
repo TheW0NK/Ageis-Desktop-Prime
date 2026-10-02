@@ -19,5 +19,6 @@ struct aegis_fbinfo {
 
 #define IOCTL_FB_INFO       0x200   // arg: struct aegis_fbinfo *
 #define IOCTL_FB_SET_MODE   0x201   // arg: (width << 16) | height; remap afterwards
+#define IOCTL_FB_VT_RELEASED 0x202  // the owner stopped drawing after SYN_VT_LEAVE
 
 #endif

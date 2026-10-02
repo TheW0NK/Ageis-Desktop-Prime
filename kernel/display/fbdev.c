@@ -5,6 +5,7 @@
 #include "string.h"
 #include "vm.h"
 #include "abi/fb.h"
+#include "input.h"
 
 #define DEVFS_GID_VIDEO 44
 
@@ -50,7 +51,13 @@ static int64_t fb_ioctl(struct file *f, uint64_t cmd, uint64_t arg)
         if ((ret = display_set_mode(arg >> 16, arg & 0xFFFF)))
             return ret;
         // The console redraw that a mode change does must not show.
-        console_set_hidden(true);
+        if (!input_text_mode())
+            console_set_hidden(true);
+        return 0;
+    case IOCTL_FB_VT_RELEASED:
+        // Repaint the console over anything drawn before the owner stopped.
+        if (f == owner && input_text_mode())
+            console_redraw();
         return 0;
     }
     return -ENOTTY;
@@ -105,8 +112,10 @@ static int fb_open(void *ctx, uint32_t flags, struct file **out)
         }
         owner = f;
         spin_unlock_irqrestore(&lock, irq);
-        console_set_hidden(true);
-        splash_user_output();
+        if (!input_text_mode()) {
+            console_set_hidden(true);
+            splash_user_output();
+        }
     }
     *out = f;
     return 0;

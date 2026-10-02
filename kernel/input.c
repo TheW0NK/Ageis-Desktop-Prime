@@ -37,6 +37,7 @@ static struct {
     uint32_t mods;
     struct reader *readers;
     int grabs;
+    bool text_mode;                 // the text console is in front of a grabbing GUI
     uint16_t repeat_code;
     int repeat_dev;
     uint64_t repeat_at;
@@ -67,6 +68,10 @@ static void queue(int dev, uint16_t type, uint16_t code, int32_t value)
     for (struct reader *r = in.readers; r; r = r->next) {
         uint32_t next = (r->head + 1) % QUEUE_SIZE;
 
+        // While the text console is in front, the GUI hears nothing but
+        // the switch back.
+        if (r->grab && in.text_mode && !(type == EV_SYN && code == SYN_VT_ENTER))
+            continue;
         if (next == r->tail)
             continue;               // a reader that falls behind loses events
         r->q[r->head] = e;
@@ -251,15 +256,45 @@ static void key_locked(int dev, uint16_t code, int value)
 {
     queue(dev, EV_KEY, code, value);
     queue(dev, EV_SYN, 0, 0);
-    if (value && !in.grabs && !modifier_bit(code) && !is_lock(code) && code < BTN_LEFT)
+    if (value && (!in.grabs || in.text_mode) && !modifier_bit(code) && !is_lock(code) && code < BTN_LEFT)
         to_console(code);
     wake_up_locked(&in.wq);
+}
+
+bool input_text_mode(void)
+{
+    return in.text_mode;
+}
+
+// Ctrl+Alt+F1 brings the desktop to the front, Ctrl+Alt+F2 the text console.
+// Called with the lock held; returns true if the key was a switch.
+static bool vt_switch_locked(uint16_t code, bool *show_console, bool *hide_console)
+{
+    bool to_text;
+
+    if ((in.mods & MOD_CTRL) == 0 || (in.mods & MOD_ALT) == 0 || (code != KEY_F1 && code != KEY_F1 + 1))
+        return false;
+    to_text = code == KEY_F1 + 1;
+    if (to_text == in.text_mode)
+        return true;
+    if (to_text) {
+        queue(-1, EV_SYN, SYN_VT_LEAVE, 0);
+        in.text_mode = true;
+        *show_console = true;
+    } else {
+        in.text_mode = false;
+        queue(-1, EV_SYN, SYN_VT_ENTER, 0);
+        *hide_console = display_claimed();
+    }
+    in.repeat_code = 0;
+    wake_up_locked(&in.wq);
+    return true;
 }
 
 void input_key(int dev, uint16_t code, bool pressed)
 {
     uint64_t flags;
-    bool leds = false;
+    bool leds = false, show_console = false, hide_console = false;
 
     if (dev < 0 || code >= KEY_CODE_MAX)
         return;
@@ -287,6 +322,17 @@ void input_key(int dev, uint16_t code, bool pressed)
         in.repeat_at = timer_uptime_ms() + REPEAT_DELAY;
     } else if (!pressed && code == in.repeat_code) {
         in.repeat_code = 0;
+    }
+    if (pressed && vt_switch_locked(code, &show_console, &hide_console)) {
+        spin_unlock_irqrestore(&in.wq.lock, flags);
+        if (show_console) {
+            if (splash_active())
+                splash_request_verbose();
+            console_set_hidden(false);
+        }
+        if (hide_console)
+            console_set_hidden(true);
+        return;
     }
     key_locked(dev, code, pressed);
     spin_unlock_irqrestore(&in.wq.lock, flags);
@@ -434,6 +480,8 @@ static int64_t f_ioctl(struct file *f, uint64_t cmd, uint64_t arg)
         return 0;
     case IOCTL_INPUT_DEVICES:
         return input_device_count();
+    case IOCTL_INPUT_VT:
+        return in.text_mode;
     }
     return -ENOTTY;
 }

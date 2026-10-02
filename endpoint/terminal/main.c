@@ -707,6 +707,21 @@ int main(int argc, char **argv)
     char line[LINE_MAX], prompt[AEGIS_PATH_MAX + 64];
     struct aegis_utsname u;
 
+    // terminal -c COMMAND: run one command line and exit with its status.
+    if (argc > 2 && !strcmp(argv[1], "-c")) {
+        int code = 0;
+
+        load_identity();
+        if (!getenv("HOME"))
+            setenv("HOME", home_dir);
+        if (!getenv("USER"))
+            setenv("USER", user_name);
+        if (!getenv("PATH"))
+            setenv("PATH", "/bin:/sbin");
+        if (!run_line(argv[2], &code))
+            return code;
+        return last_status;
+    }
     set_raw(true);
     // In a graphical session the user is already signed in.
     if (argc > 1 && !strcmp(argv[1], "--no-login")) {

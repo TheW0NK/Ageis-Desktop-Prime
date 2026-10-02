@@ -44,9 +44,21 @@ void ui_window_hide(struct ui_window *win);
 void ui_window_close(struct ui_window *win);
 void ui_window_set_title(struct ui_window *win, const char *title);
 void ui_window_set_size(struct ui_window *win, int width, int height);
+// Position before showing: screen coordinates, or for popups relative to
+// the parent window's content.
+void ui_window_move(struct ui_window *win, int x, int y);
+// Role and WM_FLAG_* flags; set before the window is first shown.
+void ui_window_set_flags(struct ui_window *win, uint32_t flags);
+// The owner of a dialog or popup; set before the window is first shown.
+void ui_window_set_parent(struct ui_window *win, struct ui_window *parent);
+// Window list and screen changes (for taskbars): WM_EV_LIST, WM_EV_SCREEN.
+void ui_on_system_event(void (*fn)(struct wm_event *ev, void *user), void *user);
 struct wm_window *ui_wm_window(struct ui_window *win);
 // The user pointer given to ui_load().
 void *ui_window_user(struct ui_window *win);
+// Draws the window's background instead of the theme colour (wallpapers).
+void ui_window_set_backdrop(struct ui_window *win,
+                            void (*fn)(struct ui_window *, struct gfx *, struct rect, void *), void *user);
 // Called when the user closes the window; return false to keep it open.
 void ui_on_close(struct ui_window *win, bool (*fn)(struct ui_window *, void *), void *user);
 // Called after the default handling of every key press in the window.
@@ -76,6 +88,8 @@ void ui_set_enabled(struct widget *w, bool enabled);
 void ui_set_visible(struct widget *w, bool visible);
 bool ui_visible(struct widget *w);
 void ui_focus(struct widget *w);
+// True if w has the keyboard focus and its window is focused.
+bool ui_is_focused_widget(struct widget *w);
 void ui_set_attr(struct widget *w, const char *name, const char *value);
 const char *ui_attr(struct widget *w, const char *name);
 void ui_redraw(struct widget *w);
@@ -112,6 +126,9 @@ int ui_textarea_cursor(struct widget *w);
 void ui_textarea_select(struct widget *w, int start, int end);
 bool ui_textarea_modified(struct widget *w);
 void ui_textarea_set_modified(struct widget *w, bool modified);
+
+// 1 for a single click, 2 for a double click, ... (in a pointer handler).
+int ui_click_count(struct widget *w);
 
 // The widget's rectangle in window coordinates.
 struct rect ui_rect(struct widget *w);

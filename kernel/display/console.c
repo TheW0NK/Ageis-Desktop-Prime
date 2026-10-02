@@ -293,6 +293,8 @@ void console_write(const char *s, size_t len)
     fb_flush(out());
 }
 
+static void redraw_all(void);
+
 // Shows or hides the text console. Showing it redraws every cell.
 void console_set_hidden(bool hidden)
 {
@@ -301,6 +303,17 @@ void console_set_hidden(bool hidden)
     con.hidden = hidden;
     if (hidden)
         return;
+    redraw_all();
+}
+
+void console_redraw(void)
+{
+    if (con.d && !con.hidden)
+        redraw_all();
+}
+
+static void redraw_all(void)
+{
     fb_fill_rect(con.d, 0, 0, con.d->width, con.d->height, con.default_bg);
     for (uint32_t y = 0; y < con.rows; y++) {
         for (uint32_t x = 0; x < con.cols; x++)

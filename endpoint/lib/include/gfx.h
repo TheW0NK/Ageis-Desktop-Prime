@@ -62,6 +62,8 @@ void gfx_shadow(struct gfx *g, struct rect r, int radius, int size, color_t c);
 void gfx_blit(struct gfx *g, const struct surface *src, struct rect from, int x, int y);
 // Scales src into dst (bilinear).
 void gfx_blit_scaled(struct gfx *g, const struct surface *src, struct rect from, struct rect dst);
+// Fills a polygon given as n x,y pairs (even-odd rule), anti-aliased.
+void gfx_polygon(struct gfx *g, const float *xy, int n, color_t c);
 // Fills r with a single-channel coverage mask in color c.
 void gfx_mask(struct gfx *g, const uint8_t *mask, int mask_stride, struct rect r, color_t c);
 
@@ -88,6 +90,22 @@ int text_width(struct font *f, const char *s, int len);
 int text_draw(struct gfx *g, struct font *f, int x, int y, const char *s, int len, color_t c);
 // The byte offset in s nearest to pixel x.
 int text_hit(struct font *f, const char *s, int len, int x);
+
+// Icons drawn from shapes (icons.c). App icons ("terminal", "files", ...)
+// are coloured tiles; file types ("folder", "text", "image", ...) and
+// interface symbols ("power", "search", ...) are plain shapes.
+void icon_draw(struct gfx *g, const char *name, struct rect r);
+// A symbol alone in colour c (for buttons and menus).
+void icon_draw_glyph(struct gfx *g, const char *name, struct rect r, color_t c);
+// Cached rendering; do not free.
+struct surface *icon_get(const char *name, int size);
+bool icon_exists(const char *name);
+const char *icon_for_file(const char *name, bool dir);
+
+// Backgrounds: "default", "color:#RRGGBB" or an image path.
+void wallpaper_draw(struct gfx *g, struct rect r, const char *spec);
+// A round user picture, or the name's initial on a colour.
+void avatar_draw(struct gfx *g, struct rect r, const char *name, const char *picture_path);
 
 // UTF-8.
 uint32_t utf8_decode(const char **s);

@@ -16,6 +16,11 @@ struct input_event {
 };
 
 #define EV_SYN          0       // end of a group of events from one report
+// EV_SYN codes sent only to grabbing readers when the user switches between
+// the desktop (Ctrl+Alt+F1) and the text console (Ctrl+Alt+F2).
+#define SYN_REPORT      0
+#define SYN_VT_LEAVE    1       // stop drawing: the text console owns the screen
+#define SYN_VT_ENTER    2       // the screen is back: redraw everything
 #define EV_KEY          1       // value: 0 release, 1 press, 2 autorepeat
 #define EV_REL          2       // value: signed delta
 #define EV_ABS          3       // value: 0 .. INPUT_ABS_MAX
@@ -152,5 +157,6 @@ struct input_event {
 // ioctls on /dev/input.
 #define IOCTL_INPUT_GRAB        0x100   // arg 1: stop delivering keys to the text console
 #define IOCTL_INPUT_DEVICES     0x101   // returns the number of input devices
+#define IOCTL_INPUT_VT          0x102   // returns 1 while the text console is in front
 
 #endif

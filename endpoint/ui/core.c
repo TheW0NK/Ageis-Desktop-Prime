@@ -645,7 +645,16 @@ static void repaint(struct ui_window *win)
     gfx_init(&g, win->wm->surface);
     if (!rect_intersect(r, g.clip, &g.clip))
         return;
-    gfx_fill(&g, g.clip, win->is_popup ? ui_theme.surface : ui_theme.window);
+    if (win->backdrop) {
+        // Backdrops may be translucent: start from transparent pixels.
+        struct surface *sf = win->wm->surface;
+
+        for (int y = g.clip.y; y < g.clip.y + g.clip.h; y++)
+            memset(sf->pixels + (size_t)y * sf->stride + g.clip.x, 0, g.clip.w * 4);
+        win->backdrop(win, &g, (struct rect){ 0, 0, win->wm->width, win->wm->height }, win->backdrop_user);
+    }
+    else
+        gfx_fill(&g, g.clip, win->is_popup ? ui_theme.surface : ui_theme.window);
     ui_paint_widget(win->root, &g);
     if (win->is_popup)
         gfx_outline(&g, (struct rect){ 0, 0, win->wm->width, win->wm->height }, 1, ui_theme.border);
@@ -656,7 +665,11 @@ static void repaint(struct ui_window *win)
 
 bool ui_is_focused(struct widget *w)
 {
-    return w && w->win && w->win->focus == w && w->win->wm && w->win->wm->focused;
+    struct ui_window *win = w ? w->win : NULL;
+
+    // Keyboard popups (launchers) have the keyboard whenever they are shown.
+    return win && win->focus == w && win->wm
+           && (win->wm->focused || ((win->flags & WM_FLAG_KEYBOARD) && win->shown));
 }
 
 static bool can_focus(struct widget *w)
@@ -1000,7 +1013,8 @@ static bool create_wm(struct ui_window *win)
     }
     if ((flags & WM_ROLE_MASK) == WM_ROLE_NORMAL && win->parent)
         flags = (flags & ~WM_ROLE_MASK) | WM_ROLE_DIALOG;
-    win->wm = wm_create_at(win->title, win->is_popup ? win->x : -1, win->is_popup ? win->y : -1, MAX(w, 1),
+    win->wm = wm_create_at(win->title, win->is_popup || win->positioned ? win->x : -1,
+                           win->is_popup || win->positioned ? win->y : -1, MAX(w, 1),
                            MAX(h, 1), flags,
                            win->parent ? win->parent->wm : NULL);
     if (!win->wm)
@@ -1091,6 +1105,29 @@ void ui_window_set_title(struct ui_window *win, const char *title)
         wm_set_title(win->wm, win->title);
 }
 
+void ui_window_set_flags(struct ui_window *win, uint32_t flags)
+{
+    if (win && !win->wm)
+        win->flags = flags;
+}
+
+void ui_window_move(struct ui_window *win, int x, int y)
+{
+    if (!win)
+        return;
+    win->x = x;
+    win->y = y;
+    win->positioned = true;
+    if (win->wm)
+        wm_move(win->wm, x, y);
+}
+
+void ui_window_set_parent(struct ui_window *win, struct ui_window *parent)
+{
+    if (win && !win->wm)
+        win->parent = parent;
+}
+
 void ui_window_set_size(struct ui_window *win, int width, int height)
 {
     if (!win)
@@ -1099,6 +1136,15 @@ void ui_window_set_size(struct ui_window *win, int width, int height)
     win->height = height;
     if (win->wm)
         wm_resize(win->wm, width, height);
+}
+
+void ui_window_set_backdrop(struct ui_window *win,
+                            void (*fn)(struct ui_window *, struct gfx *, struct rect, void *), void *user)
+{
+    win->backdrop = fn;
+    win->backdrop_user = user;
+    if (win->wm)
+        ui_damage(win, (struct rect){ 0, 0, win->wm->width, win->wm->height });
 }
 
 void ui_on_close(struct ui_window *win, bool (*fn)(struct ui_window *, void *), void *user)
@@ -1205,10 +1251,23 @@ static struct ui_window *window_for(struct wm_window *wm)
     return NULL;
 }
 
+static void (*system_event)(struct wm_event *, void *);
+static void *system_event_user;
+
+void ui_on_system_event(void (*fn)(struct wm_event *, void *), void *user)
+{
+    system_event = fn;
+    system_event_user = user;
+}
+
 static void dispatch(struct wm_event *ev)
 {
     struct ui_window *win = ev->window ? window_for(ev->window) : NULL;
 
+    if ((ev->type == WM_EV_LIST || ev->type == WM_EV_SCREEN) && system_event) {
+        system_event(ev, system_event_user);
+        return;
+    }
     if (!win || win->closing)
         return;
     switch (ev->type) {
@@ -1243,8 +1302,18 @@ static void dispatch(struct wm_event *ev)
         ui_window_close(win);
         break;
     case WM_EV_POPUP_DONE:
-        if (win->is_popup && win->parent)
+        if (win->is_popup && win->parent) {
             ui_popup_close(win->parent);
+        } else {
+            // A popup window of the app's own (a launcher) was dismissed.
+            win->shown = false;
+            if (win->on_close && !win->on_close(win, win->on_close_user))
+                break;
+            if (win->root && ui_has_handler(win->root, "close"))
+                ui_emit(win->root, "close");
+            else
+                ui_window_close(win);
+        }
         break;
     default:
         break;

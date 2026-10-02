@@ -393,3 +393,78 @@ void gfx_mask(struct gfx *g, const uint8_t *mask, int mask_stride, struct rect r
         }
     }
 }
+
+// Fills a polygon (non-zero winding not needed: even-odd) with 4x vertical
+// and fractional horizontal anti-aliasing. Points are in current coordinates.
+void gfx_polygon(struct gfx *g, const float *xy, int n, color_t c)
+{
+    float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+    struct rect b;
+    float *acc, xs[64];
+    uint8_t *mask;
+
+    if (n < 3 || n > 64)
+        return;
+    for (int i = 0; i < n; i++) {
+        minx = fminf(minx, xy[2 * i]);
+        maxx = fmaxf(maxx, xy[2 * i]);
+        miny = fminf(miny, xy[2 * i + 1]);
+        maxy = fmaxf(maxy, xy[2 * i + 1]);
+    }
+    b = (struct rect){ (int)floorf(minx), (int)floorf(miny), 0, 0 };
+    b.w = (int)ceilf(maxx) - b.x + 1;
+    b.h = (int)ceilf(maxy) - b.y + 1;
+    if (b.w <= 0 || b.h <= 0 || b.w > 4096 || b.h > 4096)
+        return;
+    acc = calloc(b.w + 2, sizeof(float));
+    mask = calloc((size_t)b.w * b.h, 1);
+    if (!acc || !mask) {
+        free(acc);
+        free(mask);
+        return;
+    }
+    for (int row = 0; row < b.h; row++) {
+        memset(acc, 0, (b.w + 2) * sizeof(float));
+        for (int sub = 0; sub < 4; sub++) {
+            float sy = b.y + row + (sub + 0.5f) / 4;
+            int nx = 0;
+
+            for (int i = 0; i < n; i++) {
+                float x0 = xy[2 * i], y0 = xy[2 * i + 1];
+                float x1 = xy[2 * ((i + 1) % n)], y1 = xy[2 * ((i + 1) % n) + 1];
+
+                if ((y0 <= sy && y1 > sy) || (y1 <= sy && y0 > sy))
+                    xs[nx++] = x0 + (sy - y0) / (y1 - y0) * (x1 - x0);
+            }
+            // Insertion sort; polygons here are small.
+            for (int i = 1; i < nx; i++)
+                for (int j = i; j > 0 && xs[j - 1] > xs[j]; j--) {
+                    float t = xs[j];
+
+                    xs[j] = xs[j - 1];
+                    xs[j - 1] = t;
+                }
+            for (int i = 0; i + 1 < nx; i += 2) {
+                float a = xs[i] - b.x, e = xs[i + 1] - b.x;
+                int ia = (int)floorf(a), ie = (int)floorf(e);
+
+                if (ia == ie) {
+                    if (ia >= 0 && ia < b.w)
+                        acc[ia] += (e - a) / 4;
+                    continue;
+                }
+                if (ia >= 0 && ia < b.w)
+                    acc[ia] += (ia + 1 - a) / 4;
+                for (int x = MAX(ia + 1, 0); x < MIN(ie, b.w); x++)
+                    acc[x] += 0.25f;
+                if (ie >= 0 && ie < b.w)
+                    acc[ie] += (e - ie) / 4;
+            }
+        }
+        for (int x = 0; x < b.w; x++)
+            mask[(size_t)row * b.w + x] = (uint8_t)(fminf(acc[x], 1.0f) * 255 + 0.5f);
+    }
+    gfx_mask(g, mask, b.w, b, c);
+    free(acc);
+    free(mask);
+}

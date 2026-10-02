@@ -276,8 +276,13 @@ static void key(uint16_t code, int value)
 
     if (shortcut(code, value))
         return;
+    // A popup that asked for the keyboard (a launcher) has it while shown.
+    for (struct window *w = windows; w; w = w->next)
+        if (w->role == WM_ROLE_POPUP && (w->flags & WM_FLAG_KEYBOARD) && w->visible && w->owner)
+            target = w;
     // The Meta key alone, and media keys, go to panels (the launcher).
-    if (!target || code == KEY_LEFTMETA || code == KEY_RIGHTMETA || code >= 0x100) {
+    if (!target || (target->role != WM_ROLE_POPUP
+                    && (code == KEY_LEFTMETA || code == KEY_RIGHTMETA || code >= 0x100))) {
         for (struct window *w = windows; w; w = w->next) {
             if (w->role == WM_ROLE_PANEL && w->owner) {
                 target = w;
@@ -334,6 +339,12 @@ void input_handle(int fd)
                 else if (e->code == ABS_Y)
                     pointer_y = (int64_t)e->value * (screen.height - 1) / INPUT_ABS_MAX;
                 moved = true;
+                break;
+            case EV_SYN:
+                if (e->code == SYN_VT_LEAVE)
+                    vt_leave();
+                else if (e->code == SYN_VT_ENTER)
+                    vt_enter();
                 break;
             case EV_KEY:
                 if (moved) {

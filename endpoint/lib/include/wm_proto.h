@@ -62,6 +62,7 @@ enum wm_type {
 #define WM_FLAG_NO_RESIZE   0x10
 #define WM_FLAG_PANEL_TOP   0x20    // panels default to the bottom edge
 #define WM_FLAG_HIDDEN      0x40    // create without showing
+#define WM_FLAG_KEYBOARD    0x80    // popups: take the keyboard while shown (launchers)
 
 // Window states (WM_SET_STATE and WM_LIST_*).
 #define WM_STATE_NORMAL     0x0

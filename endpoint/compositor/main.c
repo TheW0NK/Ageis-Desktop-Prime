@@ -12,6 +12,8 @@ struct window *windows, *focused;
 static struct client *clients;
 static uint32_t next_id = 1;
 static uint32_t session_uid = (uint32_t)-1;
+
+static void drop_client(struct client *c);
 static int cascade;
 
 void begin_move(struct window *w);
@@ -505,8 +507,17 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         }
         break;
     case WM_SET_SESSION:
-        if (c->uid == 0)
+        if (c->uid == 0 && session_uid != (uint32_t)m->a) {
+            uint32_t old = session_uid;
+
             session_uid = (uint32_t)m->a;
+            // The previous session's programs lose the display.
+            for (struct client *k = clients, *next; k; k = next) {
+                next = k->next;
+                if (k->uid != 0 && k->uid == old)
+                    drop_client(k);
+            }
+        }
         break;
     case WM_BEGIN_MOVE:
         if (w && window_framed(w))
@@ -566,6 +577,20 @@ static void accept_client(int lfd)
     }
 }
 
+bool screen_paused;
+
+void vt_leave(void)
+{
+    screen_paused = true;
+    ioctl(screen.fd, IOCTL_FB_VT_RELEASED, 0);
+}
+
+void vt_enter(void)
+{
+    screen_paused = false;
+    damage((struct rect){ 0, 0, screen.width, screen.height });
+}
+
 static bool open_screen(void)
 {
     if ((screen.fd = open("/dev/fb0", O_RDWR | O_CLOEXEC)) < 0)
@@ -587,7 +612,7 @@ int main(int argc, char **argv)
     char *greeter[] = { "greeter", NULL };
     char **session = argc > 1 ? argv + 1 : greeter;
     char path[256];
-    int input, lfd;
+    int input, lfd, session_pid = -1;
     struct pollfd *fds = calloc(MAX_CLIENTS + 2, sizeof(*fds));
 
     signal(SIGPIPE, SIG_IGN);
@@ -604,15 +629,17 @@ int main(int argc, char **argv)
         return 1;
     }
     fcntl(lfd, F_SETFL, O_NONBLOCK);
+    // Started while the text console is in front (Ctrl+Alt+F2).
+    screen_paused = ioctl(input, IOCTL_INPUT_VT, 0) == 1;
     pointer_x = screen.width / 2;
     pointer_y = screen.height / 2;
     damage((struct rect){ 0, 0, screen.width, screen.height });
     render();
 
     snprintf(path, sizeof(path), strchr(session[0], '/') ? "%s" : "/sbin/%s", session[0]);
-    if (spawn(path, session, environ) < 0) {
+    if ((session_pid = spawn(path, session, environ)) < 0) {
         snprintf(path, sizeof(path), "/bin/%s", session[0]);
-        if (spawn(path, session, environ) < 0)
+        if ((session_pid = spawn(path, session, environ)) < 0)
             dprintf(STDERR_FILENO, "compositor: cannot start %s\n", session[0]);
     }
 
@@ -628,8 +655,15 @@ int main(int argc, char **argv)
         }
         if (poll(fds, n, 1000) < 0)
             continue;
-        while (waitpid(-1, &status, WNOHANG) > 0)
-            ;
+        {
+            int pid;
+
+            // The display lives as long as the program it was started for
+            // (the greeter); init starts both again.
+            while ((pid = waitpid(-1, &status, WNOHANG)) > 0)
+                if (pid == session_pid)
+                    return 0;
+        }
         if (fds[0].revents & POLLIN)
             input_handle(input);
         if (fds[1].revents & POLLIN)

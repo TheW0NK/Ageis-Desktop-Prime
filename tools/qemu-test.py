@@ -18,7 +18,8 @@ The serial port only carries output, so input goes through the QEMU monitor
     @abs:X,Y             move an absolute pointer (--tablet) to screen pixel X,Y
     @click:X,Y[,BUTTON]  move there and click (BUTTON: left, right, middle)
     @drag:X1,Y1,X2,Y2    press the left button at X1,Y1, move to X2,Y2 and release
-    @login:USER:PASSWORD wait for the login prompt and log in
+    @login:USER:PASSWORD wait for the login prompt, switch to the text console
+                         (Ctrl+Alt+F2) and log in
 
 Examples:
     tools/qemu-test.py @login:user:aegis 'ls /' '@expect:bin'
@@ -235,6 +236,10 @@ def main():
                     if not m.wait('login:', args.timeout):
                         failed.append('no login prompt')
                         break
+                    # The desktop owns the keyboard: bring the text console
+                    # to the front first (harmless if it already is).
+                    m.key('ctrl-alt-f2')
+                    time.sleep(0.5)
                     m.type(user + '\n')
                     m.wait('Password:', 10)
                     m.type(password + '\n')

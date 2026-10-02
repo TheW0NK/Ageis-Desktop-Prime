@@ -15,23 +15,44 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(dirname "$out")/rootfs
 
 rm -rf "$root"
-mkdir -p "$root"/bin "$root"/sbin "$root"/etc "$root"/boot "$root"/root \
-         "$root"/home/"$user" "$root"/tmp
+mkdir -p "$root"/bin "$root"/sbin "$root"/etc "$root"/boot "$root"/root "$root"/tmp \
+         "$root"/usr/share/applications
+# Each user has /users/<name>/home (their files) and /users/<name>/system
+# (settings, encrypted credentials, app data).
+ud="$root"/users/"$user"
+mkdir -p "$ud"/home/Desktop "$ud"/home/Documents "$ud"/home/Downloads "$ud"/home/Images "$ud"/home/Music \
+         "$ud"/system/settings "$ud"/system/credentials "$ud"/system/appdata
+echo "$user" > "$ud"/system/settings/name
+echo light > "$ud"/system/settings/theme
+echo en > "$ud"/system/settings/language
+echo default > "$ud"/system/settings/background
 cp "$endpoint"/sbin/* "$root"/sbin/
 cp "$endpoint"/bin/* "$root"/bin/
 cp -r "$here"/../endpoint/rootfs/. "$root"/
+# Graphical programs: registry entries and their data files.
+for dir in "$here"/../endpoint/apps/*/ "$here"/../endpoint/system/*/; do
+    name=$(basename "$dir")
+    for app in "$dir"*.app; do
+        [ -e "$app" ] && cp "$app" "$root"/usr/share/applications/
+    done
+    if [ -d "$dir"res ]; then
+        mkdir -p "$root"/usr/share/"$name"
+        cp -r "$dir"res/. "$root"/usr/share/"$name"/
+    fi
+done
 mkdir -p "$root"/etc/ssl/certs "$root"/usr/share/fonts
 cp "$here"/../third_party/fonts/*.ttf "$root"/usr/share/fonts/
 cp "$here"/../third_party/ca-certificates.pem "$root"/etc/ssl/certs/ca-bundle.pem
 
 cat > "$root"/etc/passwd <<PASSWD
 root:x:0:0:root:/root:/bin/terminal
-$user:x:1000:1000:$user:/home/$user:/bin/terminal
+$user:x:1000:1000:$user:/users/$user/home:/bin/terminal
 PASSWD
 cat > "$root"/etc/group <<GROUP
 root:x:0:root
 adm:x:4:$user
 sudo:x:27:$user
+video:x:44:
 input:x:50:
 $user:x:1000:$user
 GROUP
@@ -42,9 +63,12 @@ GROUP
 
 fakeroot sh -c "
     chown -R 0:0 '$root'
-    chown -R 1000:1000 '$root/home/$user'
-    chmod 0755 '$root' '$root'/bin '$root'/sbin '$root'/etc '$root'/home
-    chmod 0700 '$root'/root '$root/home/$user'
+    chown -R 1000:1000 '$ud'
+    chmod 0755 '$root' '$root'/bin '$root'/sbin '$root'/etc '$root'/users '$root'/usr '$root'/usr/share
+    chmod 0711 '$ud'
+    chmod 0700 '$root'/root '$ud'/home '$ud'/system '$ud'/system/settings '$ud'/system/credentials \
+          '$ud'/system/appdata
+    chmod 0600 '$ud'/system/settings/*
     chmod 1777 '$root'/tmp
     chmod 0755 '$root'/bin/* '$root'/sbin/*
     chmod 0644 '$root'/etc/passwd '$root'/etc/group '$root'/etc/motd '$root'/etc/hostname '$root'/etc/hosts \\

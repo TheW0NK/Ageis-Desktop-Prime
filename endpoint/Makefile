@@ -52,8 +52,14 @@ PROGRAMS      := $(basename $(notdir $(wildcard programs/*.c)))
 
 COMPOSITOR_SRCS := $(wildcard compositor/*.c)
 
+# Graphical programs, one directory each: apps/<name> -> /bin/<name> and
+# system/<name> -> /sbin/<name>. Their other files (AUI, .app entries) are
+# installed by tools/mkrootfs.sh.
+APPS   := $(notdir $(wildcard apps/*))
+SYSTEM := $(notdir $(wildcard system/*))
+
 TARGETS := $(BUILD)/sbin/init $(BUILD)/bin/terminal $(addprefix $(BUILD)/bin/,$(PROGRAMS)) \
-           $(BUILD)/sbin/compositor
+           $(BUILD)/sbin/compositor $(addprefix $(BUILD)/bin/,$(APPS)) $(addprefix $(BUILD)/sbin/,$(SYSTEM))
 
 .PHONY: all clean
 
@@ -107,6 +113,14 @@ $(BUILD)/bin/terminal: $(CRT0) $(addprefix $(BUILD)/,$(TERMINAL_SRCS:.c=.o)) $(L
 $(BUILD)/sbin/compositor: $(CRT0) $(addprefix $(BUILD)/,$(COMPOSITOR_SRCS:.c=.o)) $(LIBS)
 	@mkdir -p $(dir $@)
 	$(LD) $(LDFLAGS) $(CRT0) $(addprefix $(BUILD)/,$(COMPOSITOR_SRCS:.c=.o)) --start-group $(LIBS) --end-group -o $@
+
+define program_rule
+$(BUILD)/$(2)/$(1): $(CRT0) $(patsubst %.c,$(BUILD)/%.o,$(wildcard $(3)/$(1)/*.c)) $(LIBS)
+	@mkdir -p $$(dir $$@)
+	$$(LD) $$(LDFLAGS) $(CRT0) $(patsubst %.c,$(BUILD)/%.o,$(wildcard $(3)/$(1)/*.c)) --start-group $$(LIBS) --end-group -o $$@
+endef
+$(foreach a,$(APPS),$(eval $(call program_rule,$(a),bin,apps)))
+$(foreach a,$(SYSTEM),$(eval $(call program_rule,$(a),sbin,system)))
 
 $(BUILD)/bin/%: $(CRT0) $(BUILD)/programs/%.o $(LIBS)
 	@mkdir -p $(dir $@)

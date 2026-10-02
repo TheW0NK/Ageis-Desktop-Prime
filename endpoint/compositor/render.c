@@ -309,6 +309,9 @@ void render(void)
     struct gfx g;
     struct rect cr = cursor_rect();
 
+    // The text console is in front: draw nothing until it is switched back.
+    if (screen_paused)
+        return;
     if (!ndamaged && cr.x == cursor_drawn.x && cr.y == cursor_drawn.y && cr.w == cursor_drawn.w)
         return;
     damage(cursor_drawn);

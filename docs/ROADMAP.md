@@ -55,8 +55,9 @@ reset a forgotten password but cannot recover the encrypted credentials.
 | 1. Input and test tooling | Done |
 | 2. Kernel services | Done |
 | 3. Networking | Done for IPv4 and TLS. IPv6 is deferred until something needs it. |
-| 4. Graphics and windowing | Next (moved ahead of audio: most remaining work depends on it) |
+| 4. Graphics and windowing | Done: compositor, libgfx, AUI and toolkit, sign-in screen, desktop shell, Terminal. Ctrl+Alt+F2 shows the text console, Ctrl+Alt+F1 returns. |
 | 5. Audio and camera | Planned |
+| 9. Apps | Next, ahead of 5–8: the apps exercise the toolkit, and audio, users and packaging plug into them. |
 | 6.–11. | Planned |
 
 ## Phases

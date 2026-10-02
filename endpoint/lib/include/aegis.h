@@ -204,6 +204,7 @@ char *strndup(const char *s, size_t max);
 int strcasecmp(const char *a, const char *b);
 int strncasecmp(const char *a, const char *b, size_t n);
 size_t strlcpy(char *dst, const char *src, size_t size);
+size_t strlcat(char *dst, const char *src, size_t size);
 const char *strerror(int err);
 
 // stdlib.h
@@ -260,6 +261,47 @@ int64_t mktime(struct tm *tm);
 size_t strftime(char *buf, size_t size, const char *fmt, const struct tm *tm);
 int timezone_offset(void);          // seconds east of UTC
 const char *timezone_name(void);
+
+// Users (lib/user.c). Each user has /users/<name>/home and /users/<name>/system.
+struct user_info {
+    char name[32];
+    uint32_t uid, gid;
+    char display[64];               // from settings/name, else the passwd comment
+    char home[128];                 // /users/<name>/home
+    char shell[128];
+    char dir[128];                  // /users/<name>
+};
+int user_by_name(const char *name, struct user_info *out);
+int user_by_uid(uint32_t uid, struct user_info *out);
+int user_current(struct user_info *out);
+// People (uid 1000 and up), in /etc/passwd order.
+int user_list(struct user_info *out, int max);
+bool user_in_group(const char *name, const char *group);
+// rel is relative to /users/<name>, e.g. "system/appdata".
+void user_path(const struct user_info *u, const char *rel, char *buf, size_t size);
+// Settings: name, theme, language, background, picture. Returns the length or -1.
+int user_setting_get(const struct user_info *u, const char *key, char *buf, size_t size);
+int user_setting_set(const struct user_info *u, const char *key, const char *value);
+int user_setup_dirs(const struct user_info *u);
+
+// Applications (lib/apps.c): /usr/share/applications/<id>.app files.
+struct app_info {
+    char id[32];
+    char name[64];
+    char exec[128];
+    char icon[32];
+    char suite[32];                 // System, Administrative, Default, Development
+    char description[128];
+    char opens[128];                // file types: ".txt;.md"
+    char tier[16];                  // basic, elevated, system, powersudo
+    bool hidden;
+};
+int app_list(struct app_info *out, int max);        // sorted by name
+int app_find(const char *id, struct app_info *out);
+int app_for_file(const char *name, struct app_info *out);
+int app_launch(const struct app_info *a, const char *arg);
+// Starts a program with its standard streams on /dev/null; returns the pid.
+int launch(const char *path, const char *arg);
 
 // Directory reading.
 struct dir_stream {

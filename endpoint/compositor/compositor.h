@@ -83,5 +83,8 @@ void set_minimized(struct window *w, bool on);
 void announce(struct window *w, uint32_t type);
 void cycle_focus(void);
 void update_work_area(void);
+void vt_leave(void);
+void vt_enter(void);
+extern bool screen_paused;
 
 #endif

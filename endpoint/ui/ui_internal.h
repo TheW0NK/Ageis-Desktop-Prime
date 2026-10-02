@@ -85,6 +85,7 @@ struct ui_window {
     int clicks;
     int cursor;
     int x, y;                       // popups: position in the parent's content
+    bool positioned;                // x, y set by ui_window_move
     int ptr_x, ptr_y;               // last pointer position
     // The menu or dropdown list open over this window.
     struct ui_window *popup;
@@ -95,6 +96,8 @@ struct ui_window {
     void (*on_key)(struct ui_window *, struct wm_event *, void *);
     void *on_key_user;
     const struct ui_handler_entry *handlers;
+    void (*backdrop)(struct ui_window *, struct gfx *, struct rect, void *);
+    void *backdrop_user;
     void *user;
     struct ui_window *next;
 };

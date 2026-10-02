@@ -118,6 +118,8 @@ static void box_init(struct widget *w)
         w->padding = 4, w->spacing = 12;
     else if (!strcmp(w->tag, "tab"))
         w->padding = 12, w->spacing = ui_theme.spacing;
+    else if (!strcmp(w->tag, "card"))
+        w->padding = 24, w->spacing = 12;
 }
 
 static void box_paint(struct widget *w, struct gfx *g)
@@ -141,6 +143,12 @@ static void box_paint(struct widget *w, struct gfx *g)
             gfx_fill(g, (struct rect){ w->r.x + 8, w->r.y, tw + 8, th }, ui_theme.window);
             text_draw(g, f, w->r.x + 12, w->r.y + (th - font_line_height(f)) / 2, w->text, -1, ui_theme.text);
         }
+    } else if (!strcmp(w->tag, "card")) {
+        int rad = ui_theme.radius * 2;
+
+        gfx_shadow(g, w->r, rad, 18, ui_theme.shadow);
+        gfx_fill_rounded(g, w->r, rad, ALPHA(ui_theme.surface, 0xF0));
+        gfx_outline_rounded(g, w->r, rad, 1, ALPHA(ui_theme.border, 0x80));
     } else if (ui_attr(w, "background") && !strcmp(ui_attr(w, "background"), "surface")) {
         gfx_fill(g, w->r, ui_theme.surface);
     }
@@ -160,6 +168,8 @@ static const struct wclass toolbar_class = { "toolbar", .init = box_init, .measu
                                              .arrange = box_arrange, .paint = box_paint };
 static const struct wclass statusbar_class = { "statusbar", .init = box_init, .measure = box_measure,
                                                .arrange = box_arrange, .paint = box_paint };
+static const struct wclass card_class = { "card", .init = box_init, .measure = box_measure,
+                                          .arrange = box_arrange, .paint = box_paint };
 static const struct wclass tab_class = { "tab", .init = box_init, .measure = box_measure, .arrange = box_arrange,
                                          .paint = box_paint };
 
@@ -886,52 +896,105 @@ static int icon_size(void)
     return ui_theme.font_size + 4;
 }
 
-static void button_measure(struct widget *w, int avail, int *pw, int *ph)
+static bool is_tile(struct widget *w)
+{
+    const char *t = ui_attr(w, "tile");
+
+    return t && attr_bool(t);
+}
+
+// The button's picture: an image file (icon), an app tile (appicon) or a
+// symbol drawn in the text colour (symbol).
+static bool has_picture(struct widget *w)
 {
     struct button *b = w->data;
+
+    return (b && b->icon) || ui_attr(w, "appicon") || ui_attr(w, "symbol");
+}
+
+static void draw_picture(struct widget *w, struct gfx *g, struct rect r, color_t c)
+{
+    struct button *b = w->data;
+    const char *app = ui_attr(w, "appicon"), *sym = ui_attr(w, "symbol");
+
+    if (b && b->icon)
+        gfx_blit_scaled(g, b->icon, (struct rect){ 0, 0, b->icon->width, b->icon->height }, r);
+    else if (app)
+        icon_draw(g, app, r);
+    else if (sym)
+        icon_draw_glyph(g, sym, r, c);
+}
+
+static int tile_icon(struct widget *w)
+{
+    const char *s = ui_attr(w, "iconsize");
+
+    return s ? atoi(s) : 40;
+}
+
+static void button_measure(struct widget *w, int avail, int *pw, int *ph)
+{
     const char *t = w->text ? w->text : "";
-    int tw = *t ? text_width(ui_font(), t, -1) : 0, iw = b && b->icon ? icon_size() : 0;
+    const char *sz = ui_attr(w, "iconsize");
+    int tw = *t ? text_width(ui_font(), t, -1) : 0, iw = has_picture(w) ? (sz ? atoi(sz) : icon_size()) : 0;
 
     (void)avail;
-    *pw = tw + iw + (tw && iw ? 6 : 0) + (tw ? 28 : 12);
+    if (is_tile(w)) {
+        *pw = 96;
+        *ph = tile_icon(w) + 14 + 2 * font_line_height(ui_font());
+        return;
+    }
+    *pw = tw + iw + (tw && iw ? 8 : 0) + (tw ? 28 : 12);
     if (tw && !attr_bool(ui_attr(w, "flat") ? ui_attr(w, "flat") : "false"))
         *pw = MAX(*pw, 80);
-    *ph = ui_theme.row_height;
+    *ph = MAX(ui_theme.row_height, iw + 10);
 }
 
 static void button_paint(struct widget *w, struct gfx *g)
 {
-    struct button *b = w->data;
     const char *t = w->text ? w->text : "", *flat = ui_attr(w, "flat");
+    const char *sz = ui_attr(w, "iconsize");
     bool primary = (ui_attr(w, "primary") && attr_bool(ui_attr(w, "primary")))
                    || (ui_attr(w, "default") && attr_bool(ui_attr(w, "default")));
     color_t c = primary ? ui_theme.accent_text : ui_theme.text;
     struct font *f = ui_font();
-    int tw = *t ? text_width(f, t, -1) : 0, isz = b && b->icon ? icon_size() : 0;
-    int total = tw + isz + (tw && isz ? 6 : 0), x = w->r.x + (w->r.w - total) / 2;
+    int tw = *t ? text_width(f, t, -1) : 0, isz = has_picture(w) ? (sz ? atoi(sz) : icon_size()) : 0;
+    int total = tw + isz + (tw && isz ? 8 : 0), x = w->r.x + (w->r.w - total) / 2;
+    struct gfx saved = *g;
 
-    if (flat && attr_bool(flat)) {
+    if ((flat && attr_bool(flat)) || is_tile(w)) {
         if (w->hover && w->enabled)
             gfx_fill_rounded(g, w->r, ui_theme.radius, w->pressed ? ui_theme.pressed : ui_theme.hover);
         if ((ui_attr(w, "checked") && attr_bool(ui_attr(w, "checked"))) || w->value)
-            gfx_fill_rounded(g, w->r, ui_theme.radius, ui_theme.selection);
+            gfx_fill_rounded(g, w->r, ui_theme.radius, ui_mix(ui_theme.selection, ui_theme.window, 60));
     } else {
         ui_draw_button_bg(g, w, w->r, primary);
     }
     if (!w->enabled)
         c = ui_mix(c, ui_theme.window, 130);
-    if (isz) {
-        gfx_blit_scaled(g, b->icon, (struct rect){ 0, 0, b->icon->width, b->icon->height },
-                        (struct rect){ x, w->r.y + (w->r.h - isz) / 2, isz, isz });
-        x += isz + 6;
-    }
-    if (tw) {
-        struct gfx saved = *g;
+    ui_clip(g, w->r);
+    if (is_tile(w)) {
+        int ti = tile_icon(w), lh = font_line_height(f);
 
-        ui_clip(g, w->r);
-        ui_draw_text(g, f, (struct rect){ x, w->r.y, MIN(tw, w->r.w - 8), w->r.h }, t, c, ALIGN_START);
+        draw_picture(w, g, (struct rect){ w->r.x + (w->r.w - ti) / 2, w->r.y + 6, ti, ti }, c);
+        ui_draw_text(g, f, (struct rect){ w->r.x + 4, w->r.y + ti + 10, w->r.w - 8, lh }, t, c, ALIGN_CENTER);
         *g = saved;
+        if (ui_is_focused(w) && w->win->focus_visible)
+            ui_draw_focus(g, w->r, ui_theme.radius);
+        return;
     }
+    if (total > w->r.w - 8 && tw) {
+        // Too narrow: keep the picture, shorten the text.
+        x = w->r.x + 10;
+        tw = MAX(0, w->r.w - 20 - isz - (isz ? 8 : 0));
+    }
+    if (isz) {
+        draw_picture(w, g, (struct rect){ x, w->r.y + (w->r.h - isz) / 2, isz, isz }, c);
+        x += isz + 8;
+    }
+    if (tw)
+        ui_draw_text(g, f, (struct rect){ x, w->r.y, tw, w->r.h }, t, c, ALIGN_START);
+    *g = saved;
     if (ui_is_focused(w) && w->win->focus_visible)
         ui_draw_focus(g, w->r, ui_theme.radius);
 }
@@ -1417,6 +1480,11 @@ static void canvas_paint(struct widget *w, struct gfx *g)
     *g = saved;
 }
 
+bool ui_is_focused_widget(struct widget *w)
+{
+    return ui_is_focused(w);
+}
+
 static bool canvas_pointer(struct widget *w, struct wm_event *ev)
 {
     struct canvas *c = w->data;
@@ -1442,7 +1510,10 @@ static bool canvas_key(struct widget *w, struct wm_event *ev)
 {
     struct canvas *c = w->data;
 
-    if (!c || !c->input || ev->key == KEY_TAB)
+    if (!c || !c->input)
+        return false;
+    // Tab moves the focus unless the canvas wants it (terminals).
+    if (ev->key == KEY_TAB && !(ui_attr(w, "wanttab") && attr_bool(ui_attr(w, "wanttab"))))
         return false;
     c->input(w, ev, c->user);
     return true;
@@ -1459,7 +1530,7 @@ extern const struct wclass ui_input_class, ui_password_class, ui_textarea_class,
     ui_popuplist_class, ui_spin_class;
 
 const struct wclass *const ui_classes[] = {
-    &window_class, &box_class, &vbox_class, &hbox_class, &group_class, &toolbar_class, &statusbar_class, &tab_class,
+    &window_class, &box_class, &vbox_class, &hbox_class, &group_class, &card_class, &toolbar_class, &statusbar_class, &tab_class,
     &grid_class, &stack_class, &tabs_class, &scroll_class, &label_class, &h1_class, &h2_class, &p_class,
     &link_class, &button_class, &checkbox_class, &radio_class, &toggle_class, &slider_class, &progress_class,
     &image_class, &separator_class, &spacer_class, &canvas_class,
