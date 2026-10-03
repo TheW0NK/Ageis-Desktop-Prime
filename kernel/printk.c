@@ -23,9 +23,24 @@ static void log_put(char c)
     log_head++;
 }
 
+// While panicking: kernel messages are also collected here (for the
+// crash screen) instead of being drawn on the hidden console.
+static char *capture;
+static size_t capture_len, capture_size;
+
+void printk_capture(char *buf, size_t size)
+{
+    capture = buf;
+    capture_size = size;
+    capture_len = 0;
+    if (size)
+        buf[0] = 0;
+}
+
 static void log_append(const char *s, size_t n)
 {
-    uint64_t flags = spin_lock_irqsave(&log_lock);
+    // A panicking CPU cannot wait for a lock another (halted) CPU holds.
+    uint64_t flags = console_forced ? irq_save() : spin_lock_irqsave(&log_lock);
 
     for (size_t i = 0; i < n; i++) {
         if (log_line_start) {
@@ -41,7 +56,10 @@ static void log_append(const char *s, size_t n)
         if (s[i] == '\n')
             log_line_start = true;
     }
-    spin_unlock_irqrestore(&log_lock, flags);
+    if (console_forced)
+        irq_restore(flags);
+    else
+        spin_unlock_irqrestore(&log_lock, flags);
 }
 
 uint64_t klog_head(void)
@@ -79,7 +97,13 @@ void console_output(const char *s, size_t n)
         __asm__ volatile ("pause");
     }
     serial_write(s, n);
-    console_write(s, n);
+    if (capture) {
+        for (size_t i = 0; i < n && capture_len + 1 < capture_size; i++)
+            capture[capture_len++] = s[i];
+        capture[capture_len] = 0;
+    } else {
+        console_write(s, n);
+    }
     if (locked)
         spin_unlock(&console_lock);
     irq_restore(flags);

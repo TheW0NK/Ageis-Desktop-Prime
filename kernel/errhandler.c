@@ -4,6 +4,8 @@
 #include "process.h"
 #include "sched.h"
 #include "smp.h"
+#include "stopcodes.h"
+#include "string.h"
 
 static const char *const exception_names[32] = {
     "Divide error", "Debug", "Non-maskable interrupt", "Breakpoint",
@@ -16,8 +18,14 @@ static const char *const exception_names[32] = {
     "Hypervisor injection exception", "VMM communication exception", "Security exception", "Reserved",
 };
 
-static bool panicking;
+static bool panicking, graphical;
+static char report[8192];
 
+void printk_capture(char *buf, size_t size);
+void crash_screen_draw(uint32_t code, const char *report);
+
+// Once the desktop or sign-in screen owns the display, a panic shows the
+// graphical crash screen; earlier (while starting up) the red text screen.
 static void panic_begin(void)
 {
     cli();
@@ -26,6 +34,14 @@ static void panic_begin(void)
     smp_halt_others();
     console_force();
 
+    graphical = display_claimed() && display_primary();
+    if (graphical) {
+        printk_capture(report, sizeof(report));
+        kprintf("\n  *** AEGIS KERNEL PANIC ***\n\n");
+        return;
+    }
+    // The splash screen hides the console: show it again.
+    console_set_hidden(false);
     console_set_color(COLOR_WHITE, COLOR_RED);
     console_clear();
     kprintf("\n  *** AEGIS KERNEL PANIC ***\n\n");
@@ -53,9 +69,19 @@ static void backtrace(uint64_t rbp, uint64_t rip)
     (void)__kernel_end;
 }
 
-static NORETURN void panic_end(void)
+static NORETURN void panic_end(uint32_t code)
 {
-    kprintf("\n  System halted.\n");
+    const struct stop_code *sc = stop_code_find(code);
+
+    if (graphical)
+        printk_capture(NULL, 0);    // the screen says this itself
+    kprintf("\n  Stop code: %s (0x%03x)\n  System halted.\n", sc->name, code);
+    if (graphical) {
+        // The screen shows the report without its banner line.
+        const char *body = strstr(report, "PANIC ***");
+
+        crash_screen_draw(code, body ? body + 9 : report);
+    }
     halt_forever();
 }
 
@@ -70,7 +96,8 @@ void panic(const char *fmt, ...)
     va_end(args);
     kprintf("\n");
     backtrace((uint64_t)__builtin_frame_address(0), 0);
-    panic_end();
+    panic_end(strstr(fmt, "ut of memory") ? STOP_OUT_OF_MEMORY
+              : strstr(fmt, "boot info") ? STOP_BAD_BOOT_INFO : STOP_KERNEL_PANIC);
 }
 
 const char *exception_report_name(uint64_t vector)
@@ -98,5 +125,5 @@ void exception_report(struct interrupt_frame *f)
     kprintf("  R10=%016lx  R11=%016lx  R12=%016lx\n", f->r10, f->r11, f->r12);
     kprintf("  R13=%016lx  R14=%016lx  R15=%016lx\n", f->r13, f->r14, f->r15);
     backtrace(f->rbp, f->rip);
-    panic_end();
+    panic_end((uint32_t)f->vector);
 }
