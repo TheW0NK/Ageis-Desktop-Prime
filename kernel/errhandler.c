@@ -85,19 +85,31 @@ static NORETURN void panic_end(uint32_t code)
     halt_forever();
 }
 
+static NORETURN void panic_va(uint32_t code, const char *fmt, va_list args)
+{
+    panic_begin();
+    kprintf("  ");
+    kvprintf(fmt, args);
+    kprintf("\n");
+    backtrace((uint64_t)__builtin_frame_address(0), 0);
+    panic_end(code);
+}
+
+// A panic with a stop code (kernel/head/stopcodes.h).
+void panic_code(uint32_t code, const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    panic_va(code, fmt, args);
+}
+
 void panic(const char *fmt, ...)
 {
     va_list args;
 
-    panic_begin();
-    kprintf("  ");
     va_start(args, fmt);
-    kvprintf(fmt, args);
-    va_end(args);
-    kprintf("\n");
-    backtrace((uint64_t)__builtin_frame_address(0), 0);
-    panic_end(strstr(fmt, "ut of memory") ? STOP_OUT_OF_MEMORY
-              : strstr(fmt, "boot info") ? STOP_BAD_BOOT_INFO : STOP_KERNEL_PANIC);
+    panic_va(strstr(fmt, "ut of memory") ? STOP_OUT_OF_MEMORY : STOP_KERNEL_PANIC, fmt, args);
 }
 
 const char *exception_report_name(uint64_t vector)

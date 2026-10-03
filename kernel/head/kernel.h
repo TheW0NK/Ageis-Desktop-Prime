@@ -17,6 +17,14 @@
 #define NORETURN        __attribute__((noreturn))
 #define PRINTF(f, a)    __attribute__((format(printf, f, a)))
 
+// UEFI runtime services (efi.c).
+void efi_init(uint64_t system_table);
+bool efi_firmware_setup_supported(void);
+int efi_request_firmware_setup(void);
+void efi_reset_cold(void);
+// The command line the bootloader gave (main.c).
+const char *kernel_cmdline(void);
+
 int kvsnprintf(char *buf, size_t size, const char *fmt, va_list args);
 int ksnprintf(char *buf, size_t size, const char *fmt, ...) PRINTF(3, 4);
 
@@ -24,6 +32,7 @@ void kprintf(const char *fmt, ...) PRINTF(1, 2);
 void kvprintf(const char *fmt, va_list args);
 
 NORETURN void panic(const char *fmt, ...) PRINTF(1, 2);
+NORETURN void panic_code(uint32_t code, const char *fmt, ...) PRINTF(2, 3);
 void console_output(const char *s, size_t n);
 void console_force(void);
 void console_set_quiet(bool quiet);

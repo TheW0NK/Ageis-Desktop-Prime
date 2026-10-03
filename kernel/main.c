@@ -1,3 +1,4 @@
+#include "stopcodes.h"
 #include "kernel.h"
 #include "acpi.h"
 #include "apic.h"
@@ -26,6 +27,11 @@ void monitor_thread(void *arg);
 static char cmdline[512];
 static uint64_t acpi_rsdp, ramdisk_base, ramdisk_size;
 
+const char *kernel_cmdline(void)
+{
+    return cmdline;
+}
+
 static const char *cmdline_value(const char *key)
 {
     size_t klen = strlen(key);
@@ -47,7 +53,7 @@ static struct block_device *find_root(void)
     uint8_t guid[16];
 
     // The live system runs from the ramdisk the bootloader loaded.
-    if (ramdisk_device() && (!spec || !strcmp(spec, "ram0")))
+    if (ramdisk_device() && (!spec || (!strncmp(spec, "ram0", 4) && (spec[4] == ' ' || !spec[4]))))
         return ramdisk_device();
     if (spec && !strncmp(spec, "PARTUUID=", 9) && guid_parse(spec + 9, guid)) {
         for (size_t i = 0; i < block_count(); i++) {
@@ -82,6 +88,10 @@ static void mount_boot(void)
     static const char esp_type[] = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
     uint8_t guid[16];
 
+    // A system running from the ramdisk (install media, recovery) has no
+    // EFI partition of its own: any found belongs to a disk it works on.
+    if (vfs_root() && vfs_root()->mount->dev == ramdisk_device() && ramdisk_device())
+        return;
     guid_parse(esp_type, guid);
     for (size_t i = 0; i < block_count(); i++) {
         struct block_device *d = block_at(i);
@@ -118,6 +128,7 @@ static void kinit(void *arg)
         mount_dev();
     }
     display_devfs_init();
+    cmdline_devfs_init();
     hda_init();
     vcam_init();
     smp_init();
@@ -132,7 +143,7 @@ static void kinit(void *arg)
     if (ret < 0) {
         kprintf("Cannot start /sbin/init (error %d); starting the kernel monitor\n", ret);
         if (!thread_create("monitor", monitor_thread, NULL))
-            panic("Cannot start the kernel monitor");
+            panic_code(STOP_THREAD_START, "Cannot start the kernel monitor");
     }
 }
 
@@ -141,7 +152,7 @@ void kmain(struct aegis_boot_info *info)
     serial_init();
 
     if (!info || info->magic != AEGIS_BOOT_MAGIC || info->version != AEGIS_BOOT_VERSION)
-        panic("Invalid boot info from the bootloader");
+        panic_code(STOP_BAD_BOOT_INFO, "Invalid boot info from the bootloader");
 
     display_init(info->framebuffers, info->framebuffer_count);
     kprintf("Aegis kernel %s\n", AEGIS_VERSION);
@@ -151,6 +162,7 @@ void kmain(struct aegis_boot_info *info)
     memcpy(cmdline, (const char *)info->cmdline,
            strnlen((const char *)info->cmdline, sizeof(cmdline) - 1));
     acpi_rsdp = info->acpi_rsdp;
+    efi_init(info->efi_system_table);
     ramdisk_base = info->ramdisk_base;
     ramdisk_size = info->ramdisk_size;
 
@@ -162,7 +174,7 @@ void kmain(struct aegis_boot_info *info)
 
     acpi_init(acpi_rsdp);
     if (!acpi.present)
-        panic("No ACPI tables; the APIC cannot be configured");
+        panic_code(STOP_NO_ACPI, "No ACPI tables; the APIC cannot be configured");
     mem_reclaim_acpi();
     kprintf("ACPI: %s, %u CPU(s), %u IO APIC(s)\n", acpi.oem, acpi.cpu_count, acpi.ioapic_count);
 
@@ -188,7 +200,7 @@ void kmain(struct aegis_boot_info *info)
     kprintf("Command line: %s\n", cmdline);
 
     if (!thread_create("kinit", kinit, NULL))
-        panic("Cannot start kinit");
+        panic_code(STOP_THREAD_START, "Cannot start kinit");
 
     for (;;)
         __asm__ volatile ("sti; hlt");

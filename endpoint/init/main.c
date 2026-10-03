@@ -83,6 +83,16 @@ static void first_boot(void)
     sync();
 }
 
+static bool has_word(const char *s, const char *w)
+{
+    size_t n = strlen(w);
+
+    for (const char *p = s; (p = strstr(p, w)); p += n)
+        if ((p == s || p[-1] == ' ') && (p[n] == 0 || p[n] == ' ' || p[n] == '\n'))
+            return true;
+    return false;
+}
+
 int main(int argc, char **argv)
 {
     struct service services[] = {
@@ -99,10 +109,37 @@ int main(int argc, char **argv)
     (void)argv;
     setenv("PATH", "/bin:/sbin:/apps/bin");
     first_boot();
-    // The live system on the install media starts the installer instead of
-    // the sign-in screen.
-    if (stat("/etc/live", &st) == 0)
-        services[4].argv[1] = "/sbin/installer";
+    {
+        char cmdline[512] = "";
+        int fd = open("/dev/cmdline", O_RDONLY);
+
+        if (fd >= 0) {
+            ssize_t n = read(fd, cmdline, sizeof(cmdline) - 1);
+
+            cmdline[n > 0 ? n : 0] = 0;
+            close(fd);
+        }
+        // Recovery (a boot entry with "recovery") and the live system on the
+        // install media start their own program instead of the sign-in screen.
+        if (has_word(cmdline, "recovery"))
+            services[4].argv[1] = "/sbin/recovery";
+        else if (stat("/etc/live", &st) == 0)
+            services[4].argv[1] = "/sbin/installer";
+        // Safe mode: only what is needed to sign in and fix things.
+        if (has_word(cmdline, "safe")) {
+            setenv("AEGIS_SAFE_MODE", "1");
+            // Safe mode chosen once from recovery: the next start is normal.
+            if (stat("/etc/safe-mode-once", &st) == 0) {
+                feature_set("bootlog", feature_enabled("bootlog"));
+                unlink("/etc/safe-mode-once");
+                sync();
+            }
+            services[1].disabled = services[2].disabled = true;
+            dprintf(STDERR_FILENO, "init: safe mode: scheduled jobs and sound are off\n");
+        }
+    }
+    if (!feature_enabled("audio"))
+        services[2].disabled = true;
     // No screen to draw on: text mode only (and then the console must run).
     if (stat("/dev/fb0", &st) < 0)
         services[4].disabled = true;

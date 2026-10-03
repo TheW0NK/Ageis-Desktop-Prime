@@ -55,6 +55,9 @@ struct fat_fs {
     uint32_t cluster_count;
     uint32_t root_cluster;
     uint32_t next_free;
+    // Where the last chain walk ended, so sequential I/O on a big file does
+    // not walk its whole chain for every sector. Reset when chains shrink.
+    uint32_t walk_first, walk_index, walk_cluster;
 };
 
 struct fat_node {
@@ -85,7 +88,7 @@ static uint32_t fat_get(struct fat_fs *fs, uint32_t c)
     return v;
 }
 
-static int fat_set(struct fat_fs *fs, uint32_t c, uint32_t val)
+static int fat_store(struct fat_fs *fs, uint32_t c, uint32_t val)
 {
     uint64_t off = (uint64_t)c * 4;
 
@@ -98,10 +101,18 @@ static int fat_set(struct fat_fs *fs, uint32_t c, uint32_t val)
             return -EIO;
         p = (uint32_t *)(b->data + off % fs->sector_size);
         *p = (*p & ~FAT_MASK) | (val & FAT_MASK);
-        bwrite(b);
+        // Written back with the rest of the cache (sync, unmount).
+        bdirty(b);
         brelse(b);
     }
     return 0;
+}
+
+// Changing an existing chain (truncating, freeing) forgets the last walk.
+static int fat_set(struct fat_fs *fs, uint32_t c, uint32_t val)
+{
+    fs->walk_first = 0;
+    return fat_store(fs, c, val);
 }
 
 static int zero_cluster(struct fat_fs *fs, uint32_t c)
@@ -112,7 +123,7 @@ static int zero_cluster(struct fat_fs *fs, uint32_t c)
         if (!b)
             return -EIO;
         memset(b->data, 0, fs->sector_size);
-        bwrite(b);
+        bdirty(b);
         brelse(b);
     }
     return 0;
@@ -125,9 +136,10 @@ static int alloc_cluster(struct fat_fs *fs, uint32_t prev, uint32_t *out)
 
         if (fat_get(fs, c) != 0)
             continue;
-        if (fat_set(fs, c, FAT_MASK))
+        // Growing a chain keeps the last walk valid.
+        if (fat_store(fs, c, FAT_MASK))
             return -EIO;
-        if (prev && fat_set(fs, prev, c))
+        if (prev && fat_store(fs, prev, c))
             return -EIO;
         fs->next_free = c + 1;
         *out = c;
@@ -157,7 +169,7 @@ static uint32_t chain_length(struct fat_fs *fs, uint32_t c)
 // Returns the cluster holding byte `off` of the chain, optionally extending it.
 static int cluster_at(struct fat_fs *fs, uint32_t *first, uint64_t off, bool extend, uint32_t *out)
 {
-    uint32_t c = *first, prev = 0, index = off / fs->cluster_size;
+    uint32_t c = *first, prev = 0, index = off / fs->cluster_size, i = 0;
     int ret;
 
     if (c < 2) {
@@ -167,8 +179,11 @@ static int cluster_at(struct fat_fs *fs, uint32_t *first, uint64_t off, bool ext
             return ret;
         zero_cluster(fs, c);
         *first = c;
+    } else if (fs->walk_first == c && fs->walk_index <= index) {
+        i = fs->walk_index;
+        c = fs->walk_cluster;
     }
-    for (uint32_t i = 0; i < index; i++) {
+    for (; i < index; i++) {
         prev = c;
         c = fat_get(fs, c);
         if (c < 2 || c >= FAT_EOC) {
@@ -179,6 +194,9 @@ static int cluster_at(struct fat_fs *fs, uint32_t *first, uint64_t off, bool ext
             zero_cluster(fs, c);
         }
     }
+    fs->walk_first = *first;
+    fs->walk_index = index;
+    fs->walk_cluster = c;
     *out = c;
     return 0;
 }
@@ -625,7 +643,7 @@ static int64_t op_write(struct vnode *v, const void *buf, size_t size, uint64_t 
             break;
         }
         memcpy(b->data + in_sector, (const uint8_t *)buf + done, n);
-        bwrite(b);
+        bdirty(b);
         brelse(b);
         done += n;
     }

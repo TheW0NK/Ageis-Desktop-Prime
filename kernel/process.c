@@ -1,3 +1,4 @@
+#include "stopcodes.h"
 #include "process.h"
 #include "apic.h"
 #include "futex.h"
@@ -502,7 +503,7 @@ void process_thread_exit(int status)
 
     if (last) {
         if (p == init_process)
-            panic("init exited with status 0x%x", p->exit_status);
+            panic_code(STOP_CRITICAL_PROCESS, "init exited with status 0x%x", p->exit_status);
         teardown(p);
     }
     thread_exit(status);

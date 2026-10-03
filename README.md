@@ -37,6 +37,26 @@ start. In VMware, use UEFI firmware and a SATA or NVMe disk of at least 2 GB.
 From a running system, `sudo disk install DISK USER PASSWORD` does the same
 from the terminal (`disk list` shows the disks).
 
+## Recovery
+
+Installed systems have **Aegis Recovery** and **Aegis (safe mode)** in the boot
+menu (press an arrow key while it counts down); the install media has
+Recovery too. Recovery finds the installed system and offers:
+
+- **Start Aegis**: restart, restart once in safe mode (no scheduled jobs or
+  sound), shut down, or restart into the UEFI firmware settings.
+- **Startup settings**: turn services on or off, show startup messages, the
+  boot menu wait, screen resolution and extra kernel options.
+- **Boot configuration**: edit the BCD file directly.
+- **Reset a password** (the account's saved credentials are set aside).
+- **System image**: save the whole system to `/var/backups`, or restore one.
+- **Reinstall**: put back fresh system files keeping accounts, settings, apps
+  and files, or erase the disk and install again.
+- **Terminal**: a root terminal with the system at `/mnt/system`.
+
+`sudo crash` stops the computer with the crash screen, to see it; the stop
+codes and their lines are in `kernel/head/stopcodes.h`.
+
 ## Testing
 
 `tools/qemu-test.py` boots the image headless and drives it with typed

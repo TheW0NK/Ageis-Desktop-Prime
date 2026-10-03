@@ -1,3 +1,4 @@
+#include "stopcodes.h"
 #include "mem.h"
 #include "cpu.h"
 #include "spinlock.h"
@@ -142,11 +143,11 @@ void pmm_free_pages(uint64_t addr, uint64_t count)
     uint64_t flags = spin_lock_irqsave(&pmm_lock);
 
     if (addr % PAGE_SIZE || first + count > bitmap_pages)
-        panic("pmm_free_pages: bad range 0x%lx (+%lu pages)", addr, count);
+        panic_code(STOP_BAD_PAGE_FREE, "pmm_free_pages: bad range 0x%lx (+%lu pages)", addr, count);
 
     for (uint64_t p = first; p < first + count; p++) {
         if (!page_used(p))
-            panic("pmm_free_pages: page 0x%lx is already free", p * PAGE_SIZE);
+            panic_code(STOP_BAD_PAGE_FREE, "pmm_free_pages: page 0x%lx is already free", p * PAGE_SIZE);
         set_free(p);
     }
     free_pages += count;
@@ -184,7 +185,7 @@ void mem_init(const struct aegis_boot_info *info)
     uint64_t max_addr = 4ULL << 30;
 
     if (count > MAX_REGIONS)
-        panic("Memory map has %lu regions, the kernel supports %d", count, MAX_REGIONS);
+        panic_code(STOP_MEMORY_MAP, "Memory map has %lu regions, the kernel supports %d", count, MAX_REGIONS);
     memcpy(regions, map, count * sizeof(*map));
     region_count = count;
     kernel_virt = info->kernel_virtual_base;

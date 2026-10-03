@@ -1,3 +1,4 @@
+#include "stopcodes.h"
 #include "mem.h"
 #include "cpu.h"
 #include "spinlock.h"
@@ -107,14 +108,14 @@ void kfree(void *ptr)
         return;
     h = (struct header *)((uint8_t *)ptr - HEADER);
     if (h->magic != MAGIC_USED)
-        panic("kfree: %p was not allocated or is already free", ptr);
+        panic_code(STOP_HEAP_CORRUPTION, "kfree: %p was not allocated or is already free", ptr);
     if (h->cls == CLASS_PAGES) {
         h->magic = MAGIC_FREE;
         pmm_free_pages((uint64_t)h, h->pages);
         return;
     }
     if (h->cls >= NCLASSES)
-        panic("kfree: %p has a corrupt header", ptr);
+        panic_code(STOP_HEAP_CORRUPTION, "kfree: %p has a corrupt header", ptr);
 
     struct free_obj *o = (struct free_obj *)h;
     unsigned c = h->cls;

@@ -37,6 +37,7 @@ int cmd_stat(int argc, char **argv);
 int cmd_df(int argc, char **argv);
 int cmd_sync(int argc, char **argv);
 int cmd_reboot(int argc, char **argv);
+int cmd_crash(int argc, char **argv);
 int cmd_shutdown(int argc, char **argv);
 int cmd_resolution(int argc, char **argv);
 

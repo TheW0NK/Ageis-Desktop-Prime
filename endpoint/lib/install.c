@@ -10,6 +10,7 @@
 #define TARGET_ESP  "/mnt/esp"
 
 struct ctx {
+    bool keep;                      // reinstalling: keep accounts, settings and files
     const struct install_options *o;
     install_progress_fn progress;
     void *u;
@@ -32,13 +33,22 @@ static int fail(struct ctx *c, const char *what)
 // Paths under / that are not copied: devices, scratch space, mount points,
 // the boot partition, the live system's marker and installer payload, and
 // everyone's files and accounts (the new system starts with its own).
+static bool keeping;                // see struct ctx.keep
+
 static bool skipped(const char *rel)
 {
     static const char *const skip[] = { "/dev", "/tmp", "/mnt", "/boot", "/users", "/etc/live", "/etc/firstboot",
                                         "/usr/share/installer", "/var/log/session.log", NULL };
+    // A reinstall leaves the computer's own settings and data alone.
+    static const char *const keep[] = { "/etc/passwd", "/etc/group", "/etc/shadow", "/etc/hostname",
+                                        "/etc/timezone", "/etc/features.conf", "/etc/crontab", "/var", "/apps",
+                                        "/root", NULL };
 
     for (int i = 0; skip[i]; i++)
         if (!strcmp(rel, skip[i]))
+            return true;
+    for (int i = 0; keeping && keep[i]; i++)
+        if (!strcmp(rel, keep[i]))
             return true;
     return false;
 }
@@ -117,7 +127,7 @@ static int copy_tree(struct ctx *c, const char *src, const char *dst, const char
         }
         if (skipped(r)) {
             // Mount points and scratch space exist, empty.
-            if (S_ISDIR(st.mode) && strcmp(r, "/users") && mkdir(t, st.mode & 07777) == 0) {
+            if (!keeping && S_ISDIR(st.mode) && strcmp(r, "/users") && mkdir(t, st.mode & 07777) == 0) {
                 chown(t, st.uid, st.gid);
                 chmod(t, st.mode & 07777);
             }
@@ -226,10 +236,41 @@ static int write_bcd(struct ctx *c, const char *root_guid)
                  "[verbose]\ntitle=Aegis (verbose boot)\ntype=kernel\npath=\\EFI\\Aegis\\kernel.elf\n"
                  "cmdline=root=PARTUUID=%s verbose\n",
                  root_guid, root_guid);
-    if (stat(TARGET_ESP "/EFI/Aegis/recovery.efi", &st) == 0)
+    n += snprintf(bcd + n, sizeof(bcd) - n,
+                  "\n[safe]\ntitle=Aegis (safe mode)\ntype=kernel\npath=\\EFI\\Aegis\\kernel.elf\n"
+                  "cmdline=root=PARTUUID=%s safe\n", root_guid);
+    if (stat(TARGET_ESP "/EFI/Aegis/recovery.img", &st) == 0)
         snprintf(bcd + n, sizeof(bcd) - n,
-                 "\n[recovery]\ntitle=Aegis Recovery\ntype=efi\npath=\\EFI\\Aegis\\recovery.efi\n");
+                 "\n[recovery]\ntitle=Aegis Recovery\ntype=kernel\npath=\\EFI\\Aegis\\kernel.elf\n"
+                 "ramdisk=\\EFI\\Aegis\\recovery.img\ncmdline=root=ram0 recovery\n");
     return write_text(TARGET_ESP "/EFI/Aegis/bcd", bcd, 0644) < 0 ? fail(c, "Writing the boot configuration") : 0;
+}
+
+// The recovery system is the live system: its image is the ramdisk this
+// runs from (when it does), copied to the EFI partition.
+static int copy_recovery_image(const char *esp_root)
+{
+    static char buf[64 * 1024];
+    char dst[200];
+    int in = open("/dev/ram0", O_RDONLY), out;
+    ssize_t n;
+
+    if (in < 0)
+        return 0;                   // not running from install media
+    sync();
+    snprintf(dst, sizeof(dst), "%s/EFI/Aegis/recovery.img", esp_root);
+    if ((out = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0) {
+        close(in);
+        return -1;
+    }
+    while ((n = read(in, buf, sizeof(buf))) > 0)
+        if (write(out, buf, n) != n) {
+            n = -1;
+            break;
+        }
+    close(in);
+    close(out);
+    return n < 0 ? -1 : 0;
 }
 
 // The boot files: the installer's copy on the live system, else the
@@ -244,7 +285,7 @@ static const char *esp_source(void)
 int install_system(const struct install_options *o, install_progress_fn progress, void *u, char *error,
                    size_t error_size)
 {
-    struct ctx c = { o, progress, u, "", 0, 0 };
+    struct ctx c = { false, o, progress, u, "", 0, 0 };
     static const struct disk_part layout[2] = {
         { DISK_TYPE_ESP, "EFI system partition", ESP_MB },
         { DISK_TYPE_DATA, "Aegis", 0 },
@@ -315,6 +356,11 @@ int install_system(const struct install_options *o, install_progress_fn progress
             goto out;
         }
     }
+    step(&c, 93, "Installing the recovery system");
+    if (copy_recovery_image(TARGET_ESP) < 0) {
+        fail(&c, "Copying the recovery system");
+        goto out;
+    }
     if (write_bcd(&c, guids[1]) < 0)
         goto out;
 
@@ -328,6 +374,50 @@ out:
         ret = fail(&c, "Closing the system partition");
     if (!ret)
         step(&c, 100, "Done");
+    if (error)
+        strlcpy(error, c.error, error_size);
+    return ret;
+}
+
+// Reinstalls the system files on an installed system mounted at root (its
+// EFI partition at esp), keeping accounts, settings, apps and everyone's
+// files: the recovery system's own files are copied over.
+int install_refresh(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                    size_t error_size)
+{
+    struct ctx c = { true, NULL, progress, u, "", 0, 0 };
+    char from[96], to[300];
+    int ret = -1;
+
+    keeping = true;
+    c.files = count_tree("/", "");
+    step(&c, 30, "Copying system files");
+    if (copy_tree(&c, "/", root, "") < 0)
+        goto out;
+    step(&c, 90, "Installing the boot files");
+    (void)from;
+    (void)to;
+    // The boot manager, loader and kernel, file by file (the BCD stays).
+    {
+        static const char *const files[] = { "BOOT/BOOTX64.EFI", "Aegis/btloader.efi", "Aegis/kernel.elf", NULL };
+
+        for (int i = 0; files[i]; i++) {
+            char a[160], b[300];
+
+            snprintf(a, sizeof(a), "%s/EFI/%s", esp_source(), files[i]);
+            snprintf(b, sizeof(b), "%s/EFI/%s", esp, files[i]);
+            unlink(b);
+            if (copy_file(a, b, 0644) < 0) {
+                fail(&c, "Copying the boot files");
+                goto out;
+            }
+        }
+    }
+    sync();
+    step(&c, 100, "Done");
+    ret = 0;
+out:
+    keeping = false;
     if (error)
         strlcpy(error, c.error, error_size);
     return ret;

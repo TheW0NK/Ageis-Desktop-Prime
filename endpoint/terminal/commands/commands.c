@@ -35,7 +35,8 @@ const struct command commands[] = {
     { "stat",       "PATH...",              "Show file details", cmd_stat },
     { "df",         "[PATH...]",            "Show free disk space", cmd_df },
     { "sync",       "",                     "Write pending changes to disk", cmd_sync },
-    { "reboot",     "",                     "Restart the machine (root)", cmd_reboot },
+    { "reboot",     "[--firmware]",         "Restart the machine, or into UEFI setup (root)", cmd_reboot },
+    { "crash",      "",                     "Stop with the crash screen, to test it (root)", cmd_crash },
     { "shutdown",   "",                     "Power off the machine (root)", cmd_shutdown },
     { "resolution", "WIDTHxHEIGHT",         "Change the display resolution (root)", cmd_resolution },
 };

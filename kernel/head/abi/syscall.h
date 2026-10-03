@@ -106,6 +106,8 @@
 
 #define REBOOT_RESTART  1
 #define REBOOT_POWEROFF 2
+#define REBOOT_FIRMWARE 3       // restart into the firmware's setup screen (UEFI)
+#define REBOOT_CRASH    4       // stop with the crash screen (MANUALLY_INITIATED_CRASH), to test it
 
 #define IOCTL_CONSOLE_RAW       1   // arg: 1 = raw (no echo, byte at a time), 0 = line mode
 #define IOCTL_CONSOLE_FOREGROUND 2  // arg: pid that receives Ctrl+C, 0 = none

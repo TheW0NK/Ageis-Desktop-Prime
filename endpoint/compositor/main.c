@@ -169,6 +169,10 @@ static void focus_top(void)
                                             || w->role == WM_ROLE_OVERLAY))
             best = w;
     }
+    // Nothing else: the desktop-role window (the installer, recovery).
+    for (struct window *w = windows; !best && w; w = w->next)
+        if (w->visible && w->role == WM_ROLE_DESKTOP && w->owner)
+            best = w;
     focus_window(best);
 }
 
@@ -494,7 +498,8 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
             damage_window(w);
             if (w->visible) {
                 raise_window(w);
-                if (w->role != WM_ROLE_POPUP && w->role != WM_ROLE_PANEL && w->role != WM_ROLE_DESKTOP)
+                if ((w->role != WM_ROLE_POPUP && w->role != WM_ROLE_PANEL && w->role != WM_ROLE_DESKTOP)
+                    || (w->role == WM_ROLE_DESKTOP && !focused))
                     focus_window(w);
                 announce(w, WM_LIST_ADD);
             } else if (focused == w) {

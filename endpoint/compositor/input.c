@@ -268,6 +268,10 @@ static void button(uint16_t code, bool down)
     if (w->role == WM_ROLE_NORMAL || w->role == WM_ROLE_DIALOG || w->role == WM_ROLE_OVERLAY) {
         raise_window(w);
         focus_window(w);
+    } else if (w->role == WM_ROLE_DESKTOP) {
+        // Full-screen programs below other windows (installer, recovery)
+        // take the keyboard when clicked; they stay at the bottom.
+        focus_window(w);
     }
     if (window_framed(w) && !rect_contains(window_content(w), pointer_x, pointer_y) && code == BTN_LEFT) {
         if (title_button_at(w, pointer_x, pointer_y)) {

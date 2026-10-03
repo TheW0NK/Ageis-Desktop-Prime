@@ -44,9 +44,17 @@ path=\EFI\Aegis\kernel.elf
 ramdisk=\EFI\Aegis\live.img
 cmdline=root=ram0 verbose
 BCD
-if [ -f "$esp_dir/EFI/Aegis/recovery.efi" ]; then
-    printf '\n[recovery]\ntitle=Aegis Recovery\ntype=efi\npath=\\EFI\\Aegis\\recovery.efi\n' >> "$work/esp/EFI/Aegis/bcd"
-fi
+# Recovery from the install media: the same live system, started with
+# "recovery" so it opens the recovery tools for an installed system.
+cat >> "$work/esp/EFI/Aegis/bcd" <<'BCD'
+
+[recovery]
+title=Aegis Recovery
+type=kernel
+path=\EFI\Aegis\kernel.elf
+ramdisk=\EFI\Aegis\live.img
+cmdline=root=ram0 recovery
+BCD
 
 esp_kb=$(( $(du -sk --apparent-size "$work/esp" | cut -f1) * 105 / 100 + 8192 ))
 [ "$esp_kb" -lt 36864 ] && esp_kb=36864

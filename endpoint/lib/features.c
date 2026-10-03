@@ -10,6 +10,7 @@ static const struct feature features[] = {
     { "console", "Text console", "A shell on Ctrl+Alt+F2 for when the desktop cannot help. Takes effect after "
       "a restart.", true, true },
     { "cron", "Scheduled jobs", "Runs the jobs set up in Cron Jobs. Takes effect after a restart.", true, true },
+    { "audio", "Sound", "The sound server that plays every app's audio. Takes effect after a restart.", true, true },
     { "development", "Development apps", "Window Builder, App Maker, the System Debugger and the Log Viewer in "
       "the launcher.", true, false },
     { "bootlog", "Show startup messages", "Starts the computer with the verbose boot entry, so messages scroll by "

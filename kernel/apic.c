@@ -1,3 +1,4 @@
+#include "stopcodes.h"
 #include "apic.h"
 #include "acpi.h"
 #include "mem.h"
@@ -79,7 +80,7 @@ void apic_init(void)
 
     base = acpi.lapic_address ? acpi.lapic_address : (rdmsr(MSR_APIC_BASE) & ~0xFFFULL);
     if (!paging_map_mmio(base, PAGE_SIZE))
-        panic("Cannot map the local APIC at 0x%lx", base);
+        panic_code(STOP_APIC_FAILED, "Cannot map the local APIC at 0x%lx", base);
     lapic = (volatile uint32_t *)base;
     wrmsr(MSR_APIC_BASE, rdmsr(MSR_APIC_BASE) | (1 << 11));
 
@@ -90,7 +91,7 @@ void apic_init(void)
         const struct acpi_ioapic *io = &acpi.ioapics[i];
 
         if (!paging_map_mmio(io->address, PAGE_SIZE))
-            panic("Cannot map IO APIC %u at 0x%lx", io->id, io->address);
+            panic_code(STOP_APIC_FAILED, "Cannot map IO APIC %u at 0x%lx", io->id, io->address);
         for (uint32_t n = 0; n < ioapic_entries(io); n++)
             ioapic_write(io, IOAPIC_REDIRECT + n * 2, LVT_MASKED);
     }
@@ -186,7 +187,7 @@ void timer_init(void)
     lapic_write(LAPIC_TIMER_INIT, 0);
 
     if (per_10ms == 0)
-        panic("Local APIC timer calibration failed");
+        panic_code(STOP_TIMER_FAILED, "Local APIC timer calibration failed");
 
     irq_register(VECTOR_TIMER, timer_irq);
     timer_count = per_10ms * 100 / TIMER_HZ;

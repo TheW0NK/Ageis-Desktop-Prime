@@ -17,6 +17,18 @@ struct stop_code {
 #define STOP_OUT_OF_MEMORY      0x101
 #define STOP_BAD_BOOT_INFO      0x102
 #define STOP_NO_ROOT            0x103
+#define STOP_CRITICAL_PROCESS   0x104
+#define STOP_HEAP_CORRUPTION    0x105
+#define STOP_BAD_PAGE_FREE      0x106
+#define STOP_NO_ACPI            0x107
+#define STOP_APIC_FAILED        0x108
+#define STOP_TIMER_FAILED       0x109
+#define STOP_THREAD_START       0x10A
+#define STOP_MEMORY_MAP         0x10B
+#define STOP_MANUAL_CRASH       0x10C
+#define STOP_DRIVER_FAULT       0x10D
+#define STOP_FILESYSTEM_CORRUPT 0x10E
+#define STOP_STACK_OVERFLOW     0x10F
 
 static const struct stop_code stop_codes[] = {
     { 0x00, "DIVIDE_BY_ZERO", "Somebody tried to split the bill zero ways." },
@@ -44,6 +56,19 @@ static const struct stop_code stop_codes[] = {
     { STOP_OUT_OF_MEMORY, "KERNEL_OUT_OF_MEMORY", "Every last byte is spoken for." },
     { STOP_BAD_BOOT_INFO, "BAD_BOOT_INFO", "The bootloader and the kernel are not on speaking terms." },
     { STOP_NO_ROOT, "NO_ROOT_FILESYSTEM", "There is nowhere to stand." },
+    // Movie quotes and computer jokes.
+    { STOP_CRITICAL_PROCESS, "CRITICAL_PROCESS_DIED", "\"I'll be back.\" - The Terminator" },
+    { STOP_HEAP_CORRUPTION, "KERNEL_HEAP_CORRUPTION", "It's not a bug, it's an undocumented feature." },
+    { STOP_BAD_PAGE_FREE, "BAD_PAGE_FREE", "\"Houston, we have a problem.\" - Apollo 13" },
+    { STOP_NO_ACPI, "ACPI_TABLES_MISSING", "\"Toto, I've a feeling we're not in Kansas anymore.\" - The Wizard of Oz" },
+    { STOP_APIC_FAILED, "INTERRUPT_CONTROLLER_FAILURE", "\"Great Scott!\" - Back to the Future" },
+    { STOP_TIMER_FAILED, "CLOCK_CALIBRATION_FAILED", "\"Roads? Where we're going, we don't need roads.\" - Back to the Future" },
+    { STOP_THREAD_START, "KERNEL_THREAD_START_FAILED", "\"I'm sorry, Dave. I'm afraid I can't do that.\" - 2001: A Space Odyssey" },
+    { STOP_MEMORY_MAP, "MEMORY_MAP_TOO_LARGE", "\"You're gonna need a bigger boat.\" - Jaws" },
+    { STOP_MANUAL_CRASH, "MANUALLY_INITIATED_CRASH", "\"Have you tried turning it off and on again?\" - The IT Crowd" },
+    { STOP_DRIVER_FAULT, "DRIVER_FAULT", "There are 10 kinds of people: those who understand binary and those who don't." },
+    { STOP_FILESYSTEM_CORRUPT, "FILESYSTEM_CORRUPTION", "\"There is no spoon.\" - The Matrix" },
+    { STOP_STACK_OVERFLOW, "KERNEL_STACK_OVERFLOW", "To understand recursion, you must first understand recursion." },
 };
 
 static inline const struct stop_code *stop_code_lookup(uint32_t code)

@@ -18,5 +18,6 @@ int devfs_register(const char *name, uint32_t mode, uint32_t uid, uint32_t gid,
 // Block devices report their size in bytes through this.
 int devfs_set_size_fn(const char *name, uint64_t (*size)(void *ctx));
 void blockdev_publish(struct block_device *dev);
+void cmdline_devfs_init(void);
 
 #endif

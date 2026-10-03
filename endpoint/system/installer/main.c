@@ -6,7 +6,7 @@
 // install (erasing the disk), restart.
 
 static const char page[] =
-    "<window role='overlay' padding='0' spacing='0'>"
+    "<window role='desktop' padding='0' spacing='0'>"
     "  <vbox expand='1' justify='center'>"
     "    <hbox justify='center'>"
     "      <card width='640' spacing='14'>"

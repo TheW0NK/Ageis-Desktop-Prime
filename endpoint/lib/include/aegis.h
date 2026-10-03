@@ -443,6 +443,10 @@ struct install_options {
 typedef void (*install_progress_fn)(int percent, const char *step, void *u);
 int install_system(const struct install_options *o, install_progress_fn progress, void *u, char *error,
                    size_t error_size);
+// Recovery: copy fresh system files onto an installed system, keeping its
+// accounts, settings, apps and files.
+int install_refresh(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                    size_t error_size);
 
 // .aip packages (lib/aip.c).
 enum { AIP_TIER_BASIC, AIP_TIER_ELEVATED, AIP_TIER_SYSTEM, AIP_TIER_POWERSUDO };
@@ -473,6 +477,14 @@ int aip_install(const struct aip *p, bool everyone, const char *granted, char *e
 int aip_list_installed(struct aip_installed *out, int max);
 int aip_uninstall(const char *id, bool everyone, char *error, size_t esize);
 int aip_repair(const struct aip_installed *a, char *error, size_t esize);
+
+// System images (lib/sysimage.c): a whole installed system in one file.
+typedef void (*sysimage_progress_fn)(int percent, const char *what, void *u);
+int sysimage_create(const char *root, const char *out, sysimage_progress_fn progress, void *u, char *error,
+                    size_t esize);
+int sysimage_restore(const char *image, const char *root, sysimage_progress_fn progress, void *u, char *error,
+                     size_t esize);
+int sysimage_info(const char *path, int64_t *created, uint64_t *size);
 
 // The recycle bin (lib/trash.c), in /users/<name>/system/trash.
 struct trash_item {

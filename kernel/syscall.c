@@ -1,3 +1,4 @@
+#include "stopcodes.h"
 #include "syscall.h"
 #include "accounts.h"
 #include "acpi.h"
@@ -501,9 +502,19 @@ static int64_t sys_reboot(struct process *p, int cmd)
 {
     if (p->cred.euid != 0)
         return -EPERM;
-    if (cmd != REBOOT_RESTART && cmd != REBOOT_POWEROFF)
+    if (cmd == REBOOT_CRASH) {
+        vfs_sync_all();
+        panic_code(STOP_MANUAL_CRASH, "The crash was started on purpose (reboot REBOOT_CRASH by pid %d).", p->pid);
+    }
+    if (cmd != REBOOT_RESTART && cmd != REBOOT_POWEROFF && cmd != REBOOT_FIRMWARE)
         return -EINVAL;
+    if (cmd == REBOOT_FIRMWARE && efi_request_firmware_setup() < 0)
+        return -ENOTSUP;
     vfs_unmount_all();
+    if (cmd == REBOOT_FIRMWARE) {
+        efi_reset_cold();
+        acpi_reboot();
+    }
     if (cmd == REBOOT_RESTART)
         acpi_reboot();
     acpi_shutdown();

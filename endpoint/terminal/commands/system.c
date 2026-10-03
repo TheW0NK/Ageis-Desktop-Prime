@@ -13,10 +13,27 @@ static int power(int cmd, const char *name)
     return 1;
 }
 
-int cmd_reboot(int argc, char **argv)
+// crash: stops the computer with the crash screen, to see what it looks
+// like (root only). Unsaved work is lost.
+int cmd_crash(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
+    if (geteuid() != 0) {
+        dprintf(STDERR_FILENO, "crash: must be root (try: sudo crash)\n");
+        return 1;
+    }
+    sync();
+    reboot(REBOOT_CRASH);
+    perror("crash");
+    return 1;
+}
+
+// reboot [--firmware]: --firmware restarts into the UEFI setup screen.
+int cmd_reboot(int argc, char **argv)
+{
+    if (argc > 1 && !strcmp(argv[1], "--firmware"))
+        return power(REBOOT_FIRMWARE, "reboot");
     return power(REBOOT_RESTART, "reboot");
 }
 
