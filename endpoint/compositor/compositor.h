@@ -14,6 +14,8 @@
 #define RESIZE_EDGE     6
 #define MAX_DAMAGE      32
 
+enum { TILE_NONE, TILE_LEFT, TILE_RIGHT };
+
 struct client {
     int fd;
     int pid;
@@ -34,7 +36,8 @@ struct window {
     size_t map_len;
     int bw, bh;                     // buffer size
     bool visible, minimized, maximized;
-    struct rect saved;              // frame before maximizing
+    int tiled;                      // TILE_LEFT or TILE_RIGHT: snapped to half the screen
+    struct rect saved;              // frame before maximizing or tiling
     struct window *parent;
     bool frame_pending;
     int cursor;
@@ -82,6 +85,11 @@ void raise_window(struct window *w);
 struct window *window_at(int x, int y);
 void close_popups(struct window *except);
 void set_maximized(struct window *w, bool on);
+void set_tiled(struct window *w, int side);
+struct rect tile_rect(int side);
+// A window being dragged to a screen edge shows where it will land.
+extern struct window *snap_window;
+extern struct rect snap_preview;
 void set_minimized(struct window *w, bool on);
 void announce(struct window *w, uint32_t type);
 void cycle_focus(void);

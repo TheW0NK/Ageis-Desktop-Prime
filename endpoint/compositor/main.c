@@ -225,12 +225,49 @@ void set_maximized(struct window *w, bool on)
         return;
     damage_window(w);
     if (on) {
-        w->saved = w->frame;
+        if (!w->tiled)
+            w->saved = w->frame;
+        w->tiled = TILE_NONE;
         w->frame = screen.work;
     } else {
         w->frame = w->saved;
     }
     w->maximized = on;
+    w->cw = w->frame.w - 2 * BORDER;
+    w->ch = w->frame.h - TITLE_H - BORDER;
+    damage_window(w);
+    send_window(w, WM_CONFIGURE, w->cw, w->ch, 0, 0, 0);
+    announce(w, WM_LIST_CHANGE);
+}
+
+struct rect tile_rect(int side)
+{
+    struct rect r = screen.work;
+
+    r.w /= 2;
+    if (side == TILE_RIGHT) {
+        r.x += r.w;
+        r.w = screen.work.w - r.w;
+    }
+    return r;
+}
+
+// Snaps a window to the left or right half of the screen, or (TILE_NONE)
+// puts it back where it was.
+void set_tiled(struct window *w, int side)
+{
+    if (!window_framed(w) || (w->flags & WM_FLAG_NO_RESIZE) || w->tiled == side)
+        return;
+    damage_window(w);
+    if (side) {
+        if (!w->tiled && !w->maximized)
+            w->saved = w->frame;
+        w->maximized = false;
+        w->frame = tile_rect(side);
+    } else {
+        w->frame = w->saved;
+    }
+    w->tiled = side;
     w->cw = w->frame.w - 2 * BORDER;
     w->ch = w->frame.h - TITLE_H - BORDER;
     damage_window(w);
@@ -269,9 +306,9 @@ void update_work_area(void)
     }
     screen.work = work;
     for (struct window *w = windows; w; w = w->next) {
-        if (w->maximized) {
+        if (w->maximized || w->tiled) {
             damage_window(w);
-            w->frame = work;
+            w->frame = w->tiled ? tile_rect(w->tiled) : work;
             w->cw = work.w - 2 * BORDER;
             w->ch = work.h - TITLE_H - BORDER;
             damage_window(w);

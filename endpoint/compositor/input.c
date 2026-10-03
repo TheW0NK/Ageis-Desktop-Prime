@@ -15,7 +15,53 @@ static int drag_x, drag_y, press_button;
 static struct rect drag_start;
 static uint32_t buttons;
 static uint64_t last_resize_ms;
+static bool meta_combo;             // another key went with Meta: its release is not "Meta alone"
 int pointer_x, pointer_y;
+struct window *snap_window;
+struct rect snap_preview;
+
+// The edge snap a window dragged to the pointer's position would take:
+// 1 maximize (top), TILE_LEFT + 1, TILE_RIGHT + 1, or 0.
+static int snap_target(struct rect *where)
+{
+    int t = 0;
+
+    if (pointer_x <= 1)
+        t = 1 + TILE_LEFT;
+    else if (pointer_x >= screen.width - 2)
+        t = 1 + TILE_RIGHT;
+    else if (pointer_y <= screen.work.y + 1)
+        t = 1;
+    if (where)
+        *where = t == 1 ? screen.work : t ? tile_rect(t - 1) : (struct rect){ 0, 0, 0, 0 };
+    return t;
+}
+
+static void set_snap_preview(struct window *w, struct rect r)
+{
+    if (snap_preview.w)
+        damage(snap_preview);
+    snap_window = w;
+    snap_preview = r;
+    if (r.w)
+        damage(r);
+}
+
+// Restores a maximized or tiled window being dragged, keeping the same
+// point of the title bar under the pointer.
+static void unsnap_for_drag(struct window *w)
+{
+    int rel = (pointer_x - w->frame.x) * w->saved.w / MAX(1, w->frame.w);
+
+    if (w->maximized)
+        set_maximized(w, false);
+    else
+        set_tiled(w, TILE_NONE);
+    damage_window(w);
+    w->frame.x = pointer_x - rel;
+    w->frame.y = pointer_y - TITLE_H / 2;
+    damage_window(w);
+}
 
 // ---- Keyboard layout (US) ----
 
@@ -114,10 +160,17 @@ static void pointer_moved(void)
     if (drag == DRAG_MOVE) {
         struct window *d = drag_window;
 
+        struct rect where;
+
         damage_window(d);
         d->frame.x = drag_start.x + pointer_x - drag_x;
         d->frame.y = MAX(screen.work.y, drag_start.y + pointer_y - drag_y);
         damage_window(d);
+        if (!(d->flags & WM_FLAG_NO_RESIZE)) {
+            snap_target(&where);
+            if (where.x != snap_preview.x || where.y != snap_preview.y || where.w != snap_preview.w)
+                set_snap_preview(d, where);
+        }
         return;
     }
     if (drag == DRAG_RESIZE) {
@@ -170,6 +223,18 @@ static void button(uint16_t code, bool down)
         if (drag != DRAG_NONE && code == BTN_LEFT) {
             if (drag == DRAG_RESIZE)
                 send_window(drag_window, WM_CONFIGURE, drag_window->cw, drag_window->ch, 0, 0, 0);
+            if (drag == DRAG_MOVE && snap_preview.w) {
+                int t = snap_target(NULL);
+
+                // Restoring later puts it back where it was picked up.
+                damage_window(drag_window);
+                drag_window->frame = drag_start;
+                if (t == 1)
+                    set_maximized(drag_window, true);
+                else if (t)
+                    set_tiled(drag_window, t - 1);
+                set_snap_preview(NULL, (struct rect){ 0, 0, 0, 0 });
+            }
             drag = DRAG_NONE;
             drag_window = NULL;
             return;
@@ -214,16 +279,9 @@ static void button(uint16_t code, bool down)
             drag = DRAG_RESIZE;
         } else if (pointer_y < w->frame.y + TITLE_H) {
             drag = DRAG_MOVE;
-            if (w->maximized) {
-                // Dragging a maximized window restores it under the pointer.
-                int rel = (pointer_x - w->frame.x) * w->saved.w / MAX(1, w->frame.w);
-
-                set_maximized(w, false);
-                damage_window(w);
-                w->frame.x = pointer_x - rel;
-                w->frame.y = pointer_y - TITLE_H / 2;
-                damage_window(w);
-            }
+            // Dragging a maximized or tiled window restores it under the pointer.
+            if (w->maximized || w->tiled)
+                unsnap_for_drag(w);
         } else {
             return;
         }
@@ -263,6 +321,37 @@ static bool shortcut(uint16_t code, int value)
     }
     if (code == KEY_SYSRQ && value == 1) {
         save_screenshot();
+        return true;
+    }
+    // Meta+arrows: snap left or right, maximize, restore or minimize.
+    if ((mods & MOD_META) && focused && window_framed(focused) && focused->role == WM_ROLE_NORMAL
+        && (code == KEY_LEFT || code == KEY_RIGHT || code == KEY_UP || code == KEY_DOWN)) {
+        struct window *w = focused;
+
+        if (value != 1)
+            return true;
+        if (code == KEY_UP) {
+            set_maximized(w, true);
+        } else if (code == KEY_DOWN) {
+            if (w->maximized)
+                set_maximized(w, false);
+            else if (w->tiled)
+                set_tiled(w, TILE_NONE);
+            else
+                set_minimized(w, true);
+        } else {
+            int side = code == KEY_LEFT ? TILE_LEFT : TILE_RIGHT;
+
+            // Towards the other side from a tile puts it back first.
+            if (w->tiled && w->tiled != side)
+                set_tiled(w, TILE_NONE);
+            else if (w->maximized) {
+                set_maximized(w, false);
+                set_tiled(w, side);
+            } else {
+                set_tiled(w, side);
+            }
+        }
         return true;
     }
     return false;
@@ -307,8 +396,15 @@ static void key(uint16_t code, int value)
     struct window *target = focused;
     struct wm_msg m = { 0 };
 
+    if (mods & MOD_META && value && code != KEY_LEFTMETA && code != KEY_RIGHTMETA)
+        meta_combo = true;
     if (shortcut(code, value))
         return;
+    // Meta released after a combination is not "Meta on its own" (the launcher).
+    if ((code == KEY_LEFTMETA || code == KEY_RIGHTMETA) && !value && meta_combo) {
+        meta_combo = false;
+        return;
+    }
     // A popup that asked for the keyboard (a launcher) has it while shown.
     for (struct window *w = windows; w; w = w->next)
         if (w->role == WM_ROLE_POPUP && (w->flags & WM_FLAG_KEYBOARD) && w->visible && w->owner)

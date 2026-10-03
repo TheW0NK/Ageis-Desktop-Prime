@@ -322,6 +322,15 @@ static void present(struct rect r)
     }
 }
 
+// Where a window dragged to an edge will go: a translucent panel behind it.
+static void draw_snap_preview(struct gfx *g)
+{
+    struct rect r = { snap_preview.x + 8, snap_preview.y + 8, snap_preview.w - 16, snap_preview.h - 16 };
+
+    gfx_fill_rounded(g, r, RADIUS, ALPHA(0x5B8DEF, 70));
+    gfx_outline_rounded(g, r, RADIUS, 2, ALPHA(0x8FB3FF, 200));
+}
+
 void render(void)
 {
     struct gfx g;
@@ -343,6 +352,8 @@ void render(void)
         for (struct window *w = windows; w; w = w->next) {
             struct rect b = window_bounds(w), tmp;
 
+            if (w == snap_window && snap_preview.w)
+                draw_snap_preview(&g);
             if (!w->visible || w->minimized || !rect_intersect(b, d, &tmp))
                 continue;
             if (window_framed(w))
