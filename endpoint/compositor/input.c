@@ -518,6 +518,25 @@ static bool shortcut(uint16_t code, int value)
         save_screenshot();
         return true;
     }
+    // Ctrl+Meta+Left/Right: the workspace before or after this one; with
+    // Shift, the focused window goes along.
+    if ((mods & MOD_META) && (mods & MOD_CTRL) && (code == KEY_LEFT || code == KEY_RIGHT)) {
+        int n = current_workspace + (code == KEY_LEFT ? -1 : 1);
+
+        if (value != 1 || n < 0 || n >= WM_WORKSPACES)
+            return true;
+        if ((mods & MOD_SHIFT) && focused && (focused->role == WM_ROLE_NORMAL || focused->role == WM_ROLE_DIALOG)) {
+            struct window *w = focused;
+
+            move_to_workspace(w, n);
+            switch_workspace(n);
+            raise_window(w);
+            focus_window(w);
+        } else {
+            switch_workspace(n);
+        }
+        return true;
+    }
     // Meta+arrows: snap left or right, maximize, restore or minimize.
     if ((mods & MOD_META) && focused && window_framed(focused) && focused->role == WM_ROLE_NORMAL
         && (code == KEY_LEFT || code == KEY_RIGHT || code == KEY_UP || code == KEY_DOWN)) {
@@ -593,6 +612,12 @@ static void key(uint16_t code, int value)
 
     if (mods & MOD_META && value && code != KEY_LEFTMETA && code != KEY_RIGHTMETA)
         meta_combo = true;
+    if (dnd.active && (mods & MOD_META) && (mods & MOD_CTRL) && (code == KEY_LEFT || code == KEY_RIGHT)) {
+        // A drag can go to a window on another workspace.
+        shortcut(code, value);
+        dnd_motion();
+        return;
+    }
     if (dnd.active) {
         // Esc cancels a drag; Ctrl and Shift change what it does, so the
         // window under the pointer is asked again.

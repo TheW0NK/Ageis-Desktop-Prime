@@ -1,11 +1,12 @@
 #include "desktop.h"
 
-// The taskbar: launcher button, a button per open window, the volume,
-// clock, and the session menu.
+// The taskbar: launcher button, the workspaces, a button per open window
+// on the workspace shown, the volume, clock, and the session menu.
 
 struct task {
     uint32_t id;
     uint32_t state;
+    int workspace;
     char title[WM_TEXT_MAX];
     struct widget *button;
 };
@@ -13,11 +14,16 @@ struct task {
 static struct ui_window *panel;
 static struct task tasks[64];
 static int ntasks;
+static int workspace, nworkspaces = WM_WORKSPACES;
+static struct widget *ws_buttons[WM_WORKSPACES];
+static uint32_t menu_task;          // the window the task menu is for
 
 static const char page[] =
     "<window role='panel' height='46' padding='5' spacing='0'>"
     "  <hbox expand='1' spacing='6'>"
     "    <button id='start' flat='true' symbol='apps' iconsize='22' text='Apps' onclick='launcher'/>"
+    "    <separator/>"
+    "    <hbox id='workspaces' spacing='2'/>"
     "    <separator/>"
     "    <hbox id='tasks' expand='1' spacing='4'/>"
     "    <button id='bell' flat='true' symbol='bell' iconsize='18'/>"
@@ -34,6 +40,12 @@ static const char page[] =
     "    <item text='Sign out' onclick='signout'/>"
     "    <item text='Restart' onclick='restart'/>"
     "    <item text='Shut down' onclick='poweroff'/>"
+    "  </menu>"
+    "  <menu id='taskmenu'>"
+    "    <item id='tm0' text='Move to workspace 1' onclick='moveto'/>"
+    "    <item id='tm1' text='Move to workspace 2' onclick='moveto'/>"
+    "    <item id='tm2' text='Move to workspace 3' onclick='moveto'/>"
+    "    <item id='tm3' text='Move to workspace 4' onclick='moveto'/>"
     "  </menu>"
     "</window>";
 
@@ -62,6 +74,54 @@ static void update_button(struct task *t)
 {
     ui_set_text(t->button, t->title);
     ui_set_value(t->button, (t->state & WM_STATE_FOCUSED) && !(t->state & WM_STATE_MINIMIZED));
+    // Only the windows on the workspace shown.
+    ui_set_visible(t->button, t->workspace == workspace);
+}
+
+// ---- Workspaces ----
+
+static void show_workspace(int n)
+{
+    char tip[48];
+
+    workspace = n;
+    for (int i = 0; i < WM_WORKSPACES; i++) {
+        ui_set_value(ws_buttons[i], i == n);
+        ui_set_visible(ws_buttons[i], i < nworkspaces);
+        snprintf(tip, sizeof(tip), "Workspace %d%s", i + 1, i == n ? " (shown)" : "");
+        ui_set_attr(ws_buttons[i], "tooltip", tip);
+    }
+    for (int i = 0; i < ntasks; i++)
+        update_button(&tasks[i]);
+}
+
+static void ws_clicked(struct widget *w, void *u)
+{
+    (void)w;
+    wm_switch_workspace((int)(intptr_t)u);
+}
+
+static void task_context(struct widget *w, void *u)
+{
+    struct task *t = u;
+
+    menu_task = t->id;
+    for (int i = 0; i < WM_WORKSPACES; i++) {
+        char id[8];
+
+        snprintf(id, sizeof(id), "tm%d", i);
+        ui_set_enabled(ui_get(panel, id), i != t->workspace);
+    }
+    ui_menu_popup(ui_get(panel, "taskmenu"), w, -1, -1);
+}
+
+static void on_moveto(struct widget *w, void *u)
+{
+    const char *id = ui_id(w);
+
+    (void)u;
+    if (id && !strncmp(id, "tm", 2))
+        wm_move_to_workspace(menu_task, atoi(id + 2));
 }
 
 static struct task *find_task(uint32_t id)
@@ -75,8 +135,10 @@ static struct task *find_task(uint32_t id)
 static void rebind(void)
 {
     // Handlers point into the array, which moves when tasks are removed.
-    for (int i = 0; i < ntasks; i++)
+    for (int i = 0; i < ntasks; i++) {
         ui_set_handler(tasks[i].button, "click", task_clicked, &tasks[i]);
+        ui_set_handler(tasks[i].button, "context", task_context, &tasks[i]);
+    }
 }
 
 static void window_list(struct wm_event *ev, void *u)
@@ -98,6 +160,11 @@ static void window_list(struct wm_event *ev, void *u)
         }
         return;
     }
+    if (ev->type == WM_EV_WORKSPACE) {
+        nworkspaces = MIN(MAX(m->b, 1), WM_WORKSPACES);
+        show_workspace(MIN(MAX(m->a, 0), nworkspaces - 1));
+        return;
+    }
     if (ev->type != WM_EV_LIST)
         return;
     switch (m->type) {
@@ -108,6 +175,7 @@ static void window_list(struct wm_event *ev, void *u)
         memset(t, 0, sizeof(*t));
         t->id = m->window;
         t->state = m->a;
+        t->workspace = m->c;
         strlcpy(t->title, m->text, sizeof(t->title));
         t->button = ui_create(panel, "button");
         ui_set_attr(t->button, "flat", "true");
@@ -120,6 +188,7 @@ static void window_list(struct wm_event *ev, void *u)
         if (!(t = find_task(m->window)))
             return;
         t->state = m->a;
+        t->workspace = m->c;
         strlcpy(t->title, m->text, sizeof(t->title));
         update_button(t);
         // Only one window has the focus.
@@ -233,13 +302,26 @@ void panel_start(void)
 {
     static const struct ui_handler_entry handlers[] = {
         { "launcher", on_launcher }, { "clock", on_clock }, { "settings", on_settings },
-        { "signout", on_signout }, { "restart", on_restart }, { "poweroff", on_poweroff }, { "lock", on_lock }, { NULL, NULL },
+        { "signout", on_signout }, { "restart", on_restart }, { "poweroff", on_poweroff }, { "lock", on_lock },
+        { "moveto", on_moveto }, { NULL, NULL },
     };
     char who[128];
 
     if (!(panel = ui_load_string_named(page, handlers, NULL, "panel")))
         return;
     ui_window_set_backdrop(panel, backdrop, NULL);
+    for (int i = 0; i < WM_WORKSPACES; i++) {
+        char num[4];
+
+        snprintf(num, sizeof(num), "%d", i + 1);
+        ws_buttons[i] = ui_create(panel, "button");
+        ui_set_attr(ws_buttons[i], "flat", "true");
+        ui_set_attr(ws_buttons[i], "width", "30");
+        ui_set_text(ws_buttons[i], num);
+        ui_set_handler(ws_buttons[i], "click", ws_clicked, (void *)(intptr_t)i);
+        ui_add(ui_get(panel, "workspaces"), ws_buttons[i]);
+    }
+    show_workspace(0);
     snprintf(who, sizeof(who), "Signed in as %s", me.display);
     ui_set_text(ui_get(panel, "who"), who);
     ui_on_key(panel, panel_key, NULL);

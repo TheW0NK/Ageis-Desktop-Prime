@@ -1033,6 +1033,11 @@ static bool button_pointer(struct widget *w, struct wm_event *ev)
 {
     bool handled;
 
+    // A right click on a button with an oncontext handler (taskbar buttons).
+    if (ev->kind == WM_PTR_DOWN && ev->detail == BTN_RIGHT && ui_has_handler(w, "context")) {
+        ui_emit(w, "context");
+        return true;
+    }
     if (press_release(w, ev, &handled)) {
         if (ui_attr(w, "menu")) {
             // A button that opens a menu (by id).

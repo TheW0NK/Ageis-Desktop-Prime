@@ -36,6 +36,13 @@ enum wm_type {
     WM_DRAG_START,          // window (holding the pointer), a = length, b = WM_DND_* allowed,
                             // text = "type\nlabel"; carries a shm descriptor with the data
     WM_DRAG_STATUS,         // window (under a drag), a = WM_DND_* it would take, 0 to refuse
+    WM_SWITCH_WORKSPACE,    // a = workspace to show (0 ... WM_WORKSPACES - 1)
+    WM_MOVE_TO_WORKSPACE,   // window = global window id, a = workspace (panels)
+    // The command palette. These go both ways through the compositor:
+    WM_COMMANDS_QUERY,      // panel: list the focused window's commands; to that program: window
+    WM_COMMAND_ITEM,        // program: window, a = index, text = "Menu > Item\tShortcut";
+                            // a = -1 ends the list. To the panel: window = global id
+    WM_COMMAND_RUN,         // panel: window = global id, a = index; to the program: window, a
 
     // Compositor to client.
     WM_WELCOME = 64,        // a = screen width, b = screen height, c = work area height
@@ -49,9 +56,9 @@ enum wm_type {
                             // parent = keyboard modifiers
     WM_FRAME,               // window: the last damage is on screen
     WM_POPUP_DONE,          // window: a popup was dismissed by a click outside it
-    WM_LIST_ADD,            // window = global id, text = title, a = state, b = pid
+    WM_LIST_ADD,            // window = global id, text = title, a = state, b = pid, c = workspace
     WM_LIST_REMOVE,         // window = global id
-    WM_LIST_CHANGE,         // window = global id, text = title, a = state
+    WM_LIST_CHANGE,         // window = global id, text = title, a = state, c = workspace
     WM_ERROR,               // a = errno, text = message
     WM_SCREEN,              // a = width, b = height after a mode change
     WM_SETTING,             // text = "key=value" from WM_SETTING_CHANGED
@@ -62,7 +69,12 @@ enum wm_type {
     WM_DROP,                // window, a = x, b = y, c = WM_DND_* chosen, d = length,
                             // parent = keyboard modifiers, text = type; carries the data
     WM_DRAG_END,            // window (the source), a = WM_DND_* taken by the target, 0 if none
+    WM_WORKSPACE,           // a = the workspace shown, b = how many there are (to panels)
 };
+
+// Workspaces: each normal window is on one; panels, the desktop, overlays
+// and popups are on all of them.
+#define WM_WORKSPACES       4
 
 // Window roles (in flags).
 #define WM_ROLE_NORMAL      0x0

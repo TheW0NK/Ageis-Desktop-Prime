@@ -28,6 +28,10 @@ enum wm_event_type {
     WM_EV_DRAG,         // a drag is over the window: x, y, kind (WM_DRAG_*), mods, drag_type, actions, data
     WM_EV_DROP,         // dropped: x, y, mods, drag_type, action, data
     WM_EV_DRAG_END,     // the drag this window started is over: action (0: nothing was done)
+    WM_EV_WORKSPACE,    // panels: the workspace shown changed (msg.a, of msg.b)
+    WM_EV_COMMANDS,     // list this window's commands (answer with wm_command_item)
+    WM_EV_COMMAND_RUN,  // run command number value of this window
+    WM_EV_COMMAND_ITEM, // panels: one of the focused window's commands (msg)
 };
 
 struct wm_event {
@@ -84,6 +88,15 @@ bool wm_connected(void);
 // For panels: window list updates arrive as WM_EV_LIST events.
 void wm_subscribe(void);
 void wm_activate(uint32_t global_id, bool toggle);
+// Shows another workspace, or moves a window (by global id) to one.
+void wm_switch_workspace(int workspace);
+// The command palette: ask for the focused window's commands (they come
+// as WM_EV_COMMAND_ITEM, ending with index -1), and run one. Programs
+// answer WM_EV_COMMANDS with wm_command_item.
+void wm_commands_query(void);
+void wm_command_run(uint32_t global_id, int index);
+void wm_command_item(struct wm_window *w, int index, const char *text);
+void wm_move_to_workspace(uint32_t global_id, int workspace);
 // Tells the session's programs (and the window frames) that a setting changed.
 void wm_setting_changed(const char *key, const char *value);
 // The session's clipboard, shared through the compositor. get returns NULL

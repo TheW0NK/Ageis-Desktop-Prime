@@ -37,6 +37,7 @@ struct window {
     int bw, bh;                     // buffer size
     bool visible, minimized, maximized;
     int tiled;                      // TILE_LEFT or TILE_RIGHT: snapped to half the screen
+    int workspace;                  // normal windows and dialogs: the one they are on
     struct rect saved;              // frame before maximizing or tiling
     struct window *parent;
     bool frame_pending;
@@ -92,6 +93,10 @@ int screenshot(const char *path);
 // The signed-in user, or -1 at the sign-in screen.
 uint32_t compositor_session_uid(void);
 void set_frame_theme(const char *name);
+// A message in the middle of the screen for a moment ("Workspace 2").
+void show_osd(const char *text);
+// Returns how long the main loop may wait before the message goes (-1: none shown).
+int osd_tick(void);
 
 // input.c
 int input_open_device(void);
@@ -120,6 +125,11 @@ extern struct rect snap_preview;
 void set_minimized(struct window *w, bool on);
 void announce(struct window *w, uint32_t type);
 void cycle_focus(void);
+// Workspaces.
+extern int current_workspace;
+bool on_screen(struct window *w);       // shown, not minimized, and on this workspace (or on all)
+void switch_workspace(int n);
+void move_to_workspace(struct window *w, int n);
 void update_work_area(void);
 void vt_leave(void);
 void vt_enter(void);

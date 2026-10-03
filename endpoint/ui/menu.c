@@ -787,3 +787,46 @@ bool ui_menu_shortcut(struct ui_window *win, struct wm_event *ev)
     }
     return true;
 }
+
+// ---- The command palette ----
+
+// Walks the items under a menu bar menu: sends each one as a command, or
+// runs number `run`. Returns the next index.
+static int menu_commands(struct ui_window *win, struct widget *menu, const char *prefix, int index, int run)
+{
+    for (struct widget *c = menu->first; c; c = c->next) {
+        char label[WM_TEXT_MAX];
+
+        if (!c->visible || !c->enabled)
+            continue;
+        snprintf(label, sizeof(label), "%s%s%s", prefix, *prefix ? " \xE2\x80\xBA " : "", ui_translate(c->text ? c->text : ""));
+        if (!strcmp(c->tag, "menu")) {
+            index = menu_commands(win, c, label, index, run);
+            continue;
+        }
+        if ((strcmp(c->tag, "item") && strcmp(c->tag, "menuitem")) || !ui_has_handler(c, "click"))
+            continue;
+        if (run < 0) {
+            const char *sc = ui_attr(c, "shortcut");
+
+            if (sc && *sc)
+                snprintf(label + strlen(label), sizeof(label) - strlen(label), "\t%s", sc);
+            wm_command_item(win->wm, index, label);
+        } else if (run == index) {
+            ui_emit(c, "click");
+            return -1000000;
+        }
+        index++;
+    }
+    return index;
+}
+
+void ui_menu_commands(struct ui_window *win, int run)
+{
+    struct widget *bar = find_tag(win->root, "menubar");
+
+    if (bar && ui_widget_shown(bar))
+        menu_commands(win, bar, "", 0, run);
+    if (run < 0)
+        wm_command_item(win->wm, -1, "");
+}

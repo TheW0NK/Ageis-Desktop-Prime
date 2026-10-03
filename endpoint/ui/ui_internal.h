@@ -184,6 +184,8 @@ void ui_popup_list_open(struct widget *owner, int x, int y, int w, int count, in
                         const char *(*item)(struct widget *, int), void (*chosen)(struct widget *, int));
 void ui_popup_close(struct ui_window *win);
 bool ui_menu_shortcut(struct ui_window *win, struct wm_event *ev);
+// The command palette asks for the menu bar's commands (run < 0), or runs one.
+void ui_menu_commands(struct ui_window *win, int run);
 // Parses a shortcut such as "Ctrl+Shift+S". Returns false if invalid.
 bool ui_parse_shortcut(const char *s, uint16_t *key, uint32_t *mods);
 

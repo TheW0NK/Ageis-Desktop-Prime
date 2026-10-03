@@ -20,6 +20,9 @@ uint32_t compositor_session_uid(void)
 
 static void drop_client(struct client *c);
 static int cascade;
+// The panel waiting for a window's commands (the command palette).
+static struct client *cmd_requester;
+static uint32_t cmd_window;
 
 void begin_move(struct window *w);
 
@@ -65,6 +68,29 @@ static bool listed(struct window *w)
     return (w->role == WM_ROLE_NORMAL || w->role == WM_ROLE_DIALOG) && w->visible;
 }
 
+// ---- Workspaces ----
+
+int current_workspace;
+
+static bool on_every_workspace(struct window *w)
+{
+    return w->role != WM_ROLE_NORMAL && w->role != WM_ROLE_DIALOG;
+}
+
+bool on_screen(struct window *w)
+{
+    return w->visible && !w->minimized && (on_every_workspace(w) || w->workspace == current_workspace);
+}
+
+static void announce_workspace(struct client *only)
+{
+    struct wm_msg m = { WM_WORKSPACE, 0, current_workspace, WM_WORKSPACES, 0, 0, 0, 0, { 0 } };
+
+    for (struct client *c = clients; c; c = c->next)
+        if (c->subscribed && (!only || c == only))
+            send_msg(c, &m);
+}
+
 static uint32_t state_of(struct window *w)
 {
     return (w->minimized ? WM_STATE_MINIMIZED : 0) | (w->maximized ? WM_STATE_MAXIMIZED : 0)
@@ -74,7 +100,7 @@ static uint32_t state_of(struct window *w)
 // Tells panels about a window that appeared, changed or went away.
 void announce(struct window *w, uint32_t type)
 {
-    struct wm_msg m = { type, w->id, (int)state_of(w), w->owner ? w->owner->pid : 0, 0, 0, 0, 0, { 0 } };
+    struct wm_msg m = { type, w->id, (int)state_of(w), w->owner ? w->owner->pid : 0, w->workspace, 0, 0, 0, { 0 } };
 
     if (type != WM_LIST_REMOVE && !listed(w))
         return;
@@ -128,7 +154,7 @@ struct window *window_at(int x, int y)
     for (struct window *w = windows; w; w = w->next) {
         struct rect r = w->frame;
 
-        if (!w->visible || w->minimized || !w->pixels)
+        if (!on_screen(w) || !w->pixels)
             continue;
         if (window_framed(w) && !w->maximized && !(w->flags & WM_FLAG_NO_RESIZE)) {
             r.w += RESIZE_EDGE;
@@ -165,8 +191,8 @@ static void focus_top(void)
     struct window *best = NULL;
 
     for (struct window *w = windows; w; w = w->next) {
-        if (w->visible && !w->minimized && (w->role == WM_ROLE_NORMAL || w->role == WM_ROLE_DIALOG
-                                            || w->role == WM_ROLE_OVERLAY))
+        if (on_screen(w) && (w->role == WM_ROLE_NORMAL || w->role == WM_ROLE_DIALOG
+                             || w->role == WM_ROLE_OVERLAY))
             best = w;
     }
     // Nothing else: the desktop-role window (the installer, recovery).
@@ -180,9 +206,9 @@ void cycle_focus(void)
 {
     struct window *first = NULL;
 
-    // Bring the bottom-most normal window to the top.
+    // Bring the bottom-most normal window on this workspace to the top.
     for (struct window *w = windows; w; w = w->next) {
-        if (listed(w) && w != focused) {
+        if (listed(w) && w != focused && w->workspace == current_workspace) {
             first = w;
             break;
         }
@@ -193,6 +219,52 @@ void cycle_focus(void)
         set_minimized(first, false);
     raise_window(first);
     focus_window(first);
+}
+
+void switch_workspace(int n)
+{
+    char text[32];
+
+    if (n < 0 || n >= WM_WORKSPACES)
+        return;
+    snprintf(text, sizeof(text), "Workspace %d", n + 1);
+    show_osd(text);
+    if (n == current_workspace)
+        return;
+    close_popups(NULL);
+    current_workspace = n;
+    damage((struct rect){ 0, 0, screen.width, screen.height });
+    // The focus goes to the top window here.
+    if (focused && !on_screen(focused)) {
+        struct window *old = focused;
+
+        focused = NULL;
+        send_window(old, WM_FOCUS, 0, 0, 0, 0, 0);
+        announce(old, WM_LIST_CHANGE);
+    }
+    if (!focused)
+        focus_top();
+    announce_workspace(NULL);
+}
+
+void move_to_workspace(struct window *w, int n)
+{
+    if (n < 0 || n >= WM_WORKSPACES || on_every_workspace(w) || w->workspace == n)
+        return;
+    damage_window(w);
+    w->workspace = n;
+    // Its dialogs go with it.
+    for (struct window *d = windows; d; d = d->next)
+        if (d->parent == w && !on_every_workspace(d)) {
+            damage_window(d);
+            d->workspace = n;
+        }
+    if (focused == w && !on_screen(w)) {
+        focused = NULL;
+        send_window(w, WM_FOCUS, 0, 0, 0, 0, 0);
+        focus_top();
+    }
+    announce(w, WM_LIST_CHANGE);
 }
 
 void close_popups(struct window *except)
@@ -401,7 +473,8 @@ static void place(struct window *w, int x, int y)
 
 static void handle(struct client *c, struct wm_msg *m, int fd)
 {
-    struct window *w = m->type == WM_CREATE || m->type == WM_ACTIVATE ? NULL : find(c, m->window);
+    struct window *w = m->type == WM_CREATE || m->type == WM_ACTIVATE || m->type == WM_COMMAND_RUN
+                       || m->type == WM_MOVE_TO_WORKSPACE ? NULL : find(c, m->window);
     struct wm_msg r = { 0 };
 
     switch (m->type) {
@@ -449,6 +522,8 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         w->cw = m->a;
         w->ch = m->b;
         w->parent = m->parent ? find(c, m->parent) : NULL;
+        // New windows open on the workspace shown, dialogs with their owner.
+        w->workspace = w->parent ? w->parent->workspace : current_workspace;
         strlcpy(w->title, m->text, sizeof(w->title));
         w->visible = !(m->flags & WM_FLAG_HIDDEN);
         place(w, m->c, m->d);
@@ -506,6 +581,9 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         if (w && w->visible != (m->type == WM_SHOW)) {
             if (m->type == WM_HIDE)
                 announce(w, WM_LIST_REMOVE);
+            // A window that appears does so on the workspace shown.
+            if (m->type == WM_SHOW && !on_every_workspace(w))
+                w->workspace = w->parent ? w->parent->workspace : current_workspace;
             w->visible = m->type == WM_SHOW;
             damage_window(w);
             if (w->visible) {
@@ -564,7 +642,14 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         for (w = windows; w && w->id != m->window; w = w->next)
             ;
         if (w && listed(w)) {
-            if (m->a && focused == w && !w->minimized)
+            // A window on another workspace: go there.
+            if (w->workspace != current_workspace) {
+                switch_workspace(w->workspace);
+                if (w->minimized)
+                    set_minimized(w, false);
+                raise_window(w);
+                focus_window(w);
+            } else if (m->a && focused == w && !w->minimized)
                 set_minimized(w, true);
             else if (w->minimized)
                 set_minimized(w, false);
@@ -583,8 +668,10 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         break;
     case WM_SUBSCRIBE:
         c->subscribed = true;
+        announce_workspace(c);
         for (struct window *o = windows; o; o = o->next) {
-            struct wm_msg a = { WM_LIST_ADD, o->id, (int)state_of(o), o->owner ? o->owner->pid : 0, 0, 0, 0, 0, { 0 } };
+            struct wm_msg a = { WM_LIST_ADD, o->id, (int)state_of(o), o->owner ? o->owner->pid : 0, o->workspace,
+                                0, 0, 0, { 0 } };
 
             if (!listed(o))
                 continue;
@@ -616,6 +703,43 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
             if (k != c && (k->uid == c->uid || c->uid == 0))
                 send_msg(k, &r);
         break;
+    case WM_COMMANDS_QUERY:
+        // Passed to the focused window's program; its answers go back.
+        if (!c->subscribed)
+            break;
+        cmd_requester = c;
+        cmd_window = 0;
+        if (focused && focused->owner && focused->owner != c && listed(focused)) {
+            cmd_window = focused->id;
+            send_window(focused, WM_COMMANDS_QUERY, 0, 0, 0, 0, 0);
+        } else {
+            r.type = WM_COMMAND_ITEM;
+            r.a = -1;
+            send_msg(c, &r);
+        }
+        break;
+    case WM_COMMAND_ITEM:
+        if (w && cmd_requester && w->id == cmd_window) {
+            m->window = w->id;
+            send_msg(cmd_requester, m);
+        }
+        break;
+    case WM_COMMAND_RUN:
+        for (w = windows; w && w->id != m->window; w = w->next)
+            ;
+        if (c->subscribed && w && w->owner)
+            send_window(w, WM_COMMAND_RUN, m->a, 0, 0, 0, 0);
+        break;
+    case WM_SWITCH_WORKSPACE:
+        switch_workspace(m->a);
+        break;
+    case WM_MOVE_TO_WORKSPACE:
+        for (w = windows; w && w->id != m->window; w = w->next)
+            ;
+        // Panels move any window; programs only their own.
+        if (w && (c->subscribed || w->owner == c))
+            move_to_workspace(w, m->a);
+        break;
     case WM_BEGIN_MOVE:
         if (w && window_framed(w))
             begin_move(w);
@@ -636,6 +760,8 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
 
 static void drop_client(struct client *c)
 {
+    if (cmd_requester == c)
+        cmd_requester = NULL;
     for (struct window *w = windows, *next; w; w = next) {
         next = w->next;
         if (w->owner == c)
@@ -751,8 +877,10 @@ int main(int argc, char **argv)
             fds[n++] = (struct pollfd){ c->fd, POLLIN, 0 };
         }
         {
-            int wait = dnd_tick();
+            int wait = dnd_tick(), osd = osd_tick();
 
+            if (osd >= 0 && (wait < 0 || osd < wait))
+                wait = osd;
             if (poll(fds, n, wait >= 0 ? wait : 1000) < 0)
                 continue;
         }
@@ -766,6 +894,7 @@ int main(int argc, char **argv)
                     return 0;
         }
         dnd_tick();
+        osd_tick();
         if (fds[0].revents & POLLIN)
             input_handle(input);
         if (fds[1].revents & POLLIN)

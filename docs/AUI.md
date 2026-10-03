@@ -124,7 +124,7 @@ A window lays out its children top to bottom, like `<vbox>`.
 
 | Element | Events | Description |
 |---|---|---|
-| `button` | `onclick` | `default="true"` makes it the primary button, which Enter presses. `cancel="true"` makes Escape press it. Also takes `flat`, `icon="path"` and `menu="id"` (opens that menu). |
+| `button` | `onclick`, `oncontext` | `default="true"` makes it the primary button, which Enter presses. `cancel="true"` makes Escape press it. Also takes `flat`, `icon="path"` and `menu="id"` (opens that menu). `oncontext` fires on a right click. |
 | `checkbox`, `toggle` | `onchange` | `checked="true"`. `ui_value()` is 0 or 1. |
 | `radio` | `onchange` | Radios with the same parent, or the same `group="name"`, exclude each other. |
 | `slider` | `onchange`, `onrelease` | `min`, `max`, `step`, `value`. |

@@ -1565,7 +1565,7 @@ static void dispatch(struct wm_event *ev)
             system_event(ev, system_event_user);
         return;
     }
-    if ((ev->type == WM_EV_LIST || ev->type == WM_EV_SCREEN) && system_event) {
+    if ((ev->type == WM_EV_LIST || ev->type == WM_EV_SCREEN || ev->type == WM_EV_WORKSPACE) && system_event) {
         system_event(ev, system_event_user);
         return;
     }
@@ -1581,6 +1581,17 @@ static void dispatch(struct wm_event *ev)
     case WM_EV_DRAG:
     case WM_EV_DROP:
         drag_event(win, ev);
+        break;
+    case WM_EV_COMMANDS:
+        // While a dialog is open, the window takes no commands.
+        if (blocked_by_modal(win) || !win->wm)
+            wm_command_item(ev->window, -1, "");
+        else
+            ui_menu_commands(win, -1);
+        break;
+    case WM_EV_COMMAND_RUN:
+        if (!blocked_by_modal(win))
+            ui_menu_commands(win, ev->value);
         break;
     case WM_EV_RESIZE:
         ui_window_layout(win);

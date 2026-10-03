@@ -55,7 +55,8 @@ void ui_window_move(struct ui_window *win, int x, int y);
 void ui_window_set_flags(struct ui_window *win, uint32_t flags);
 // The owner of a dialog or popup; set before the window is first shown.
 void ui_window_set_parent(struct ui_window *win, struct ui_window *parent);
-// Window list and screen changes (for taskbars): WM_EV_LIST, WM_EV_SCREEN.
+// Window list, screen and workspace changes (for taskbars): WM_EV_LIST,
+// WM_EV_SCREEN, WM_EV_WORKSPACE.
 void ui_on_system_event(void (*fn)(struct wm_event *ev, void *user), void *user);
 struct wm_window *ui_wm_window(struct ui_window *win);
 // The user pointer given to ui_load().

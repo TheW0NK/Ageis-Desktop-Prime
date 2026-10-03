@@ -207,6 +207,38 @@ void wm_activate(uint32_t id, bool toggle)
     wm_send(&m);
 }
 
+void wm_switch_workspace(int workspace)
+{
+    send_simple(WM_SWITCH_WORKSPACE, NULL, workspace, 0, 0, 0);
+}
+
+void wm_move_to_workspace(uint32_t id, int workspace)
+{
+    struct wm_msg m = { WM_MOVE_TO_WORKSPACE, id, workspace, 0, 0, 0, 0, 0, { 0 } };
+
+    wm_send(&m);
+}
+
+void wm_commands_query(void)
+{
+    send_simple(WM_COMMANDS_QUERY, NULL, 0, 0, 0, 0);
+}
+
+void wm_command_run(uint32_t id, int index)
+{
+    struct wm_msg m = { WM_COMMAND_RUN, id, index, 0, 0, 0, 0, 0, { 0 } };
+
+    wm_send(&m);
+}
+
+void wm_command_item(struct wm_window *w, int index, const char *text)
+{
+    struct wm_msg m = { WM_COMMAND_ITEM, w->id, index, 0, 0, 0, 0, 0, { 0 } };
+
+    strlcpy(m.text, text ? text : "", sizeof(m.text));
+    wm_send(&m);
+}
+
 void wm_present(struct wm_window *w, struct rect r)
 {
     struct rect all_r = { 0, 0, w->width, w->height };
@@ -435,6 +467,21 @@ bool wm_next_event(struct wm_event *ev, int timeout_ms)
         break;
     case WM_SETTING:
         ev->type = WM_EV_SETTING;
+        ev->window = NULL;
+        break;
+    case WM_WORKSPACE:
+        ev->type = WM_EV_WORKSPACE;
+        ev->window = NULL;
+        break;
+    case WM_COMMANDS_QUERY:
+        ev->type = WM_EV_COMMANDS;
+        break;
+    case WM_COMMAND_RUN:
+        ev->type = WM_EV_COMMAND_RUN;
+        ev->value = m.a;
+        break;
+    case WM_COMMAND_ITEM:
+        ev->type = WM_EV_COMMAND_ITEM;
         ev->window = NULL;
         break;
     case WM_DRAG_OVER:

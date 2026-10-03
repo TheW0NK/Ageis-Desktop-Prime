@@ -365,6 +365,52 @@ static void present(struct rect r)
     }
 }
 
+// ---- On-screen message ----
+
+static char osd_text[64];
+static uint64_t osd_until;
+static struct rect osd_rect;
+
+void show_osd(const char *text)
+{
+    struct font *f = font_get(FONT_SANS_BOLD, 20);
+    int w = text_width(f, text, -1) + 64, h = font_line_height(f) + 52;
+
+    damage(osd_rect);
+    strlcpy(osd_text, text, sizeof(osd_text));
+    osd_rect = (struct rect){ (screen.width - w) / 2, (screen.height - h) / 2, w, h };
+    osd_until = uptime_ms() + 900;
+    damage(osd_rect);
+}
+
+int osd_tick(void)
+{
+    uint64_t now = uptime_ms();
+
+    if (!osd_until)
+        return -1;
+    if (now >= osd_until) {
+        osd_until = 0;
+        damage(osd_rect);
+        return -1;
+    }
+    return (int)(osd_until - now);
+}
+
+static void draw_osd(struct gfx *g)
+{
+    struct font *f = font_get(FONT_SANS_BOLD, 20);
+    struct rect r = osd_rect;
+    int tw = text_width(f, osd_text, -1), dots = 14 * WM_WORKSPACES - 6;
+
+    gfx_fill_rounded(g, r, 14, ALPHA(0x11151D, 0xE6));
+    text_draw(g, f, r.x + (r.w - tw) / 2, r.y + 14, osd_text, -1, RGB(0xFFFFFF));
+    // Which of the workspaces this is.
+    for (int i = 0; i < WM_WORKSPACES; i++)
+        gfx_circle(g, r.x + (r.w - dots) / 2 + i * 14 + 4, r.y + r.h - 16, 4,
+                   i == current_workspace ? RGB(0x5B8DEF) : ALPHA(0xFFFFFF, 0x60));
+}
+
 // Where a window dragged to an edge will go: a translucent panel behind it.
 static void draw_snap_preview(struct gfx *g)
 {
@@ -397,12 +443,14 @@ void render(void)
 
             if (w == snap_window && snap_preview.w)
                 draw_snap_preview(&g);
-            if (!w->visible || w->minimized || !rect_intersect(b, d, &tmp))
+            if (!on_screen(w) || !rect_intersect(b, d, &tmp))
                 continue;
             if (window_framed(w))
                 draw_frame(&g, w);
             draw_content(&g, w);
         }
+        if (osd_until)
+            draw_osd(&g);
         draw_cursor(&g);
     }
     for (int i = 0; i < ndamaged; i++)
