@@ -173,12 +173,15 @@ static void user_exception(struct interrupt_frame *frame)
     struct thread *t = sched_current();
     int sig = exception_signal(frame->vector);
     struct aegis_sigaction *act;
+    // Read the faulting address before interrupts are back on: another
+    // fault on this CPU (after a task switch) would overwrite CR2.
+    uint64_t cr2 = frame->vector == 14 ? read_cr2() : 0;
 
     if (frame->vector == 14) {
         bool ok;
 
         sti();
-        ok = vm_fault(p ? p->mm : NULL, read_cr2(), frame->error_code & 2);
+        ok = vm_fault(p ? p->mm : NULL, cr2, frame->error_code & 2);
         cli();
         if (ok)
             return;
@@ -196,7 +199,7 @@ static void user_exception(struct interrupt_frame *frame)
         kprintf("%s (pid %d, thread %lu) crashed: %s at 0x%lx", p->name, p->pid, t->id,
                 exception_report_name(frame->vector), frame->rip);
         if (frame->vector == 14)
-            kprintf(", address 0x%lx (%s, %s)", read_cr2(), frame->error_code & 1 ? "protection" : "not present",
+            kprintf(", address 0x%lx (%s, %s)", cr2, frame->error_code & 1 ? "protection" : "not present",
                     frame->error_code & 2 ? "write" : "read");
         kprintf("\n");
         sti();
