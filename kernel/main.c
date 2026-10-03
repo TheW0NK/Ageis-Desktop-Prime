@@ -24,7 +24,7 @@
 void monitor_thread(void *arg);
 
 static char cmdline[512];
-static uint64_t acpi_rsdp;
+static uint64_t acpi_rsdp, ramdisk_base, ramdisk_size;
 
 static const char *cmdline_value(const char *key)
 {
@@ -46,6 +46,9 @@ static struct block_device *find_root(void)
     const char *spec = cmdline_value("root");
     uint8_t guid[16];
 
+    // The live system runs from the ramdisk the bootloader loaded.
+    if (ramdisk_device() && (!spec || !strcmp(spec, "ram0")))
+        return ramdisk_device();
     if (spec && !strncmp(spec, "PARTUUID=", 9) && guid_parse(spec + 9, guid)) {
         for (size_t i = 0; i < block_count(); i++) {
             struct block_device *d = block_at(i);
@@ -101,6 +104,7 @@ static void mount_dev(void)
 static void kinit(void *arg)
 {
     (void)arg;
+    ramdisk_init(ramdisk_base, ramdisk_size);
     xhci_init();
     ahci_init();
     nvme_init();
@@ -147,6 +151,8 @@ void kmain(struct aegis_boot_info *info)
     memcpy(cmdline, (const char *)info->cmdline,
            strnlen((const char *)info->cmdline, sizeof(cmdline) - 1));
     acpi_rsdp = info->acpi_rsdp;
+    ramdisk_base = info->ramdisk_base;
+    ramdisk_size = info->ramdisk_size;
 
     mem_init(info);
     info = NULL;

@@ -19,6 +19,7 @@ struct node {
     uint32_t mode, uid, gid;
     devfs_open_fn open;
     void *ctx;
+    uint64_t (*size)(void *ctx);    // block devices: bytes
 };
 
 static struct node nodes[MAX_NODES];
@@ -34,12 +35,23 @@ int devfs_register(const char *name, uint32_t mode, uint32_t uid, uint32_t gid,
         return -ENOSPC;
     n = &nodes[nnodes++];
     memcpy(n->name, name, strnlen(name, sizeof(n->name) - 1));
-    n->mode = S_IFCHR | (mode & 07777);
+    n->mode = (mode & S_IFMT ? mode & S_IFMT : S_IFCHR) | (mode & 07777);
     n->uid = uid;
     n->gid = gid;
     n->open = open;
     n->ctx = ctx;
     return 0;
+}
+
+int devfs_set_size_fn(const char *name, uint64_t (*size)(void *ctx))
+{
+    for (int i = 0; i < nnodes; i++) {
+        if (!strcmp(nodes[i].name, name)) {
+            nodes[i].size = size;
+            return 0;
+        }
+    }
+    return -ENOENT;
 }
 
 static int read_vnode(struct mount *m, uint64_t ino, struct vnode *v)
@@ -54,6 +66,7 @@ static int read_vnode(struct mount *m, uint64_t ino, struct vnode *v)
     if (ino < 2 || ino - 2 >= (uint64_t)nnodes)
         return -ENOENT;
     v->mode = nodes[ino - 2].mode;
+    v->size = nodes[ino - 2].size ? nodes[ino - 2].size(nodes[ino - 2].ctx) : 0;
     v->uid = nodes[ino - 2].uid;
     v->gid = nodes[ino - 2].gid;
     v->nlink = 1;
@@ -82,7 +95,7 @@ static int readdir(struct vnode *dir, uint64_t *pos, struct vfs_dirent *out)
     if (*pos >= (uint64_t)nnodes)
         return 0;
     out->ino = *pos + 2;
-    out->type = DT_CHR;
+    out->type = S_ISBLK(nodes[*pos].mode) ? DT_BLK : DT_CHR;
     out->namelen = strlen(nodes[*pos].name);
     memcpy(out->name, nodes[*pos].name, out->namelen + 1);
     (*pos)++;

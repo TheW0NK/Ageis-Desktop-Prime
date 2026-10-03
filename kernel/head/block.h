@@ -47,5 +47,7 @@ bool guid_parse(const char *s, uint8_t guid[16]);
 void ahci_init(void);
 void nvme_init(void);
 void virtio_blk_init(void);
+void ramdisk_init(uint64_t base, uint64_t size);
+struct block_device *ramdisk_device(void);    // NULL without one
 
 #endif

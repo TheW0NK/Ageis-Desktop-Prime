@@ -584,6 +584,46 @@ static int64_t sys_statfs(struct process *p, uint64_t upath, uint64_t ubuf)
     return ret ? ret : copy_to_user(ubuf, &st, sizeof(st));
 }
 
+static int64_t sys_mount(struct process *p, uint64_t ufs, uint64_t udev, uint64_t utarget, uint32_t flags)
+{
+    char *fs = NULL, *dev = NULL, *target = NULL;
+    struct block_device *bd;
+    int ret;
+
+    if (p->cred.euid != 0)
+        return -EPERM;
+    if ((ret = path_in(ufs, &fs)) || (ret = path_in(udev, &dev)) || (ret = path_in(utarget, &target)))
+        goto out;
+    if (*target != '/') {
+        ret = -EINVAL;
+        goto out;
+    }
+    if (!(bd = block_find(dev)) || !bd->sector_count) {
+        ret = -ENODEV;
+        goto out;
+    }
+    ret = vfs_device_mounted(bd) ? -EBUSY : vfs_mount(fs, bd, target, flags & MOUNT_READONLY);
+out:
+    kfree(fs);
+    kfree(dev);
+    kfree(target);
+    return ret;
+}
+
+static int64_t sys_umount(struct process *p, uint64_t utarget)
+{
+    char *target;
+    int ret;
+
+    if (p->cred.euid != 0)
+        return -EPERM;
+    if ((ret = path_in(utarget, &target)))
+        return ret;
+    ret = *target == '/' ? vfs_unmount(target) : -EINVAL;
+    kfree(target);
+    return ret;
+}
+
 // ---- Memory ----
 
 static int64_t sys_mmap(struct process *p, uint64_t addr, uint64_t len, uint32_t prot,
@@ -1270,6 +1310,8 @@ static int64_t dispatch(struct process *p, struct interrupt_frame *f)
     case SYS_ACCESS:        return sys_access(p, a, b);
     case SYS_UTIME:         return sys_utime(p, a, b, c);
     case SYS_STATFS:        return sys_statfs(p, a, b);
+    case SYS_MOUNT:         return sys_mount(p, a, b, c, d);
+    case SYS_UMOUNT:        return sys_umount(p, a);
     case SYS_MMAP:          return sys_mmap(p, a, b, c, d, e, g);
     case SYS_MUNMAP:        return vm_munmap(p->mm, a, b);
     case SYS_MPROTECT:      return vm_mprotect(p->mm, a, b, c);

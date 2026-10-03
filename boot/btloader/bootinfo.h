@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define AEGIS_BOOT_MAGIC    0x4F4F425349474541ULL   // "AEGISBOO"
-#define AEGIS_BOOT_VERSION  2
+#define AEGIS_BOOT_VERSION  3
 
 #define AEGIS_MAX_FRAMEBUFFERS 4
 
@@ -17,6 +17,7 @@ enum aegis_memory_type {
     AEGIS_MEM_BOOTLOADER_RECLAIMABLE, // boot info, stack, bootloader page tables
     AEGIS_MEM_KERNEL,               // the kernel's loaded segments
     AEGIS_MEM_FIRMWARE_RUNTIME,     // UEFI runtime services code/data
+    AEGIS_MEM_RAMDISK,              // the boot entry's ramdisk image
 };
 
 struct aegis_memory_region {
@@ -68,6 +69,10 @@ struct aegis_boot_info {
     uint64_t kernel_size;
 
     uint64_t efi_system_table;      // for runtime services; boot services are gone
+
+    // Version 3: a disk image loaded by the bootloader (the live system), or 0.
+    uint64_t ramdisk_base;
+    uint64_t ramdisk_size;
 };
 
 #endif

@@ -75,6 +75,12 @@ void partition_scan(struct block_device *disk)
 
     if (!sector)
         return;
+    // Scanning again (a new partition table): old partitions vanish until
+    // found again, and ones found again keep their device.
+    for (size_t i = 0; i < block_count(); i++) {
+        if (block_at(i)->parent == disk)
+            block_at(i)->sector_count = 0;
+    }
     if (block_read(disk, ss, sector, ss) != 0)
         goto out;
     memcpy(&hdr, sector, sizeof(hdr));
@@ -95,10 +101,23 @@ void partition_scan(struct block_device *disk)
         if (!memcmp(e->type_guid, zero, 16) || e->last_lba < e->first_lba
             || e->last_lba >= disk->sector_count)
             continue;
+        {
+            char name[BLOCK_NAME_MAX];
+            struct block_device *old;
+
+            ksnprintf(name, sizeof(name), "%sp%d", disk->name, index++);
+            if ((old = block_find(name)) && old->parent == disk) {
+                old->sector_count = e->last_lba - e->first_lba + 1;
+                old->start_lba = e->first_lba;
+                memcpy(old->type_guid, e->type_guid, 16);
+                memcpy(old->part_guid, e->part_guid, 16);
+                continue;
+            }
+        }
         if (!(part = kzalloc(sizeof(*part))))
             break;
 
-        ksnprintf(part->name, sizeof(part->name), "%sp%d", disk->name, index++);
+        ksnprintf(part->name, sizeof(part->name), "%sp%d", disk->name, index - 1);
         part->sector_size = ss;
         part->sector_count = e->last_lba - e->first_lba + 1;
         part->max_sectors = disk->max_sectors;

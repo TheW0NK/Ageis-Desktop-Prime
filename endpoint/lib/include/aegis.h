@@ -8,6 +8,7 @@
 
 #include "abi/errno.h"
 #include "abi/fs.h"
+#include "abi/block.h"
 #include "abi/mman.h"
 #include "abi/net.h"
 #include "abi/poll.h"
@@ -96,6 +97,9 @@ long ioctl(int fd, unsigned long cmd, unsigned long arg);
 int access(const char *path, int mode);
 int utime(const char *path, int64_t atime, int64_t mtime);
 int statfs(const char *path, struct aegis_statfs *st);
+// Root only: mount a filesystem on a disk or partition ("vdap2") at an absolute path.
+int mount(const char *fstype, const char *dev, const char *target, uint32_t flags);
+int umount(const char *target);
 
 // Memory, pipes, polling and descriptors.
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, int64_t offset);
@@ -323,6 +327,7 @@ int account_check_password(const char *name, const char *password);
 int account_set_password(const char *name, const char *password);
 int account_set_display_name(const char *name, const char *display);
 int account_add(const char *name, const char *display, const char *password, bool admin);
+int account_add_hashed(const char *name, const char *display, const char *hash, bool admin);
 int account_remove(const char *name, bool remove_files);
 bool account_is_admin(const char *name);
 int group_set_member(const char *group, const char *user, bool member);
@@ -402,6 +407,42 @@ int copy_path(const char *src, const char *dst);
 int remove_path(const char *path);
 int move_path(const char *src, const char *dst);
 void unique_name(const char *dir, const char *name, char *out, size_t size);
+
+// Disks (lib/disk.c), as root: listing, partitioning and formatting.
+struct disk_info {
+    char name[16];                  // under /dev
+    char description[48];
+    uint64_t size;                  // bytes
+    uint32_t sector_size;
+    bool mounted;
+};
+struct disk_part {
+    const char *type;               // GPT type GUID, e.g. DISK_TYPE_ESP
+    const char *name;
+    uint64_t size_mb;               // 0: the rest of the disk
+};
+#define DISK_TYPE_ESP   "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+#define DISK_TYPE_DATA  "0fc63daf-8483-4772-8e79-3d69d8477de4"
+int disk_list(struct disk_info *out, int max);
+// Replaces the partition table; guids receives each partition's GUID.
+int disk_write_gpt(const char *disk, const struct disk_part *parts, int nparts, char guids[][37]);
+int mkfs_fat32(const char *part, const char *label);
+int mkfs_ext4(const char *part, const char *label, void (*progress)(int percent, void *u), void *u);
+void guid_to_string(const uint8_t g[16], char out[37]);
+
+// Installing Aegis on a whole disk, erasing it (lib/install.c), as root.
+struct install_options {
+    const char *disk;               // e.g. "vdb"
+    const char *user, *display, *password;
+    bool admin;
+    const char *hostname;
+    const char *timezone;           // name, e.g. "UTC"
+    int tz_offset_min;
+    const char *language;           // "en", "es", "fr", "de", "zh"
+};
+typedef void (*install_progress_fn)(int percent, const char *step, void *u);
+int install_system(const struct install_options *o, install_progress_fn progress, void *u, char *error,
+                   size_t error_size);
 
 // The recycle bin (lib/trash.c), in /users/<name>/system/trash.
 struct trash_item {

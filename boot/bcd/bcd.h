@@ -15,6 +15,7 @@
 //   type=kernel                      # kernel (ELF64) or efi (UEFI app)
 //   path=\EFI\Aegis\kernel.elf
 //   cmdline=quiet
+//   ramdisk=\EFI\Aegis\live.img     # optional: loaded into memory for the kernel
 //
 // Blank lines and lines starting with '#' or ';' are ignored. Unknown keys
 // are errors, so typos are caught instead of silently ignored.
@@ -45,6 +46,7 @@ struct bcd_entry {
     enum bcd_entry_type type;
     CHAR16 path[BCD_PATH_MAX];
     CHAR8 cmdline[BCD_CMDLINE_MAX];
+    CHAR16 ramdisk[BCD_PATH_MAX];   // empty: none
 };
 
 struct bcd {

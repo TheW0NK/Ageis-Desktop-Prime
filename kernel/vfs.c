@@ -1,5 +1,6 @@
 #include "vfs.h"
 #include "mem.h"
+#include "bcache.h"
 #include "rtc.h"
 #include "string.h"
 
@@ -391,6 +392,63 @@ int vfs_sync_all(void)
             ret = -EIO;
     }
     return ret;
+}
+
+// Unmounts the filesystem mounted at path, if nothing in it is in use.
+int vfs_unmount(const char *path)
+{
+    struct vnode *v;
+    struct mount *m, **pp;
+    int ret;
+
+    if ((ret = vfs_lookup(path, NULL, &root_cred, true, &v)))
+        return ret;
+    m = v->mount;
+    if (v != m->root || !m->covered) {
+        vput(v);
+        return -EINVAL;
+    }
+    vput(v);
+    // Busy: any vnode of it held, other than the root the mount holds.
+    mutex_lock(&vcache_lock);
+    for (int i = 0; i < VCACHE_SIZE; i++) {
+        for (struct vnode *c = vcache[i]; c; c = c->hash_next) {
+            if (c->mount == m && (c != m->root || c->refs > 1)) {
+                mutex_unlock(&vcache_lock);
+                return -EBUSY;
+            }
+        }
+    }
+    mutex_unlock(&vcache_lock);
+    if (m->ops->sync && FSCALL(m, m->ops->sync(m)) < 0)
+        return -EIO;
+    if (m->ops->unmount && FSCALL(m, m->ops->unmount(m)) < 0)
+        return -EIO;
+    mutex_lock(&mount_lock);
+    for (pp = &mounts; *pp && *pp != m; pp = &(*pp)->next)
+        ;
+    if (*pp)
+        *pp = m->next;
+    m->covered->covered_by = NULL;
+    mutex_unlock(&mount_lock);
+    vput(m->covered);
+    vput(m->root);
+    if (m->dev) {
+        bcache_sync(m->dev);
+        bcache_invalidate(m->dev);
+    }
+    kfree(m);
+    return 0;
+}
+
+// True if dev, or a partition of it, has a filesystem mounted.
+bool vfs_device_mounted(struct block_device *dev)
+{
+    for (struct mount *m = mounts; m; m = m->next) {
+        if (m->dev == dev || (m->dev && m->dev->parent == dev))
+            return true;
+    }
+    return false;
 }
 
 int vfs_unmount_all(void)

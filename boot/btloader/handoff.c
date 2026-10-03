@@ -9,6 +9,7 @@
 // Memory type for the kernel's segments, from the range UEFI reserves for
 // OS loaders, so the memory map can report them as AEGIS_MEM_KERNEL.
 #define KERNEL_MEMORY_TYPE  ((EFI_MEMORY_TYPE)0x80000001)
+#define RAMDISK_MEMORY_TYPE ((EFI_MEMORY_TYPE)0x80000002)
 #define KERNEL_STACK_SIZE   (64 * 1024)
 
 #define PAGE_SIZE           4096ULL
@@ -393,6 +394,8 @@ static UINT32 convert_type(UINT32 type)
         return AEGIS_MEM_BAD;
     case KERNEL_MEMORY_TYPE:
         return AEGIS_MEM_KERNEL;
+    case RAMDISK_MEMORY_TYPE:
+        return AEGIS_MEM_RAMDISK;
     default:
         return AEGIS_MEM_RESERVED;
     }
@@ -429,6 +432,51 @@ static UINT64 build_memory_map(const UINT8 *map, UINTN map_size, UINTN desc_size
             out[m++] = out[i];
     }
     return m;
+}
+
+// Reads the entry's ramdisk into memory the kernel will leave alone.
+static EFI_STATUS load_ramdisk(const CHAR16 *path, struct aegis_boot_info *info)
+{
+    EFI_FILE_HANDLE root, file;
+    EFI_FILE_INFO *fi;
+    EFI_PHYSICAL_ADDRESS addr;
+    EFI_STATUS status;
+    UINTN size, done = 0;
+
+    Print(L"Loading %s...\n", path);
+    if (!(root = LibOpenRoot(btl_self->DeviceHandle)))
+        return EFI_NOT_FOUND;
+    status = uefi_call_wrapper(root->Open, 5, root, &file, (CHAR16 *)path, EFI_FILE_MODE_READ, 0);
+    uefi_call_wrapper(root->Close, 1, root);
+    if (EFI_ERROR(status))
+        return status;
+    if (!(fi = LibFileInfo(file))) {
+        uefi_call_wrapper(file->Close, 1, file);
+        return EFI_DEVICE_ERROR;
+    }
+    size = fi->FileSize;
+    FreePool(fi);
+    status = uefi_call_wrapper(BS->AllocatePages, 4, AllocateAnyPages, RAMDISK_MEMORY_TYPE,
+                               PAGE_UP(size) / PAGE_SIZE, &addr);
+    if (EFI_ERROR(status)) {
+        uefi_call_wrapper(file->Close, 1, file);
+        return status;
+    }
+    // In pieces: some firmware (CD-ROM drivers especially) fails huge reads.
+    while (done < size) {
+        UINTN chunk = size - done > (4 << 20) ? (4 << 20) : size - done;
+
+        status = uefi_call_wrapper(file->Read, 3, file, &chunk, (UINT8 *)addr + done);
+        if (EFI_ERROR(status) || !chunk)
+            break;
+        done += chunk;
+    }
+    uefi_call_wrapper(file->Close, 1, file);
+    if (done != size)
+        return EFI_ERROR(status) ? status : EFI_END_OF_FILE;
+    info->ramdisk_base = addr;
+    info->ramdisk_size = size;
+    return EFI_SUCCESS;
 }
 
 static void __attribute__((noreturn)) jump_to_kernel(UINT64 entry,
@@ -486,6 +534,11 @@ EFI_STATUS handoff_kernel(struct bcd *bcd, struct bcd_entry *entry)
     CopyMem(cmdline, entry->cmdline, BCD_CMDLINE_MAX);
     info->cmdline = (UINT64)cmdline;
 
+    if (entry->ramdisk[0]) {
+        status = load_ramdisk(entry->ramdisk, info);
+        if (EFI_ERROR(status))
+            return status;
+    }
     get_framebuffers(info, bcd);
     get_acpi(info);
 

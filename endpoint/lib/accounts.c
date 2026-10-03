@@ -311,8 +311,19 @@ static uint32_t next_uid(void)
 
 int account_add(const char *name, const char *display, const char *password, bool admin)
 {
+    char hash[160];
+
+    if (password_hash(password, hash, sizeof(hash)) < 0)
+        return -1;
+    return account_add_hashed(name, display, hash, admin);
+}
+
+// As account_add, with the password already hashed (the installer's
+// first-boot settings).
+int account_add_hashed(const char *name, const char *display, const char *hash, bool admin)
+{
     struct user_info u;
-    char line[512], hash[160];
+    char line[512];
     uint32_t uid;
 
     if (!valid_name(name)) {
@@ -323,8 +334,6 @@ int account_add(const char *name, const char *display, const char *password, boo
         errno = EEXIST;
         return -1;
     }
-    if (password_hash(password, hash, sizeof(hash)) < 0)
-        return -1;
     uid = next_uid();
     snprintf(line, sizeof(line), "%s:x:%u:%u:%s:/users/%s/home:/bin/terminal", name, uid, uid,
              display && *display ? display : name, name);

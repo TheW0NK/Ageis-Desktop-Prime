@@ -1,5 +1,6 @@
 #include "block.h"
 #include "string.h"
+#include "devfs.h"
 
 static struct block_device *devices[BLOCK_MAX_DEVICES];
 static size_t count;
@@ -15,9 +16,11 @@ int block_register(struct block_device *dev)
         ret = 0;
     }
     spin_unlock_irqrestore(&lock, flags);
-    if (ret == 0)
+    if (ret == 0) {
         kprintf("Block: %s, %lu MiB (%u-byte sectors)\n", dev->name,
                 dev->sector_count * dev->sector_size >> 20, dev->sector_size);
+        blockdev_publish(dev);
+    }
     return ret;
 }
 

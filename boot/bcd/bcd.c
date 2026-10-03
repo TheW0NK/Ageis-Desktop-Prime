@@ -125,6 +125,8 @@ static BOOLEAN set_entry(struct bcd_entry *entry,
         return copy16(entry->path, BCD_PATH_MAX, v, ve);
     if (key_is(k, ke, "cmdline"))
         return copy8(entry->cmdline, BCD_CMDLINE_MAX, v, ve);
+    if (key_is(k, ke, "ramdisk"))
+        return copy16(entry->ramdisk, BCD_PATH_MAX, v, ve);
     if (key_is(k, ke, "type")) {
         if (key_is(v, ve, "kernel"))
             entry->type = BCD_TYPE_KERNEL;

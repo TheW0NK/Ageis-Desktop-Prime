@@ -107,6 +107,8 @@ struct filesystem {
 void vfs_register(struct filesystem *fs);
 int vfs_mount(const char *fstype, struct block_device *dev, const char *path, bool readonly);
 int vfs_unmount_all(void);
+int vfs_unmount(const char *path);
+bool vfs_device_mounted(struct block_device *dev);
 int vfs_sync_all(void);
 struct vnode *vfs_root(void);
 struct mount *vfs_mounts(void);

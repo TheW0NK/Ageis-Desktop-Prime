@@ -137,6 +137,8 @@ long ioctl(int fd, unsigned long cmd, unsigned long arg) { return check(syscall3
 int access(const char *p, int mode) { return check(syscall2(SYS_ACCESS, p, mode)); }
 int utime(const char *p, int64_t a, int64_t m) { return check(syscall3(SYS_UTIME, p, a, m)); }
 int statfs(const char *p, struct aegis_statfs *st) { return check(syscall2(SYS_STATFS, p, st)); }
+int mount(const char *fs, const char *dev, const char *target, uint32_t flags) { return check(syscall4(SYS_MOUNT, fs, dev, target, flags)); }
+int umount(const char *target) { return check(syscall1(SYS_UMOUNT, target)); }
 
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, int64_t off)
 {
