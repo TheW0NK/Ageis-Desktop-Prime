@@ -410,6 +410,14 @@ struct e4_inode {
     uint8_t pad[INODE_SIZE - 160];
 } __attribute__((packed));
 
+static void be32_put(uint8_t *p, uint32_t v)
+{
+    p[0] = v >> 24;
+    p[1] = v >> 16;
+    p[2] = v >> 8;
+    p[3] = v;
+}
+
 static bool has_backup(uint32_t g)
 {
     if (g <= 1)
@@ -471,7 +479,7 @@ int mkfs_ext4(const char *part, const char *label, void (*progress)(int percent,
     uint8_t *buf = NULL;
     struct e4_super sb;
     uint64_t free_total = 0;
-    uint32_t root_block = 0, lf_block = 0;
+    uint32_t root_block = 0, lf_block = 0, journal_block = 0, journal_len;
     int ret = -1;
 
     if (fd < 0)
@@ -516,6 +524,15 @@ int mkfs_ext4(const char *part, const char *label, void (*progress)(int percent,
     sb.first_ino = 11;
     sb.inode_size = INODE_SIZE;
     sb.feature_incompat = 0x0002 | 0x0040;                  // filetype, extents
+    // A journal (inode 8), so a crash or power cut cannot leave the file
+    // system half-updated: 1/64 of the disk, from 16 MiB to 64 MiB, in
+    // the first block group.
+    journal_len = (uint32_t)(blocks / 64);
+    journal_len = journal_len < 4096 ? 4096 : journal_len > 16384 ? 16384 : journal_len;
+    if (journal_len > blocks / 4)
+        journal_len = 1024;
+    sb.feature_compat = 0x0004;                             // has_journal
+    sb.journal_inum = 8;
     sb.feature_ro_compat = 0x0001 | 0x0002 | 0x0020 | 0x0040; // sparse_super, large_file, dir_nlink, extra_isize
     random_fill(sb.uuid, 16);
     random_fill(sb.hash_seed, sizeof(sb.hash_seed));
@@ -537,6 +554,12 @@ int mkfs_ext4(const char *part, const char *label, void (*progress)(int percent,
         if (g == 0) {
             root_block = (uint32_t)start + used++;
             lf_block = (uint32_t)start + used++;
+            journal_block = (uint32_t)start + used;
+            used += journal_len;
+            if (used >= in_group) {
+                errno = ENOSPC;
+                goto out;
+            }
             gd[g].used_dirs = 2;
             gd[g].free_inodes = ipg - 11;
         } else {
@@ -579,6 +602,25 @@ int mkfs_ext4(const char *part, const char *label, void (*progress)(int percent,
         dir_inode(&in, lf_block, 2, now);
         in.mode = 040700;
         memcpy(itab + (11 - 1) * INODE_SIZE, &in, INODE_SIZE);
+        // The journal: one extent over its blocks.
+        memset(&in, 0, sizeof(in));
+        in.mode = 0100600;
+        in.links_count = 1;
+        in.size_lo = journal_len * BLOCK;
+        in.atime = in.ctime = in.mtime = in.crtime = now;
+        in.blocks_lo = journal_len * (BLOCK / 512);
+        in.flags = 0x00080000;
+        in.block[0] = 0xF30A | (1u << 16);
+        in.block[1] = 4;
+        in.block[3] = 0;
+        in.block[4] = journal_len;              // length (high 16 bits: start_hi 0)
+        in.block[5] = journal_block;
+        in.extra_isize = 32;
+        memcpy(itab + (8 - 1) * INODE_SIZE, &in, INODE_SIZE);
+        // The superblock keeps a copy of where the journal is.
+        memcpy(sb.jnl_blocks, in.block, sizeof(in.block));
+        sb.jnl_blocks[16] = in.size_lo;
+        sb.jnl_backup_type = 1;
         if (put(fd, (uint64_t)gd[0].inode_table * BLOCK, itab, BLOCK * 3) < 0) {
             free(itab);
             goto out;
@@ -592,6 +634,24 @@ int mkfs_ext4(const char *part, const char *label, void (*progress)(int percent,
         memset(buf, 0, BLOCK);
         dirent(buf, dirent(buf, 0, 11, 12, ".", 2), 2, BLOCK - 12, "..", 2);
         if (put(fd, (uint64_t)lf_block * BLOCK, buf, BLOCK) < 0)
+            goto out;
+
+        // An empty journal: zeroed, with a clean JBD2 v2 superblock first.
+        if (zero(fd, (uint64_t)journal_block * BLOCK, (uint64_t)journal_len * BLOCK) < 0)
+            goto out;
+        memset(buf, 0, BLOCK);
+        be32_put(buf + 0x00, 0xC03B3998);       // magic
+        be32_put(buf + 0x04, 4);                // superblock, version 2
+        be32_put(buf + 0x0C, BLOCK);
+        be32_put(buf + 0x10, journal_len);      // maxlen
+        be32_put(buf + 0x14, 1);                // first log block
+        be32_put(buf + 0x18, 1);                // first transaction's sequence
+        be32_put(buf + 0x1C, 0);                // start: 0 = nothing to replay
+        be32_put(buf + 0x28, 0x1);              // incompat: revoke records
+        memcpy(buf + 0x30, sb.uuid, 16);
+        be32_put(buf + 0x40, 1);                // one file system uses it
+        memcpy(buf + 0x100, sb.uuid, 16);
+        if (put(fd, (uint64_t)journal_block * BLOCK, buf, BLOCK) < 0)
             goto out;
     }
 
