@@ -3,7 +3,8 @@
 
 #include <stdint.h>
 
-// /osystem/devices/<disk> and /osystem/devices/<disk>p<N>: disks and their partitions, for root.
+// /osystem/devices/dA, dB, ... and dA1, dA2, ...: disks and their partitions, for
+// superuser. The live system's memory disk is /osystem/devices/ramdisk.
 // read() and write() work at the file offset (lseek) and must be whole
 // sectors at sector-aligned offsets.
 
@@ -23,6 +24,7 @@ struct aegis_blockinfo {
     char parent[16];                // partitions: the whole disk's name
     uint8_t type_guid[16];
     uint8_t part_guid[16];
+    char kind[16];                  // whole disks: "SATA", "NVMe", "Virtual", "Memory"
 };
 
 #endif

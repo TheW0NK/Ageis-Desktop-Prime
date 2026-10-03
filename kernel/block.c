@@ -6,19 +6,34 @@ static struct block_device *devices[BLOCK_MAX_DEVICES];
 static size_t count;
 static spinlock_t lock = SPINLOCK_INIT;
 
+// Whole disks are named by letter in the order they are found: dA, dB, ...
+// dZ, dAA, dAB, ... Partitions are named by the partition table (dA1).
+static void letter_name(struct block_device *dev)
+{
+    static unsigned next;
+    unsigned n = next++;
+
+    if (n < 26)
+        ksnprintf(dev->name, sizeof(dev->name), "d%c", 'A' + n);
+    else
+        ksnprintf(dev->name, sizeof(dev->name), "d%c%c", 'A' + n / 26 - 1, 'A' + n % 26);
+}
+
 int block_register(struct block_device *dev)
 {
     uint64_t flags = spin_lock_irqsave(&lock);
     int ret = -1;
 
     if (count < BLOCK_MAX_DEVICES) {
+        if (!dev->parent && strcmp(dev->name, "ramdisk"))
+            letter_name(dev);
         devices[count++] = dev;
         ret = 0;
     }
     spin_unlock_irqrestore(&lock, flags);
     if (ret == 0) {
-        kprintf("Block: %s, %lu MiB (%u-byte sectors)\n", dev->name,
-                dev->sector_count * dev->sector_size >> 20, dev->sector_size);
+        kprintf("Block: %s, %s%s%lu MiB (%u-byte sectors)\n", dev->name, dev->kind ? dev->kind : "",
+                dev->kind ? ", " : "", dev->sector_count * dev->sector_size >> 20, dev->sector_size);
         blockdev_publish(dev);
     }
     return ret;

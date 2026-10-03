@@ -6,14 +6,14 @@
 int main(void)
 {
     struct aegis_fbinfo fi;
-    int fd = open("/osystem/devices/fb0", O_RDWR);
+    int fd = open("/osystem/devices/display", O_RDWR);
     uint32_t *fb;
     struct surface *s;
     struct gfx g;
     struct font *title, *body, *mono;
 
     if (fd < 0 || ioctl(fd, IOCTL_FB_INFO, (unsigned long)&fi) < 0) {
-        perror("gfxdemo: /osystem/devices/fb0");
+        perror("gfxdemo: /osystem/devices/display");
         return 1;
     }
     fb = mmap(NULL, fi.size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);

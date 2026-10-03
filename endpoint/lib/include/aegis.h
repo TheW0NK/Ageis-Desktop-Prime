@@ -97,7 +97,7 @@ long ioctl(int fd, unsigned long cmd, unsigned long arg);
 int access(const char *path, int mode);
 int utime(const char *path, int64_t atime, int64_t mtime);
 int statfs(const char *path, struct aegis_statfs *st);
-// Root only: mount a filesystem on a disk or partition ("vdap2") at an absolute path.
+// Root only: mount a filesystem on a disk or partition ("dA2") at an absolute path.
 int mount(const char *fstype, const char *dev, const char *target, uint32_t flags);
 int umount(const char *target);
 
@@ -317,7 +317,7 @@ int app_list(struct app_info *out, int max);        // sorted by name
 int app_find(const char *id, struct app_info *out);
 int app_for_file(const char *name, struct app_info *out);
 int app_launch(const struct app_info *a, const char *arg);
-// Starts a program with its standard streams on /osystem/devices/null; returns the pid.
+// Starts a program with its standard streams on /osystem/devices/nothing; returns the pid.
 int launch(const char *path, const char *arg);
 
 // Accounts (lib/accounts.c). Changes need root.
@@ -331,8 +331,8 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
 int account_remove(const char *name, bool remove_files);
 bool account_is_admin(const char *name);
 int group_set_member(const char *group, const char *user, bool member);
-// Any user: through /osystem/core/privd.
-#define PRIVD_SOCKET "@aegis/privd"
+// Any user: through the account sentry (/osystem/core/account-sentry).
+#define PRIVD_SOCKET "@aegis/accounts"
 int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
 // Checks the signed-in user's password (the lock screen). 0 if right.
 int verify_own_password(const char *password);
@@ -377,10 +377,10 @@ int cred_set(const char *name, const char *secret);
 char *cred_get(const char *name);                   // free it; NULL if missing or locked
 int cred_delete(const char *name);
 
-// Cron schedules (lib/cron.c).
+// Routine schedules (lib/cron.c).
 struct cron_job {
     char schedule[64];
-    char user[32];                  // /msc/crontab only
+    char user[32];                  // /msc/routines only
     char command[256];
     char name[64];
     bool enabled;
@@ -389,7 +389,7 @@ bool cron_matches(const char *schedule, const struct tm *tm);
 bool cron_parse(char *line, bool with_user, struct cron_job *job);
 void cron_format(const struct cron_job *job, bool with_user, char *out, size_t size);
 int64_t cron_next(const char *schedule, int64_t after);
-// /userfiles/<name>/system/appdata/cron/<file> ("crontab", "log").
+// /userfiles/<name>/system/appdata/routines/<file> ("routines", "log").
 void cron_user_path(const struct user_info *u, const char *file, char *out, size_t size);
 
 // Optional features (lib/features.c), in /msc/features.conf.
@@ -432,7 +432,7 @@ void guid_to_string(const uint8_t g[16], char out[37]);
 
 // Installing Aegis on a whole disk, erasing it (lib/install.c), as root.
 struct install_options {
-    const char *disk;               // e.g. "vdb"
+    const char *disk;               // e.g. "dB"
     const char *user, *display, *password;
     bool admin;
     const char *hostname;

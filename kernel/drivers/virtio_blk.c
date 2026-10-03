@@ -165,6 +165,7 @@ static void device_init(const struct pci_device *pci)
     outb(io + VIRTIO_STATUS, STATUS_ACK | STATUS_DRIVER | STATUS_DRIVER_OK);
 
     ksnprintf(v->dev.name, sizeof(v->dev.name), "vd%c", 'a' + vblk_count++);
+    v->dev.kind = "Virtual";
     v->dev.sector_size = 512;
     v->dev.sector_count = (uint64_t)inl(io + VIRTIO_CONFIG) | (uint64_t)inl(io + VIRTIO_CONFIG + 4) << 32;
     v->dev.max_sectors = MAX_SECTORS;

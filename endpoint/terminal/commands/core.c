@@ -71,7 +71,7 @@ int cmd_export(int argc, char **argv)
         char *eq = strchr(argv[i], '=');
 
         if (!eq || eq == argv[i]) {
-            dprintf(STDERR_FILENO, "export: expected NAME=VALUE: %s\n", argv[i]);
+            dprintf(STDERR_FILENO, "set: expected NAME=VALUE: %s\n", argv[i]);
             return 1;
         }
         *eq = '\0';
@@ -147,7 +147,7 @@ int cmd_uname(int argc, char **argv)
     struct aegis_utsname u;
 
     if (uname(&u) < 0) {
-        perror("uname");
+        perror("system");
         return 1;
     }
     if (argc > 1 && !strcmp(argv[1], "-a"))
@@ -182,18 +182,18 @@ int cmd_kill(int argc, char **argv)
 
     if (argc > 1 && argv[1][0] == '-' && argv[1][1]) {
         if ((sig = signal_number(argv[1] + 1)) < 0 || sig > NSIG) {
-            dprintf(STDERR_FILENO, "kill: unknown signal %s\n", argv[1] + 1);
+            dprintf(STDERR_FILENO, "stop: unknown signal %s\n", argv[1] + 1);
             return 1;
         }
         i++;
     }
     if (i >= argc) {
-        dprintf(STDERR_FILENO, "usage: kill [-SIGNAL] PID...\n");
+        dprintf(STDERR_FILENO, "usage: stop [-SIGNAL] PID...\n");
         return 1;
     }
     for (; i < argc; i++) {
         if (kill(atoi(argv[i]), sig) < 0) {
-            fail("kill", argv[i]);
+            fail("stop", argv[i]);
             ret = 1;
         }
     }
@@ -203,7 +203,7 @@ int cmd_kill(int argc, char **argv)
 int cmd_sleep(int argc, char **argv)
 {
     if (argc < 2) {
-        dprintf(STDERR_FILENO, "usage: sleep SECONDS\n");
+        dprintf(STDERR_FILENO, "usage: wait SECONDS\n");
         return 1;
     }
     msleep((uint64_t)atoi(argv[1]) * 1000);

@@ -1,6 +1,6 @@
 #include "aegis.h"
 
-// Talking to the audio server (/osystem/core/audiod) over "@aegis/audio".
+// Talking to the audio server (/osystem/core/audio-sentry) over "@aegis/audio".
 //
 // A player connects, sends "play RATE CHANNELS NAME\n" and then 16-bit
 // little-endian PCM. A control connection sends "ctl\n" and then commands

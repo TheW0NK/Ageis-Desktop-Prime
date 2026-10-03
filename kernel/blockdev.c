@@ -88,6 +88,8 @@ static int64_t bd_ioctl(struct file *f, uint64_t cmd, uint64_t arg)
             bi.flags |= BLOCK_INFO_MOUNTED;
         memcpy(bi.type_guid, d->type_guid, 16);
         memcpy(bi.part_guid, d->part_guid, 16);
+        if (d->kind)
+            memcpy(bi.kind, d->kind, strlen(d->kind) < sizeof(bi.kind) ? strlen(d->kind) : sizeof(bi.kind) - 1);
         return copy_to_user(arg, &bi, sizeof(bi)) ? -EFAULT : 0;
     }
     case IOCTL_BLOCK_RESCAN:

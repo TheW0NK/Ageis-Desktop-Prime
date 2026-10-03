@@ -52,8 +52,14 @@ static struct block_device *find_root(void)
     const char *spec = cmdline_value("root");
     uint8_t guid[16];
 
-    // The live system runs from the ramdisk the bootloader loaded.
-    if (ramdisk_device() && (!spec || (!strncmp(spec, "ram0", 4) && (spec[4] == ' ' || !spec[4]))))
+    // The live system runs from the ramdisk the bootloader loaded ("ram0" is
+    // what older boot configurations say).
+    size_t len = 0;
+
+    while (spec && spec[len] && spec[len] != ' ')
+        len++;
+    if (ramdisk_device()
+        && (!spec || (len == 7 && !strncmp(spec, "ramdisk", 7)) || (len == 4 && !strncmp(spec, "ram0", 4))))
         return ramdisk_device();
     if (spec && !strncmp(spec, "PARTUUID=", 9) && guid_parse(spec + 9, guid)) {
         for (size_t i = 0; i < block_count(); i++) {

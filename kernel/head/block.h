@@ -16,7 +16,8 @@ struct block_ops {
 };
 
 struct block_device {
-    char name[BLOCK_NAME_MAX];
+    char name[BLOCK_NAME_MAX];      // dA, dB, ... (set by block_register); partitions dA1, ...
+    const char *kind;               // "SATA", "NVMe", ...: what the driver drives
     uint32_t sector_size;
     uint64_t sector_count;
     uint32_t max_sectors;           // per request

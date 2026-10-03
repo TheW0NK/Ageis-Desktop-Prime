@@ -18,7 +18,7 @@
 
 static int random_bytes(void *buf, size_t len)
 {
-    int fd = open("/osystem/devices/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/random", O_RDONLY);
     ssize_t n;
 
     if (fd < 0)

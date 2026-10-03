@@ -720,7 +720,7 @@ static void properties(struct widget *w, void *u)
     if (user_by_uid(e->uid, &ou) == 0)
         strlcpy(owner, ou.name, sizeof(owner));
     else if (e->uid == 0)
-        strlcpy(owner, "root", sizeof(owner));
+        strlcpy(owner, "superuser", sizeof(owner));
     snprintf(msg, sizeof(msg), "Name: %s\nKind: %s\nSize: %s\nOwner: %s\nPermissions: %o\nModified: %s\nFolder: %s",
              e->name, type_of(e), e->dir ? "-" : size, owner, e->mode & 07777, when, cwd);
     ui_message(win, "Properties", msg, "OK");

@@ -30,7 +30,7 @@ static const char page[] =
     "            <vbox spacing='10'>"
     "              <h2 text='Start Aegis'/>"
     "              <p text='Restart to try the installed system again, or start it once in safe mode: only what is"
-    " needed to sign in, with scheduled jobs and sound off.'/>"
+    " needed to sign in, with routines and sound off.'/>"
     "              <hbox spacing='8'><button text='Restart' default='true' onclick='restart'/>"
     "                <button id='safebtn' text='Restart in safe mode' onclick='safe'/>"
     "                <button text='Shut down' onclick='poweroff'/></hbox>"
@@ -42,9 +42,9 @@ static const char page[] =
     // 1: startup settings
     "            <vbox spacing='8'>"
     "              <h2 text='Startup settings'/>"
-    "              <label text='Services' bold='true'/>"
+    "              <label text='Sentries' bold='true'/>"
     "              <checkbox id='svc_console' text='Text console (Ctrl+Alt+F2)'/>"
-    "              <checkbox id='svc_cron' text='Scheduled jobs'/>"
+    "              <checkbox id='svc_cron' text='Routines'/>"
     "              <checkbox id='svc_audio' text='Sound'/>"
     "              <label text='Boot options' bold='true'/>"
     "              <checkbox id='verbose' text='Show startup messages instead of the logo'/>"
@@ -105,7 +105,7 @@ static const char page[] =
     // 6: terminal
     "            <vbox spacing='10'>"
     "              <h2 text='Recovery terminal'/>"
-    "              <p text='A terminal as root. The installed system is at /osystem/volumes/system and its EFI partition at"
+    "              <p text='A terminal as the superuser. The installed system is at /osystem/volumes/system and its EFI partition at"
     " /osystem/volumes/esp. Changes take effect at once: take care.'/>"
     "              <hbox><button text='Open terminal' onclick='terminal'/></hbox>"
     "            </vbox>"
@@ -363,7 +363,7 @@ static void load_startup(void)
     char v[64], root[96], extra[300];
 
     ui_set_value(ui_get(win, "svc_console"), feature_on(features ? features : "", "console", true));
-    ui_set_value(ui_get(win, "svc_cron"), feature_on(features ? features : "", "cron", true));
+    ui_set_value(ui_get(win, "svc_cron"), feature_on(features ? features : "", "routines", true));
     ui_set_value(ui_get(win, "svc_audio"), feature_on(features ? features : "", "audio", true));
     ui_set_value(ui_get(win, "verbose"), feature_on(features ? features : "", "bootlog", false));
     if (bcd) {
@@ -380,7 +380,7 @@ static void load_startup(void)
 
 static void on_save_startup(struct widget *w, void *u)
 {
-    static const char *const names[] = { "console", "cron", "audio", "bootlog" };
+    static const char *const names[] = { "console", "routines", "audio", "bootlog" };
     bool values[4] = { ui_value(ui_get(win, "svc_console")) != 0, ui_value(ui_get(win, "svc_cron")) != 0,
                        ui_value(ui_get(win, "svc_audio")) != 0, ui_value(ui_get(win, "verbose")) != 0 };
     char *bcd, *updated, timeout[16], root[96], extra[300];
@@ -400,7 +400,7 @@ static void on_save_startup(struct widget *w, void *u)
         free(updated);
         free(bcd);
     } else {
-        ui_set_text(ui_get(win, "startupmsg"), "Services saved. No boot configuration was found to change.");
+        ui_set_text(ui_get(win, "startupmsg"), "Sentries saved. No boot configuration was found to change.");
     }
 }
 

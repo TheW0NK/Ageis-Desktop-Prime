@@ -45,13 +45,13 @@ static void handle(int fd)
         if (strlen(fields[2]) < 4) {
             reply(fd, "error The new password is too short.");
         } else if (account_check_password(u.name, fields[1]) < 0) {
-            syslog("privd", "wrong current password for %s", u.name);
+            syslog("account-sentry", "wrong current password for %s", u.name);
             msleep(1500);
             reply(fd, "error The current password is not right.");
         } else if (account_set_password(u.name, fields[2]) < 0) {
             reply(fd, "error The password could not be saved.");
         } else {
-            syslog("privd", "password changed for %s", u.name);
+            syslog("account-sentry", "password changed for %s", u.name);
             reply(fd, "ok");
         }
         memset(req, 0, sizeof(req));
@@ -59,7 +59,7 @@ static void handle(int fd)
     }
     if (k >= 2 && !strcmp(fields[0], "verify")) {
         if (account_check_password(u.name, fields[1]) < 0) {
-            syslog("privd", "wrong password for %s at the lock screen", u.name);
+            syslog("account-sentry", "wrong password for %s at the lock screen", u.name);
             msleep(1000);
             reply(fd, "error The password is not right.");
         } else {
@@ -76,7 +76,7 @@ int main(void)
     int lfd = unix_listen(SOCKET_NAME, SOCK_SEQPACKET);
 
     if (lfd < 0) {
-        perror("privd: " SOCKET_NAME);
+        perror("account-sentry: " SOCKET_NAME);
         return 1;
     }
     signal(SIGPIPE, SIG_IGN);

@@ -165,8 +165,8 @@ static const char *page_problem(void)
             return "Enter your name.";
         if (!valid_user(user))
             return "User names are lowercase letters, digits, - and _, starting with a letter.";
-        if (!strcmp(user, "root"))
-            return "Choose a user name other than root.";
+        if (!strcmp(user, "superuser") || !strcmp(user, "root"))
+            return "That name is taken; choose another.";
         if (strlen(p1) < 4)
             return "Choose a password of at least 4 characters.";
         if (strcmp(p1, p2))

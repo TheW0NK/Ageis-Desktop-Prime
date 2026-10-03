@@ -1,9 +1,9 @@
 #include "aegis.h"
 
 // The job scheduler. Started by init as root. Once a minute it reads
-// /msc/crontab (lines name a user) and every user's crontab, and starts
+// /msc/routines (lines name a user) and every user's routines, and starts
 // the jobs that are due. Each job runs as its owner through
-// "crond --run UID COMMAND", which drops to that account and logs the
+// "routine-sentry --run UID COMMAND", which drops to that account and logs the
 // outcome.
 
 #define LOG_MAX (64 * 1024)
@@ -24,7 +24,7 @@ static void append_log(const char *path, uint32_t uid, uint32_t gid, const char 
     chown(path, uid, gid);
 }
 
-// crond --run UID COMMAND
+// routine-sentry --run UID COMMAND
 static int run_job(uint32_t uid, const char *command)
 {
     struct user_info u;
@@ -35,9 +35,9 @@ static int run_job(uint32_t uid, const char *command)
     uint64_t started = uptime_ms();
 
     if (uid == 0) {
-        strlcpy(log, "/osystem/logs/cron.log", sizeof(log));
+        strlcpy(log, "/osystem/logs/routines.log", sizeof(log));
         strlcpy(u.home, "/userfiles/superuser", sizeof(u.home));
-        strlcpy(u.name, "root", sizeof(u.name));
+        strlcpy(u.name, "superuser", sizeof(u.name));
     } else {
         if (user_by_uid(uid, &u) < 0)
             return 1;
@@ -60,7 +60,7 @@ static int run_job(uint32_t uid, const char *command)
         dup2(fd, STDERR_FILENO);
         close(fd);
     }
-    if ((fd = open("/osystem/devices/null", O_RDONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/nothing", O_RDONLY)) >= 0) {
         dup2(fd, STDIN_FILENO);
         close(fd);
     }
@@ -81,7 +81,7 @@ static void start_job(uint32_t uid, const char *command)
     char id[16], *argv[] = { "crond", "--run", id, (char *)command, NULL };
 
     snprintf(id, sizeof(id), "%u", uid);
-    spawn("/osystem/core/crond", argv, environ);
+    spawn("/osystem/core/routine-sentry", argv, environ);
 }
 
 static void run_file(const char *path, bool system, uint32_t owner, const struct tm *tm, bool boot)
@@ -93,7 +93,7 @@ static void run_file(const char *path, bool system, uint32_t owner, const struct
 
     if (fd < 0)
         return;
-    // A user's crontab must be theirs, so nobody can run jobs as them.
+    // A user's routines file must be theirs, so nobody can run jobs as them.
     if (!system && (fstat(fd, &st) < 0 || st.uid != owner)) {
         close(fd);
         return;
@@ -110,7 +110,7 @@ static void run_file(const char *path, bool system, uint32_t owner, const struct
             struct user_info u;
             uint32_t uid = 0;
 
-            if (strcmp(job.user, "root")) {
+            if (strcmp(job.user, "superuser")) {
                 if (user_by_name(job.user, &u) < 0)
                     continue;
                 uid = u.uid;
@@ -132,9 +132,9 @@ static void run_due(bool boot)
     char path[256];
 
     localtime_r(&now, &tm);
-    run_file("/msc/crontab", true, 0, &tm, boot);
+    run_file("/msc/routines", true, 0, &tm, boot);
     for (int i = 0; i < n; i++) {
-        cron_user_path(&users[i], "crontab", path, sizeof(path));
+        cron_user_path(&users[i], "routines", path, sizeof(path));
         run_file(path, false, users[i].uid, &tm, boot);
     }
 }
@@ -146,12 +146,12 @@ int main(int argc, char **argv)
     if (argc == 4 && !strcmp(argv[1], "--run"))
         return run_job(strtoul(argv[2], NULL, 10), argv[3]);
     if (geteuid() != 0) {
-        dprintf(STDERR_FILENO, "crond: must run as root\n");
+        dprintf(STDERR_FILENO, "routine-sentry: must run as the superuser\n");
         return 1;
     }
     mkdir("/osystem", 0755);
     mkdir("/osystem/logs", 0755);
-    syslog("crond", "started");
+    syslog("routine-sentry", "started");
     run_due(true);
     for (;;) {
         int64_t now = time(NULL), minute = now / 60;

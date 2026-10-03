@@ -204,6 +204,7 @@ static void port_init(volatile uint8_t *regs)
     id = (uint16_t *)p->bounce;
 
     ksnprintf(p->dev.name, sizeof(p->dev.name), "sata%d", ahci_count++);
+    p->dev.kind = "SATA";
     p->dev.sector_size = 512;
     p->dev.sector_count = (uint64_t)id[100] | (uint64_t)id[101] << 16
                         | (uint64_t)id[102] << 32 | (uint64_t)id[103] << 48;

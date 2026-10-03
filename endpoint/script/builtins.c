@@ -517,7 +517,7 @@ static struct script_value b_random(struct script *s, struct script_value *a, in
 
     (void)s;
     if (!rng_state) {
-        int fd = open("/osystem/devices/urandom", O_RDONLY);
+        int fd = open("/osystem/devices/random", O_RDONLY);
 
         if (fd < 0 || read(fd, &rng_state, 8) != 8)
             rng_state = uptime_ms() | 1;

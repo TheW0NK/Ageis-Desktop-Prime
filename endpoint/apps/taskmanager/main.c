@@ -7,22 +7,22 @@ static const char page[] =
     "<window title='Task Manager' width='820' height='540' padding='0' spacing='0'>"
     "  <tabs id='tabs' expand='1' onchange='tab'>"
     "    <tab title='Apps'>"
-    "      <table id='apps' expand='1' columns='Window|Process:160|PID:70:right|Memory:100:right'"
+    "      <table id='apps' expand='1' columns='Window|Thread:160|ID:70:right|Memory:100:right'"
     "             onactivate='switch' placeholder='No windows are open'/>"
     "      <hbox justify='end' spacing='8'>"
     "        <button text='Switch to' onclick='switch'/>"
     "        <button text='End task' onclick='endapp'/>"
     "      </hbox>"
     "    </tab>"
-    "    <tab title='Processes'>"
+    "    <tab title='Threads'>"
     "      <hbox spacing='8'>"
     "        <input id='filter' width='220' placeholder='Filter by name' onchange='refresh'/>"
     "        <checkbox id='mine' text='Only mine' onchange='refresh'/>"
     "      </hbox>"
     "      <table id='procs' expand='1' onsort='sort' oncontext='context'"
-    "             columns='Name|PID:70:right|User:90|State:90|CPU:70:right|Memory:100:right|Threads:70:right'/>"
+    "             columns='Name|ID:70:right|User:90|State:90|CPU:70:right|Memory:100:right|Strands:70:right'/>"
     "      <hbox justify='end' spacing='8'>"
-    "        <button text='End process' onclick='end'/>"
+    "        <button text='End thread' onclick='end'/>"
     "        <button text='Force stop' onclick='kill'/>"
     "      </hbox>"
     "    </tab>"
@@ -31,7 +31,7 @@ static const char page[] =
     "    <label id='summary'/>"
     "  </statusbar>"
     "  <menu id='ctx'>"
-    "    <item text='End process' onclick='end'/>"
+    "    <item text='End thread' onclick='end'/>"
     "    <item text='Force stop' onclick='kill'/>"
     "  </menu>"
     "</window>";
@@ -79,7 +79,7 @@ static void user_name(uint32_t uid, char *buf, size_t size)
     struct user_info u;
 
     if (uid == 0)
-        strlcpy(buf, "root", size);
+        strlcpy(buf, "superuser", size);
     else if (user_by_uid(uid, &u) == 0)
         strlcpy(buf, u.name, size);
     else
@@ -219,7 +219,7 @@ static void summary(void)
         return;
     ui_format_size(si.memory_total - si.memory_free, used, sizeof(used));
     ui_format_size(si.memory_total, total, sizeof(total));
-    snprintf(buf, sizeof(buf), "%d processes, %u threads   CPU %.0f%%   Memory %s of %s", nprocs, si.threads,
+    snprintf(buf, sizeof(buf), "%d threads, %u strands   CPU %.0f%%   Memory %s of %s", nprocs, si.threads,
              cpu / MAX(si.cpus, 1), used, total);
     ui_set_text(ui_get(win, "summary"), buf);
 }
@@ -242,11 +242,11 @@ static void signal_pid(int pid, int sig)
     if (!p)
         return;
     if (pid <= 1) {
-        ui_message(win, "Task Manager", "This process keeps the computer running and cannot be ended.", "OK");
+        ui_message(win, "Task Manager", "This thread keeps the computer running and cannot be ended.", "OK");
         return;
     }
     if (p->info.uid != geteuid() && geteuid() != 0
-        && !ui_elevate(win, "This process belongs to another account."))
+        && !ui_elevate(win, "This thread belongs to another account."))
         return;
     if (kill(pid, sig) < 0) {
         snprintf(msg, sizeof(msg), "\"%s\" could not be ended: %s.", p->info.name, strerror(errno));

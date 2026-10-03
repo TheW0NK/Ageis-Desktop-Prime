@@ -29,7 +29,7 @@ static uint32_t crc32(const void *data, size_t len)
 
 static void random_fill(void *buf, size_t n)
 {
-    int fd = open("/osystem/devices/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/random", O_RDONLY);
 
     if (fd < 0 || read(fd, buf, n) != (ssize_t)n) {
         uint64_t x = uptime_ms() * 6364136223846793005ULL + 1442695040888963407ULL;
@@ -127,10 +127,7 @@ int disk_list(struct disk_info *out, int max)
             di->size = bi.sector_count * bi.sector_size;
             di->sector_size = bi.sector_size;
             di->mounted = bi.flags & BLOCK_INFO_MOUNTED;
-            // A short description from the name the driver gave it.
-            snprintf(di->description, sizeof(di->description), "%s disk",
-                     !strncmp(de->name, "vd", 2) ? "Virtual (virtio)" : !strncmp(de->name, "nvme", 4) ? "NVMe"
-                     : !strncmp(de->name, "sata", 4) ? "SATA" : "Storage");
+            snprintf(di->description, sizeof(di->description), "%s disk", bi.kind[0] ? bi.kind : "Storage");
         }
         close(fd);
     }

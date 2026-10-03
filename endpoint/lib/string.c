@@ -223,13 +223,13 @@ const char *strerror(int err)
     case EALREADY: return "Operation already in progress";
     case EINPROGRESS: return "Operation in progress";
     case EDEADLK: return "Resource deadlock avoided";
-    case ESRCH: return "No such process";
+    case ESRCH: return "No such thread";
     case EINTR: return "Interrupted";
     case EIO: return "Input/output error";
     case E2BIG: return "Argument list too long";
     case ENOEXEC: return "Not an executable";
     case EBADF: return "Bad file descriptor";
-    case ECHILD: return "No child processes";
+    case ECHILD: return "No child threads";
     case ENOMEM: return "Out of memory";
     case EACCES: return "Permission denied";
     case EFAULT: return "Bad address";

@@ -218,11 +218,11 @@ int main(void)
     uint64_t clock_next = uptime_ms();
 
     if (lfd < 0) {
-        syslog("audiod", "cannot listen: %s", strerror(errno));
+        syslog("audio-sentry", "cannot listen: %s", strerror(errno));
         return 1;
     }
     open_device();
-    syslog("audiod", dev >= 0 ? "playing to /osystem/devices/audio" : "no sound device; streams are discarded");
+    syslog("audio-sentry", dev >= 0 ? "playing to /osystem/devices/audio" : "no sound device; streams are discarded");
     for (;;) {
         struct pollfd fds[MAX_CLIENTS + 1];
         int map[MAX_CLIENTS + 1], n = 0;

@@ -2,10 +2,10 @@
 #include "ui.h"
 
 // The sign-in screen. The compositor starts it as root; it hands a
-// successful sign-in to /osystem/core/session and shows itself again when the
-// session ends.
+// successful sign-in to /osystem/core/shift and shows itself again when the
+// shift ends.
 
-#define SESSION "/osystem/core/session"
+#define SESSION "/osystem/core/shift"
 
 static const char page[] =
     "<window role='overlay' padding='0' spacing='0'>"
@@ -144,7 +144,7 @@ static bool watch_session(void *u)
         return true;
     session_pid = -1;
     close_pipes();
-    syslog("greeter", "session of %s ended (status %d)", users[current].name,
+    syslog("greeter", "shift of %s ended (status %d)", users[current].name,
            WIFEXITED(status) ? WEXITSTATUS(status) : -1);
     {
         struct wm_msg m = { WM_SET_SESSION, 0, -1, 0, 0, 0, 0, 0, { 0 } };

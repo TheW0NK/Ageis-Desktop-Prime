@@ -242,7 +242,7 @@ struct tls *tls_wrap(int fd, const char *host, const char *ca_file, const char *
     br_ssl_client_init_full(&t->cc, &t->xc, a.list, a.count);
     set_clock(&t->xc);
     br_ssl_engine_set_buffer(&t->cc.eng, t->iobuf, sizeof(t->iobuf), 1);
-    if ((rfd = open("/osystem/devices/urandom", O_RDONLY)) < 0 || read(rfd, seed, sizeof(seed)) != sizeof(seed)) {
+    if ((rfd = open("/osystem/devices/random", O_RDONLY)) < 0 || read(rfd, seed, sizeof(seed)) != sizeof(seed)) {
         *error = "no random source";
         if (rfd >= 0)
             close(rfd);

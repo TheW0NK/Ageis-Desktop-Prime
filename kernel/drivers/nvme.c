@@ -209,6 +209,7 @@ static void add_namespace(struct nvme_ctrl *c, uint32_t nsid, int index)
     ns->ctrl = c;
     ns->nsid = nsid;
     ksnprintf(ns->dev.name, sizeof(ns->dev.name), "nvme%dn%d", index, nsid);
+    ns->dev.kind = "NVMe";
     ns->dev.sector_size = 1U << lbads;
     ns->dev.sector_count = size;
     ns->dev.max_sectors = c->max_bytes / ns->dev.sector_size;

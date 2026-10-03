@@ -67,7 +67,7 @@ void splash_request_verbose(void);
 void splash_user_output(void);
 bool splash_active(void);
 
-// One program (the window system) may own the display through /osystem/devices/fb0.
+// One program (the window system) may own the display through /osystem/devices/display.
 void display_devfs_init(void);
 bool display_claimed(void);
 

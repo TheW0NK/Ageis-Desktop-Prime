@@ -168,8 +168,8 @@ static void on_type(struct widget *w, void *u)
         ui_list_select(w, admin ? 0 : 1);
         return;
     }
-    group_set_member("sudo", cu->name, admin);
-    group_set_member("adm", cu->name, admin);
+    group_set_member("admins", cu->name, admin);
+    group_set_member("logs", cu->name, admin);
     syslog("users", "%s is now %s", cu->name, admin ? "an administrator" : "a standard account");
     load();
 }

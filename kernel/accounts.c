@@ -3,7 +3,7 @@
 #include "sha256.h"
 #include "string.h"
 
-#define SUDO_GROUP  "sudo"
+#define SUDO_GROUP  "admins"
 #define FAIL_DELAY  1000
 
 // Splits `line` at ':' in place, keeping pointers to the first `max` fields.

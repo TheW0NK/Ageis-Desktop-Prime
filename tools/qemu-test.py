@@ -22,8 +22,8 @@ The serial port only carries output, so input goes through the QEMU monitor
                          (Ctrl+Alt+F2) and log in
 
 Examples:
-    tools/qemu-test.py @login:user:aegis 'ls /' '@expect:bin'
-    tools/qemu-test.py --usb @login:user:aegis 'sudo evtest 5' aegis @mouse:10,0
+    tools/qemu-test.py @login:user:aegis 'list /' '@expect:sysapps'
+    tools/qemu-test.py --usb @login:user:aegis 'elevate evtest 5' aegis @mouse:10,0
 """
 
 import argparse
@@ -243,7 +243,7 @@ def main():
                     m.type(user + '\n')
                     m.wait('Password:', 10)
                     m.type(password + '\n')
-                    m.wait('$ ', 10)
+                    m.wait(' - : ', 10)
                 elif step.startswith('@type:'):
                     m.type(step[6:])
                 elif step.startswith('@key:'):

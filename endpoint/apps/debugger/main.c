@@ -19,10 +19,10 @@ static const char page[] =
     "    <button id='unlock' flat='true' symbol='lock' text='Unlock' onclick='unlock'/>"
     "  </toolbar>"
     "  <hbox expand='1' padding='8' spacing='8'>"
-    "    <table id='procs' width='250' columns='Program|PID:60:right' onselect='pick'/>"
+    "    <table id='procs' width='250' columns='Program|ID:60:right' onselect='pick'/>"
     "    <tabs id='tabs' expand='1' onchange='tab'>"
-    "      <tab title='Threads'>"
-    "        <table id='threads' expand='1' columns='Thread:70:right|State:80|Where|CPU:70:right' onselect='thread'/>"
+    "      <tab title='Strands'>"
+    "        <table id='threads' expand='1' columns='Strand:70:right|State:80|Where|CPU:70:right' onselect='thread'/>"
     "        <label text='Registers' bold='true'/>"
     "        <textarea id='regs' height='110' expand='0' mono='true' readonly='true'/>"
     "      </tab>"
@@ -370,7 +370,7 @@ static void hexdump(uint64_t addr)
 
 static void show_crashes(void)
 {
-    int fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK);
+    int fd = open("/osystem/devices/klog", O_RDONLY | O_NONBLOCK);
     char *buf = malloc(256 * 1024), *out = malloc(64 * 1024);
     ssize_t len = 0, n;
     size_t ol = 0;
@@ -453,7 +453,7 @@ static void on_pick(struct widget *w, void *u)
         return;
     pid = procs[i].pid;
     load_symbols(procs[i].name);
-    snprintf(msg, sizeof(msg), "%s (process %d): %d symbols", procs[i].name, pid, nsyms);
+    snprintf(msg, sizeof(msg), "%s (thread %d): %d symbols", procs[i].name, pid, nsyms);
     status(msg);
     show_all();
 }
@@ -484,11 +484,11 @@ static void signal_current(int sig, const char *what)
         return;
     }
     if (kill(pid, sig) < 0) {
-        snprintf(msg, sizeof(msg), "Could not %s process %d: %s.", what, pid, strerror(errno));
+        snprintf(msg, sizeof(msg), "Could not %s thread %d: %s.", what, pid, strerror(errno));
         status(msg);
         return;
     }
-    snprintf(msg, sizeof(msg), "Process %d: %s.", pid, what);
+    snprintf(msg, sizeof(msg), "Thread %d: %s.", pid, what);
     status(msg);
     msleep(50);
     on_refresh(NULL, NULL);

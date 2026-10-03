@@ -678,7 +678,7 @@ void vt_enter(void)
 
 static bool open_screen(void)
 {
-    if ((screen.fd = open("/osystem/devices/fb0", O_RDWR | O_CLOEXEC)) < 0)
+    if ((screen.fd = open("/osystem/devices/display", O_RDWR | O_CLOEXEC)) < 0)
         return false;
     if (ioctl(screen.fd, IOCTL_FB_INFO, (unsigned long)&screen.info) < 0)
         return false;
@@ -702,7 +702,7 @@ int main(int argc, char **argv)
 
     signal(SIGPIPE, SIG_IGN);
     if (!open_screen()) {
-        perror("compositor: /osystem/devices/fb0");
+        perror("compositor: /osystem/devices/display");
         return 1;
     }
     if ((input = input_open_device()) < 0) {

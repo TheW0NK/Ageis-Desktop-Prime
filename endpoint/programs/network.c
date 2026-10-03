@@ -1,8 +1,8 @@
 #include "aegis.h"
 
-// ifconfig                         list interfaces
-// ifconfig IF ADDR/BITS [gw GW] [dns DNS]   set a static address (root)
-// ifconfig IF dhcp                 configure by DHCP again (root)
+// network                         list interfaces
+// network IF ADDR/BITS [gw GW] [dns DNS]   set a static address (superuser)
+// network IF dhcp                 configure by DHCP again (superuser)
 
 static void show(struct aegis_netif *n)
 {
@@ -44,7 +44,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if ((index = find(argv[1], &n)) < 0) {
-        dprintf(STDERR_FILENO, "ifconfig: %s: no such interface\n", argv[1]);
+        dprintf(STDERR_FILENO, "network: %s: no such interface\n", argv[1]);
         return 1;
     }
     if (argc == 2) {
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     }
     if (!strcmp(argv[2], "dhcp")) {
         if (netconfig(NETCONFIG_DHCP, index, &n) < 0) {
-            perror("ifconfig");
+            perror("network");
             return 1;
         }
         return 0;
@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     if (slash)
         *slash = 0;
     if (!inet_parse(argv[2], &n.addr) || bits < 0 || bits > 32) {
-        dprintf(STDERR_FILENO, "ifconfig: bad address %s\n", argv[2]);
+        dprintf(STDERR_FILENO, "network: bad address %s\n", argv[2]);
         return 1;
     }
     n.netmask = htonl(bits ? 0xFFFFFFFFU << (32 - bits) : 0);
@@ -78,7 +78,7 @@ int main(int argc, char **argv)
     }
     n.flags |= NETIF_UP;
     if (netconfig(NETCONFIG_SET, index, &n) < 0) {
-        perror("ifconfig");
+        perror("network");
         return 1;
     }
     return 0;

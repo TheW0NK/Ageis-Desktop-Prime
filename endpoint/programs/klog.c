@@ -4,12 +4,12 @@
 int main(int argc, char **argv)
 {
     bool follow = argc > 1 && !strcmp(argv[1], "-f");
-    int fd = open("/osystem/devices/kmsg", O_RDONLY | (follow ? 0 : O_NONBLOCK));
+    int fd = open("/osystem/devices/klog", O_RDONLY | (follow ? 0 : O_NONBLOCK));
     char buf[4096];
     ssize_t n;
 
     if (fd < 0) {
-        perror("dmesg: /osystem/devices/kmsg");
+        perror("klog: /osystem/devices/klog");
         return 1;
     }
     while ((n = read(fd, buf, sizeof(buf))) > 0)

@@ -6,11 +6,11 @@ int cmd_sudo(int argc, char **argv)
     int ret;
 
     if (argc < 2) {
-        dprintf(STDERR_FILENO, "usage: sudo COMMAND [args...]\n");
+        dprintf(STDERR_FILENO, "usage: elevate COMMAND [args...]\n");
         return 1;
     }
     if (geteuid() != 0) {
-        snprintf(prompt, sizeof(prompt), "[sudo] password for %s: ", user_name);
+        snprintf(prompt, sizeof(prompt), "[elevate] password for %s: ", user_name);
         set_raw(true);
         ssize_t n = read_secret(prompt, pass, sizeof(pass));
         set_raw(false);
@@ -20,9 +20,9 @@ int cmd_sudo(int argc, char **argv)
         memset(pass, 0, sizeof(pass));
         if (ret < 0) {
             if (errno == EPERM)
-                dprintf(STDERR_FILENO, "sudo: %s is not in the sudo group\n", user_name);
+                dprintf(STDERR_FILENO, "elevate: %s is not an administrator\n", user_name);
             else
-                dprintf(STDERR_FILENO, "sudo: incorrect password\n");
+                dprintf(STDERR_FILENO, "elevate: incorrect password\n");
             return 1;
         }
     }

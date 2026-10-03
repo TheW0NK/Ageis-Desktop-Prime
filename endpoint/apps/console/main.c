@@ -90,7 +90,7 @@ static void fill_computer(struct widget *t)
         ui_format_size(si.memory_free, b, sizeof(b));
         snprintf(row, sizeof(row), "Memory\t%s (%s free)", a, b);
         ui_list_add(t, row);
-        snprintf(row, sizeof(row), "Processes\t%u processes, %u threads", si.processes, si.threads);
+        snprintf(row, sizeof(row), "Threads\t%u threads, %u strands", si.processes, si.threads);
         ui_list_add(t, row);
         snprintf(row, sizeof(row), "Running for\t%lu min", (unsigned long)(si.uptime_ms / 60000));
         ui_list_add(t, row);
@@ -145,14 +145,15 @@ static void fill_groups(struct widget *t)
     close(fd);
 }
 
-// ---- Services ----
+// ---- Sentries ----
 
 static const struct {
     const char *name, *path, *about;
 } services[] = {
-    { "init", "/osystem/core/init", "Starts and keeps the services below running" },
-    { "privd", "/osystem/core/privd", "Lets users change their own password" },
-    { "crond", "/osystem/core/crond", "Runs scheduled jobs" },
+    { "init", "/osystem/core/init", "Starts and keeps the sentries below running" },
+    { "account-sentry", "/osystem/core/account-sentry", "Lets users change their own password" },
+    { "routine-sentry", "/osystem/core/routine-sentry", "Runs routines on their schedules" },
+    { "audio-sentry", "/osystem/core/audio-sentry", "Plays every app's sound" },
     { "compositor", "/osystem/core/compositor", "The display and window system" },
     { "greeter", "/osystem/core/greeter", "The sign-in screen" },
     { "terminal", "/sysapps/terminal", "Text console shells" },
@@ -195,10 +196,10 @@ static void act_restart_service(void)
         return;
     if (!strcmp(name, "init") || !strcmp(name, "compositor") || !strcmp(name, "greeter")) {
         ui_message(win, "Management Console",
-                   "Restarting this service would end the desktop session. Restart the computer instead.", "OK");
+                   "Restarting this sentry would end the desktop. Restart the computer instead.", "OK");
         return;
     }
-    if (!ui_elevate(win, "Restarting a service affects everyone on this computer."))
+    if (!ui_elevate(win, "Restarting a sentry affects everyone on this computer."))
         return;
     n = procinfo(p, 256);
     for (int i = 0; i < n; i++)
@@ -211,7 +212,7 @@ static void act_restart_service(void)
     syslog("console", "restarted %s", name);
 }
 
-// ---- Scheduled jobs ----
+// ---- Routines ----
 
 static void add_crontab(struct widget *t, const char *path, bool system, const char *owner)
 {
@@ -238,19 +239,19 @@ static void fill_jobs(struct widget *t)
     struct user_info users[64];
     int n = user_list(users, 64);
 
-    add_crontab(t, "/msc/crontab", true, NULL);
+    add_crontab(t, "/msc/routines", true, NULL);
     // Other users' jobs are private unless unlocked.
     for (int i = 0; i < n; i++) {
         char path[256];
 
         if (users[i].uid != getuid() && geteuid() != 0)
             continue;
-        cron_user_path(&users[i], "crontab", path, sizeof(path));
+        cron_user_path(&users[i], "routines", path, sizeof(path));
         add_crontab(t, path, false, users[i].name);
     }
 }
 
-static void act_cron(void) { open_app("cron", NULL); }
+static void act_cron(void) { open_app("routines", NULL); }
 
 // ---- Storage, devices, network ----
 
@@ -292,17 +293,17 @@ static void fill_devices(struct widget *t)
         snprintf(path, sizeof(path), "/osystem/devices/%s", e->name);
         if (stat(path, &st) < 0)
             continue;
-        if (!strncmp(e->name, "sata", 4) || !strncmp(e->name, "nvme", 4))
+        if (e->name[0] == 'd' && e->name[1] >= 'A' && e->name[1] <= 'Z')
             kind = "Disk";
         else if (!strcmp(e->name, "input"))
             kind = "Keyboard and pointer events";
-        else if (!strcmp(e->name, "fb0"))
+        else if (!strcmp(e->name, "display"))
             kind = "Screen";
-        else if (!strcmp(e->name, "kmsg"))
+        else if (!strcmp(e->name, "klog"))
             kind = "System log";
-        else if (!strncmp(e->name, "tty", 3) || !strcmp(e->name, "console") || !strncmp(e->name, "pts", 3))
+        else if (!strcmp(e->name, "terminal") || !strcmp(e->name, "console") || !strncmp(e->name, "pts", 3))
             kind = "Terminal";
-        else if (strstr(e->name, "random") || !strcmp(e->name, "null") || !strcmp(e->name, "zero"))
+        else if (strstr(e->name, "random") || !strcmp(e->name, "nothing") || !strcmp(e->name, "zeros"))
             kind = "Built in";
         snprintf(owner, sizeof(owner), "%u:%u", st.uid, st.gid);
         snprintf(row, sizeof(row), "%s\t%s\t%o\t%s", e->name, kind, st.mode & 0777, owner);
@@ -365,7 +366,7 @@ static void act_open_app(void)
 
 static void fill_events(struct widget *t)
 {
-    int fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK);
+    int fd = open("/osystem/devices/klog", O_RDONLY | O_NONBLOCK);
     char *buf = malloc(256 * 1024), *p;
     ssize_t n, len = 0;
 
@@ -405,20 +406,20 @@ static void fill_events(struct widget *t)
 }
 
 static void act_logs(void) { open_app("logs", NULL); }
-static void act_tasks(void) { open_app("tasks", NULL); }
+static void act_tasks(void) { open_app("taskmanager", NULL); }
 
 static const struct snapin snapins[] = {
     { "Computer", "glyph:desktop", "A summary of this computer.", "Property:180|Value", fill_computer,
       { { "Settings", act_settings }, { "Resource Manager", act_resources } } },
     { "Users", "glyph:user", "The accounts that can sign in.",
       "User:110|Name:160|Number:80:right|Type:120|Home folder", fill_users, { { "Open User Manager", act_users } } },
-    { "Groups", "glyph:users", "Groups give their members extra rights: sudo and adm are administrators.",
+    { "Groups", "glyph:users", "Groups give their members extra rights: admins may elevate and logs may read the system logs.",
       "Group:140|Number:90:right|Members", fill_groups, { { "Open User Manager", act_users } } },
-    { "Services", "glyph:gear", "Programs that run in the background for everyone.",
-      "Service:120|State:90|Process:80:right|Memory:90:right|Purpose", fill_services,
-      { { "Restart service", act_restart_service }, { "Task Manager", act_tasks } } },
-    { "Scheduled jobs", "glyph:clock-glyph", "Commands that run on a schedule (system jobs and accounts' jobs).",
-      "Job:150|Runs as:100|Schedule:130|State:60|Command", fill_jobs, { { "Open Cron Jobs", act_cron } } },
+    { "Sentries", "glyph:gear", "Programs that keep watch in the background for everyone.",
+      "Sentry:130|State:90|Thread:80:right|Memory:90:right|Purpose", fill_services,
+      { { "Restart sentry", act_restart_service }, { "Task Manager", act_tasks } } },
+    { "Routines", "glyph:clock-glyph", "Commands that run on a schedule (the system's and each account's).",
+      "Routine:150|Runs as:100|Schedule:130|State:60|Command", fill_jobs, { { "Open Routines", act_cron } } },
     { "Storage", "glyph:disk", "Mounted file systems and their free space.",
       "Mounted at:120|Type:80|Size:100:right|Free:100:right|Used:70:right", fill_storage, { { NULL, NULL } } },
     { "Devices", "glyph:cpu", "Devices the system offers to programs, in /osystem/devices.",
@@ -428,7 +429,7 @@ static const struct snapin snapins[] = {
       { { "Network settings", act_network } } },
     { "Applications", "glyph:apps", "Installed apps, their suites and the rights they need.",
       "App:170|Suite:120|Rights:90|Program:150|Description", fill_apps, { { "Open app", act_open_app } } },
-    { "Events", "glyph:logs", "The newest messages from the kernel and services.", "Time:90:right|Message",
+    { "Events", "glyph:logs", "The newest messages from the kernel and sentries.", "Time:90:right|Message",
       fill_events, { { "Open Log Viewer", act_logs } } },
 };
 

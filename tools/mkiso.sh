@@ -37,14 +37,14 @@ title=Install Aegis
 type=kernel
 path=\EFI\Aegis\kernel.elf
 ramdisk=\EFI\Aegis\live.img
-cmdline=root=ram0
+cmdline=root=ramdisk
 
 [install-verbose]
 title=Install Aegis (verbose boot)
 type=kernel
 path=\EFI\Aegis\kernel.elf
 ramdisk=\EFI\Aegis\live.img
-cmdline=root=ram0 verbose
+cmdline=root=ramdisk verbose
 BCD
 # Recovery from the install media: the same live system, started with
 # "recovery" so it opens the recovery tools for an installed system.
@@ -55,7 +55,7 @@ title=Aegis Recovery
 type=kernel
 path=\EFI\Aegis\kernel.elf
 ramdisk=\EFI\Aegis\live.img
-cmdline=root=ram0 recovery
+cmdline=root=ramdisk recovery
 BCD
 
 esp_kb=$(( $(du -sk --apparent-size "$work/esp" | cut -f1) * 105 / 100 + 1024 ))

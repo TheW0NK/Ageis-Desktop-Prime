@@ -163,7 +163,7 @@ bool ui_elevate(struct ui_window *parent, const char *why)
 
     if (geteuid() == 0)
         return true;
-    if (user_current(&u) < 0 || !user_in_group(u.name, "sudo")) {
+    if (user_current(&u) < 0 || !user_in_group(u.name, "admins")) {
         snprintf(text, sizeof(text), "%s\n\nThis needs an administrator. Your account is not one.",
                  why ? why : "This change affects the whole computer.");
         ui_message(parent, "Administrator needed", text, "OK");

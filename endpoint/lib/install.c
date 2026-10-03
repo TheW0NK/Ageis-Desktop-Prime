@@ -38,10 +38,10 @@ static bool keeping;                // see struct ctx.keep
 static bool skipped(const char *rel)
 {
     static const char *const skip[] = { "/osystem/devices", "/osystem/temp", "/osystem/volumes", "/osystem/boot", "/userfiles", "/msc/live", "/msc/firstboot",
-                                        "/osystem/installer", "/osystem/logs/session.log", NULL };
+                                        "/osystem/installer", "/osystem/logs/shift.log", NULL };
     // A reinstall leaves the computer's own settings and data alone.
     static const char *const keep[] = { "/msc/passwd", "/msc/group", "/msc/shadow", "/msc/hostname",
-                                        "/msc/timezone", "/msc/features.conf", "/msc/crontab", "/osystem/logs",
+                                        "/msc/timezone", "/msc/features.conf", "/msc/routines", "/osystem/logs",
                                         "/osystem/data", "/osystem/backups", "/userApps",
                                         "/userfiles/superuser", NULL };
 
@@ -199,10 +199,10 @@ static int write_accounts(struct ctx *c)
     const struct install_options *o = c->o;
     char text[1024], hash[160];
 
-    if (write_text(TARGET "/msc/passwd", "root:x:0:0:root:/userfiles/superuser:/sysapps/terminal\n", 0644) < 0
-        || write_text(TARGET "/msc/group", "root:x:0:root\nadm:x:4:\nsudo:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n",
+    if (write_text(TARGET "/msc/passwd", "superuser:x:0:0:Superuser:/userfiles/superuser:/sysapps/terminal\n", 0644) < 0
+        || write_text(TARGET "/msc/group", "superuser:x:0:superuser\nlogs:x:4:\nadmins:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n",
                       0644) < 0
-        || write_text(TARGET "/msc/shadow", "root:!:\n", 0600) < 0)
+        || write_text(TARGET "/msc/shadow", "superuser:!:\n", 0600) < 0)
         return fail(c, "Writing the account files");
     if (password_hash(o->password, hash, sizeof(hash)) < 0)
         return fail(c, "Protecting the password");
@@ -243,7 +243,7 @@ static int write_bcd(struct ctx *c, const char *root_guid)
     if (stat(TARGET_ESP "/EFI/Aegis/recovery.img", &st) == 0)
         snprintf(bcd + n, sizeof(bcd) - n,
                  "\n[recovery]\ntitle=Aegis Recovery\ntype=kernel\npath=\\EFI\\Aegis\\kernel.elf\n"
-                 "ramdisk=\\EFI\\Aegis\\recovery.img\ncmdline=root=ram0 recovery\n");
+                 "ramdisk=\\EFI\\Aegis\\recovery.img\ncmdline=root=ramdisk recovery\n");
     return write_text(TARGET_ESP "/EFI/Aegis/bcd", bcd, 0644) < 0 ? fail(c, "Writing the boot configuration") : 0;
 }
 
@@ -253,7 +253,7 @@ static int copy_recovery_image(const char *esp_root)
 {
     static char buf[64 * 1024];
     char dst[200];
-    int in = open("/osystem/devices/ram0", O_RDONLY), out;
+    int in = open("/osystem/devices/ramdisk", O_RDONLY), out;
     ssize_t n;
 
     if (in < 0)
@@ -300,8 +300,8 @@ int install_system(const struct install_options *o, install_progress_fn progress
         fail(&c, "Installing");
         goto out;
     }
-    snprintf(esp, sizeof(esp), "%sp1", o->disk);
-    snprintf(sys, sizeof(sys), "%sp2", o->disk);
+    snprintf(esp, sizeof(esp), "%s1", o->disk);
+    snprintf(sys, sizeof(sys), "%s2", o->disk);
 
     step(&c, 2, "Creating partitions");
     if (disk_write_gpt(o->disk, layout, 2, guids) < 0) {

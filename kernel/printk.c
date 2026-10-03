@@ -9,7 +9,7 @@ static spinlock_t console_lock = SPINLOCK_INIT;
 static volatile bool console_forced;
 static volatile bool console_quiet;
 
-// The kernel log: every kprintf, timestamped, kept in a ring for /osystem/devices/kmsg.
+// The kernel log: every kprintf, timestamped, kept in a ring for /osystem/devices/klog.
 #define LOG_SIZE    (256 * 1024)
 
 static char log_buf[LOG_SIZE];

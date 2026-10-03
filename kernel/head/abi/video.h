@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-// /osystem/devices/video0, /osystem/devices/video1, ...: cameras. read() waits for the next frame
+// /osystem/devices/camera, /osystem/devices/video1, ...: cameras. read() waits for the next frame
 // and copies it whole (width * height * 4 bytes of XRGB, row by row).
 
 #define IOCTL_VIDEO_INFO    0x400   // arg: struct aegis_videoinfo *

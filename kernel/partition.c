@@ -105,7 +105,7 @@ void partition_scan(struct block_device *disk)
             char name[BLOCK_NAME_MAX];
             struct block_device *old;
 
-            ksnprintf(name, sizeof(name), "%sp%d", disk->name, index++);
+            ksnprintf(name, sizeof(name), "%s%d", disk->name, index++);
             if ((old = block_find(name)) && old->parent == disk) {
                 old->sector_count = e->last_lba - e->first_lba + 1;
                 old->start_lba = e->first_lba;
@@ -117,7 +117,7 @@ void partition_scan(struct block_device *disk)
         if (!(part = kzalloc(sizeof(*part))))
             break;
 
-        ksnprintf(part->name, sizeof(part->name), "%sp%d", disk->name, index - 1);
+        ksnprintf(part->name, sizeof(part->name), "%s%d", disk->name, index - 1);
         part->sector_size = ss;
         part->sector_count = e->last_lba - e->first_lba + 1;
         part->max_sectors = disk->max_sectors;

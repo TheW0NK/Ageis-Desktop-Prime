@@ -58,7 +58,7 @@ int password_hash(const char *password, char *out, size_t size)
 {
     uint8_t salt[16], h[32];
     char salt_hex[33], h_hex[65];
-    int fd = open("/osystem/devices/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/random", O_RDONLY);
 
     if (fd < 0 || read(fd, salt, sizeof(salt)) != sizeof(salt)) {
         if (fd >= 0)
@@ -348,8 +348,8 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
     group_set_member("audio", name, true);
     group_set_member("video", name, true);
     if (admin) {
-        group_set_member("sudo", name, true);
-        group_set_member("adm", name, true);
+        group_set_member("admins", name, true);
+        group_set_member("logs", name, true);
     }
     if (user_by_name(name, &u) == 0) {
         user_setup_dirs(&u);
@@ -389,8 +389,8 @@ int account_remove(const char *name, bool remove_files)
         errno = have ? EPERM : ENOENT;
         return -1;
     }
-    group_set_member("sudo", name, false);
-    group_set_member("adm", name, false);
+    group_set_member("admins", name, false);
+    group_set_member("logs", name, false);
     group_set_member("audio", name, false);
     group_set_member("video", name, false);
     if (rewrite("/msc/passwd", drop_line, (void *)name, NULL) < 0
@@ -404,7 +404,7 @@ int account_remove(const char *name, bool remove_files)
 
 bool account_is_admin(const char *name)
 {
-    return user_in_group(name, "sudo");
+    return user_in_group(name, "admins");
 }
 
 // Changes the calling user's password through the privilege helper.

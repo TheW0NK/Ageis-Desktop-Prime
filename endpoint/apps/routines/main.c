@@ -1,10 +1,10 @@
 #include "aegis.h"
 #include "ui.h"
 
-// Cron Jobs: schedule commands for yourself, or for the whole system.
+// Routines: schedule commands for yourself, or for the whole system.
 
 static const char page[] =
-    "<window title='Cron Jobs' width='900' height='600' padding='0' spacing='0'>"
+    "<window title='Routines' width='900' height='600' padding='0' spacing='0'>"
     "  <toolbar>"
     "    <button flat='true' symbol='add' text='New job' onclick='new' shortcut='Ctrl+N'/>"
     "    <button flat='true' text='Edit' onclick='edit'/>"
@@ -36,7 +36,7 @@ static const char editor[] =
     "    <dropdown id='mode' onchange='mode'>"
     "      <option>Every few minutes</option><option>Every hour</option><option>Every day</option>"
     "      <option>Every week</option><option>Every month</option><option>When the computer starts</option>"
-    "      <option>Custom (cron fields)</option>"
+    "      <option>Custom (five fields)</option>"
     "    </dropdown>"
     "    <label id='l_every' text='Every (minutes)'/><spin id='every' min='1' max='59' value='15'/>"
     "    <label id='l_minute' text='At minute'/><spin id='minute' min='0' max='59' value='0'/>"
@@ -211,7 +211,7 @@ static bool save_jobs(void)
 
     snprintf(tmp, sizeof(tmp), "%s.new", crontab);
     if ((fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, system_scope ? 0644 : 0600)) < 0) {
-        ui_message(win, "Cron Jobs", "The jobs could not be saved.", "OK");
+        ui_message(win, "Routines", "The jobs could not be saved.", "OK");
         return false;
     }
     for (int i = 0; i < nother; i++)
@@ -280,14 +280,14 @@ static void set_scope(bool sys)
 {
     system_scope = sys;
     if (sys) {
-        strlcpy(crontab, "/msc/crontab", sizeof(crontab));
-        strlcpy(logfile, "/osystem/logs/cron.log", sizeof(logfile));
+        strlcpy(crontab, "/msc/routines", sizeof(crontab));
+        strlcpy(logfile, "/osystem/logs/routines.log", sizeof(logfile));
     } else {
         char dir[256];
 
         cron_user_path(&me, "", dir, sizeof(dir));
         mkdir(dir, 0700);
-        cron_user_path(&me, "crontab", crontab, sizeof(crontab));
+        cron_user_path(&me, "routines", crontab, sizeof(crontab));
         cron_user_path(&me, "log", logfile, sizeof(logfile));
     }
     load_jobs();
@@ -373,7 +373,7 @@ static void on_save(struct widget *w, void *u)
     (void)u;
     editor_schedule(sched, sizeof(sched));
     if (!*ui_text(ui_get(dlg, "command"))) {
-        ui_message(dlg, "Cron Jobs", "Type the command the job runs.", "OK");
+        ui_message(dlg, "Routines", "Type the command the job runs.", "OK");
         return;
     }
     // A custom schedule must at least parse.
@@ -381,7 +381,7 @@ static void on_save(struct widget *w, void *u)
         char f[5][24];
 
         if (!fields(sched, f)) {
-            ui_message(dlg, "Cron Jobs", "A custom schedule has five fields: minute hour day month weekday.",
+            ui_message(dlg, "Routines", "A custom schedule has five fields: minute hour day month weekday.",
                        "OK");
             return;
         }
@@ -424,7 +424,7 @@ static bool edit_job(const struct cron_job *job, struct cron_job *out)
         ui_set_value(ui_get(dlg, "enabled"), job->enabled);
         ui_window_set_title(dlg, "Edit job");
     } else {
-        ui_set_text(ui_get(dlg, "user"), "root");
+        ui_set_text(ui_get(dlg, "user"), "superuser");
         ui_window_set_title(dlg, "New job");
     }
     ui_set_visible(ui_get(dlg, "user"), system_scope);
@@ -450,7 +450,7 @@ static bool edit_job(const struct cron_job *job, struct cron_job *out)
     strlcpy(out->schedule, sched, sizeof(out->schedule));
     strlcpy(out->command, ui_text(ui_get(dlg, "command")), sizeof(out->command));
     strlcpy(out->name, ui_text(ui_get(dlg, "name")), sizeof(out->name));
-    strlcpy(out->user, *ui_text(ui_get(dlg, "user")) ? ui_text(ui_get(dlg, "user")) : "root", sizeof(out->user));
+    strlcpy(out->user, *ui_text(ui_get(dlg, "user")) ? ui_text(ui_get(dlg, "user")) : "superuser", sizeof(out->user));
     out->enabled = ui_value(ui_get(dlg, "enabled")) != 0;
     return true;
 }
@@ -502,7 +502,7 @@ static void on_delete(struct widget *w, void *u)
     if (i < 0)
         return;
     snprintf(msg, sizeof(msg), "Delete the job \"%s\"?", *jobs[i].name ? jobs[i].name : jobs[i].command);
-    if (ui_message(win, "Cron Jobs", msg, "Delete|Cancel") != 0)
+    if (ui_message(win, "Routines", msg, "Delete|Cancel") != 0)
         return;
     memmove(&jobs[i], &jobs[i + 1], (njobs - i - 1) * sizeof(jobs[0]));
     njobs--;

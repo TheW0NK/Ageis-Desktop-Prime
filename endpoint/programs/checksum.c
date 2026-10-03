@@ -1,6 +1,6 @@
 #include "aegis.h"
 
-// sha256sum FILE...: prints SHA-256 digests.
+// checksum FILE...: prints SHA-256 digests.
 
 static const uint32_t K[64] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -82,7 +82,7 @@ int main(int argc, char **argv)
         uint8_t d[32];
 
         if (fd < 0 || digest(fd, d) < 0) {
-            dprintf(STDERR_FILENO, "sha256sum: %s: %s\n", argc == 1 ? "-" : argv[i], strerror(errno));
+            dprintf(STDERR_FILENO, "checksum: %s: %s\n", argc == 1 ? "-" : argv[i], strerror(errno));
             ret = 1;
             continue;
         }

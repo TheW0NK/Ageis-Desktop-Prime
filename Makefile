@@ -98,7 +98,7 @@ run-serial: image build/ovmf_vars.fd
 
 test: image
 	tools/qemu-test.py @reject:FAIL @reject:PANIC @reject:crashed @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \
-		'ls /osystem/devices' @expect:input 'uname' @expect:Aegis 'echo piped | cat' @expect:piped \
+		'list /osystem/devices' @expect:input 'system' @expect:Aegis 'echo piped | show' @expect:piped \
 		'apprun /osystem/resources/apprun/selftest.as' @expect:'selftest: ok' \
 		'browser --check /osystem/resources/browser/welcome.html' @expect:'browser: ok' \
 		'cred set test-secret s3cr3t-value' 'cred get test-secret' @expect:'s3cr3t-value'
@@ -109,7 +109,7 @@ test: image
 	tools/qemu-test.py --usb --tablet --timeout 120 @reject:PANIC @expect:'greeter: ready' @sleep:1 \
 		@type:$(AEGIS_PASSWORD) @key:ret @expect:'greeter: signed in $(AEGIS_USER)'
 	tools/qemu-test.py --net --qemu-arg=-nic --qemu-arg=user,model=virtio-net-pci @reject:PANIC \
-		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) @sleep:3 'ifconfig eth0' @expect:10.0.2.15 \
+		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) @sleep:3 'network eth0' @expect:10.0.2.15 \
 		'ping -c 1 10.0.2.2' @expect:'1 received' 'netbench 8' @expect:'tcp loopback: 8388608'
 
 clean:

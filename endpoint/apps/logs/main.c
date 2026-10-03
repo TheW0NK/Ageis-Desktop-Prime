@@ -2,7 +2,7 @@
 #include "ui.h"
 
 // Log Viewer: the kernel and system log (normally only visible on the text
-// console), the session log, and log files.
+// console), the shift log, and log files.
 
 static const char page[] =
     "<window title='Log Viewer' width='900' height='600' padding='0' spacing='0'>"
@@ -140,10 +140,10 @@ static void open_source(int i)
     log_len = 0;
     if (log_text)
         log_text[0] = 0;
-    if (!strcmp(sources[i].path, "/osystem/devices/kmsg")) {
-        if ((kmsg_fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK)) < 0
+    if (!strcmp(sources[i].path, "/osystem/devices/klog")) {
+        if ((kmsg_fd = open("/osystem/devices/klog", O_RDONLY | O_NONBLOCK)) < 0
             && ui_elevate(win, "The system log is only for administrators."))
-            kmsg_fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK);
+            kmsg_fd = open("/osystem/devices/klog", O_RDONLY | O_NONBLOCK);
         if (kmsg_fd < 0) {
             snprintf(msg, sizeof(msg), "The system log cannot be read: %s.\n", strerror(errno));
             append_log(msg, strlen(msg));
@@ -241,10 +241,10 @@ int main(int argc, char **argv)
     ui_load_user_theme();
     if (!(win = ui_load_string_named(page, handlers, NULL, "logs")))
         return 1;
-    add_source("Kernel and system", "/osystem/devices/kmsg");
+    add_source("Kernel and system", "/osystem/devices/klog");
     if (user_current(&me) == 0) {
-        user_path(&me, "system/session.log", path, sizeof(path));
-        add_source("This session", path);
+        user_path(&me, "system/shift.log", path, sizeof(path));
+        add_source("This shift", path);
     }
     if ((d = opendir("/osystem/logs"))) {
         while ((e = readdir(d))) {

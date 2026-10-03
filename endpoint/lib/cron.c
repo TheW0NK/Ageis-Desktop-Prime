@@ -1,11 +1,11 @@
 #include "aegis.h"
 
-// Cron schedules, shared by crond and the Cron Jobs app.
+// Routine schedules, shared by the routine sentry and the Routines app.
 //
-// A crontab line is:   [#off ]SCHEDULE COMMAND[  #: NAME]
+// A routines line is:   [#off ]SCHEDULE COMMAND[  #: NAME]
 // SCHEDULE is five fields (minute hour day month weekday; *, lists, ranges,
 // steps) or one of @hourly @daily @weekly @monthly @yearly @reboot.
-// "#off " keeps a job without running it. /msc/crontab lines have a user
+// "#off " keeps a job without running it. /msc/routines lines have a user
 // name after the schedule.
 
 static bool field_matches(const char *f, int value, int lo, int hi)
@@ -79,7 +79,7 @@ bool cron_matches(const char *schedule, const struct tm *tm)
     return dom && dow;
 }
 
-// Splits a crontab line. Returns false for blank lines and comments.
+// Splits a routines line. Returns false for blank lines and comments.
 bool cron_parse(char *line, bool with_user, struct cron_job *job)
 {
     char *p = line, *name;
@@ -159,5 +159,5 @@ int64_t cron_next(const char *schedule, int64_t after)
 
 void cron_user_path(const struct user_info *u, const char *file, char *out, size_t size)
 {
-    snprintf(out, size, "%s/system/appdata/cron/%s", u->dir, file);
+    snprintf(out, size, "%s/system/appdata/routines/%s", u->dir, file);
 }

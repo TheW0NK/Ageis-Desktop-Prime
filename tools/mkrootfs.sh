@@ -72,35 +72,35 @@ mkdir -p "$root"/osystem/resources/certificates "$root"/osystem/resources/fonts
 cp "$here"/../third_party/fonts/*.ttf "$root"/osystem/resources/fonts/
 cp "$here"/../third_party/ca-certificates.pem "$root"/osystem/resources/certificates/ca-bundle.pem
 
-cat > "$root"/msc/crontab <<CRONTAB
-# System jobs: schedule, account, command. Edit with the Cron Jobs app.
+cat > "$root"/msc/routines <<ROUTINES
+# System routines: schedule, account, command. Edit with the Routines app.
 #   minute hour day month weekday  user  command
-CRONTAB
+ROUTINES
 if [ "$live" = 1 ]; then
     rm -rf "$root"/osystem/temp/no-user
     ud="$root"/userfiles
     echo "This is the live system on the Aegis install media." > "$root"/msc/live
     mkdir -p "$root"/osystem/installer
     cp -r "$esp" "$root"/osystem/installer/esp
-    printf 'root:x:0:0:root:/userfiles/superuser:/sysapps/terminal\n' > "$root"/msc/passwd
-    printf 'root:x:0:root\nadm:x:4:\nsudo:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n' > "$root"/msc/group
-    printf 'root:!:\n' > "$root"/msc/shadow
+    printf 'superuser:x:0:0:Superuser:/userfiles/superuser:/sysapps/terminal\n' > "$root"/msc/passwd
+    printf 'superuser:x:0:superuser\nlogs:x:4:\nadmins:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n' > "$root"/msc/group
+    printf 'superuser:!:\n' > "$root"/msc/shadow
 else
 cat > "$root"/msc/passwd <<PASSWD
-root:x:0:0:root:/userfiles/superuser:/sysapps/terminal
+superuser:x:0:0:Superuser:/userfiles/superuser:/sysapps/terminal
 $user:x:1000:1000:$user:/userfiles/$user/home:/sysapps/terminal
 PASSWD
 cat > "$root"/msc/group <<GROUP
-root:x:0:root
-adm:x:4:$user
-sudo:x:27:$user
+superuser:x:0:superuser
+logs:x:4:$user
+admins:x:27:$user
 video:x:44:$user
 audio:x:63:$user
 input:x:50:
 $user:x:1000:$user
 GROUP
 {
-    echo "root:!:"
+    echo "superuser:!:"
     echo "$user:$("$here"/mkpasswd.py "$password"):"
 } > "$root"/msc/shadow
 fi
@@ -121,7 +121,7 @@ fakeroot sh -c "
     chmod 1777 '$root'/osystem/temp
     chmod 0755 '$root'/sysapps/* '$root'/osystem/core/*
     chmod 0644 '$root'/sysapps/registry/* '$root'/msc/passwd '$root'/msc/group '$root'/msc/motd '$root'/msc/hostname \\
-          '$root'/msc/hosts '$root'/osystem/resources/certificates/ca-bundle.pem '$root'/msc/crontab
+          '$root'/msc/hosts '$root'/osystem/resources/certificates/ca-bundle.pem '$root'/msc/routines
     chmod 0600 '$root'/msc/shadow
     chmod 0755 '$root'/osystem/logs '$root'/osystem/data '$root'/osystem/data/aip
     if [ '$live' = 1 ]; then

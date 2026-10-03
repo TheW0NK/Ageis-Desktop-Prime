@@ -3,6 +3,7 @@
 #define HISTORY_MAX 64
 
 char user_name[32];
+static char computer_name[64] = "aegis";
 char home_dir[256];
 
 static char *history[HISTORY_MAX];
@@ -316,6 +317,17 @@ static int parse_pipeline(struct parser *ps, struct pipeline *pl)
     }
 }
 
+// "ls: command not found", plus what it is called here if it was renamed.
+static void not_found(int fd, const char *name)
+{
+    for (const struct renamed_command *r = renamed_commands; r->old; r++)
+        if (!strcmp(r->old, name)) {
+            dprintf(fd, "%s: not an Aegis command; try '%s' (type 'help' for a list)\n", name, r->now);
+            return;
+        }
+    dprintf(fd, "%s: command not found (type 'help' for a list)\n", name);
+}
+
 const struct command *find_command(const char *name)
 {
     for (size_t i = 0; i < command_count; i++) {
@@ -381,7 +393,7 @@ int run_external(int argc, char **argv)
 
     (void)argc;
     if (!find_in_path(argv[0], path, sizeof(path))) {
-        dprintf(STDERR_FILENO, "%s: command not found (type 'help' for a list)\n", argv[0]);
+        not_found(STDERR_FILENO, argv[0]);
         return 127;
     }
     set_raw(false);
@@ -509,7 +521,7 @@ static int run_pipeline(struct pipeline *pl)
             if (b) {
                 status = b->fn(c->argc, c->argv) << 8;
             } else if (!find_in_path(c->argv[0], path, sizeof(path))) {
-                dprintf(saved_fds[2], "%s: command not found\n", c->argv[0]);
+                not_found(saved_fds[2], c->argv[0]);
                 status = 127 << 8;
             } else if ((pids[i] = spawn(path, c->argv, environ)) < 0) {
                 dprintf(saved_fds[2], "%s: %s\n", c->argv[0], strerror(errno));
@@ -598,7 +610,7 @@ static bool run_line(const char *line, int *exit_code)
         if (pl.cmds[0].argc && !skip) {
             char **argv = pl.cmds[0].argv;
 
-            if (pl.count == 1 && (!strcmp(argv[0], "exit") || !strcmp(argv[0], "logout"))) {
+            if (pl.count == 1 && (!strcmp(argv[0], "exit") || !strcmp(argv[0], "signout"))) {
                 *exit_code = pl.cmds[0].argc > 1 ? atoi(argv[1]) : 0;
                 return false;
             }
@@ -621,13 +633,21 @@ static void prompt_string(char *buf, size_t size)
         snprintf(shown, sizeof(shown), "~%s", cwd + hl);
     else
         strlcpy(shown, cwd, sizeof(shown));
-    snprintf(buf, size, "\x1b[92m%s@aegis\x1b[0m:\x1b[94m%s\x1b[0m%c ",
-             user_name, shown, geteuid() == 0 ? '#' : '$');
+    // user@computer@folder - :   (the superuser's name is shown in red)
+    snprintf(buf, size, "\x1b[%sm%s@%s\x1b[0m@\x1b[94m%s\x1b[0m - : ", geteuid() == 0 ? "91" : "92", user_name,
+             computer_name, shown);
 }
 
 static void load_identity(void)
 {
     char line[512];
+    int hfd = open("/msc/hostname", O_RDONLY);
+
+    if (hfd >= 0) {
+        if (read_line(hfd, line, sizeof(line)) > 0 && line[0])
+            strlcpy(computer_name, line, sizeof(computer_name));
+        close(hfd);
+    }
     int fd = open("/msc/passwd", O_RDONLY);
     uint32_t uid = getuid();
 

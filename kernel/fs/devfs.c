@@ -226,7 +226,7 @@ static int open_input(void *ctx, uint32_t flags, struct file **out)
     return *out ? 0 : -ENOMEM;
 }
 
-// /osystem/devices/kmsg: the kernel log, from the oldest message still kept.
+// /osystem/devices/klog: the kernel log, from the oldest message still kept.
 static struct wait_queue kmsg_wq = WAIT_QUEUE_INIT;
 
 static int64_t kmsg_read(struct file *f, void *buf, size_t size)
@@ -296,17 +296,16 @@ static struct filesystem devfs = { .name = "devfs", .mount = devfs_mount };
 void devfs_register_fs(void)
 {
     vfs_register(&devfs);
-    devfs_register("null", 0666, 0, 0, open_simple, (void *)&null_ops);
-    devfs_register("zero", 0666, 0, 0, open_simple, (void *)&zero_ops);
+    devfs_register("nothing", 0666, 0, 0, open_simple, (void *)&null_ops);
+    devfs_register("zeros", 0666, 0, 0, open_simple, (void *)&zero_ops);
     devfs_register("random", 0666, 0, 0, open_simple, (void *)&random_ops);
-    devfs_register("urandom", 0666, 0, 0, open_simple, (void *)&random_ops);
-    devfs_register("tty", 0666, 0, 0, open_tty, NULL);
+    devfs_register("terminal", 0666, 0, 0, open_tty, NULL);
     devfs_register("console", 0600, 0, 0, open_tty, NULL);
-    // Raw key events would let any program log keystrokes, so only root and
+    // Raw key events would let any program log keystrokes, so only the superuser and
     // the "input" group (the window system) may read them.
     devfs_register("input", 0640, 0, DEVFS_GID_INPUT, open_input, NULL);
-    // The kernel log is for administrators (group adm) and the log viewer.
-    devfs_register("kmsg", 0640, 0, DEVFS_GID_ADM, open_simple, (void *)&kmsg_ops);
+    // The kernel log is for administrators (group logs) and the log viewer.
+    devfs_register("klog", 0640, 0, DEVFS_GID_ADM, open_simple, (void *)&kmsg_ops);
     thread_create("kmsgd", kmsg_thread, NULL);
 }
 

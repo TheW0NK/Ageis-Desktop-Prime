@@ -89,7 +89,7 @@
 #define SYS_OPENPTY     83      // int fds[2] (master, slave), flags (O_CLOEXEC)
 #define SYS_BECOME      84      // uid: root only; become that account (uid, gid, groups)
 #define SYS_INSPECT     85      // pid, what, buffer, size (see abi/proc.h)
-#define SYS_MOUNT       86      // fstype, device name ("vdap2"), absolute target, MOUNT_* flags: root only
+#define SYS_MOUNT       86      // fstype, device name ("dA2"), absolute target, MOUNT_* flags: root only
 #define SYS_UMOUNT      87      // absolute target: root only
 #define SYS_COUNT       88
 

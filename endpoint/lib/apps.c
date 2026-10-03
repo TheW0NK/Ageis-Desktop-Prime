@@ -168,7 +168,7 @@ int launch(const char *path, const char *arg)
 {
     char *argv[3];
     const char *base = strrchr(path, '/');
-    int saved[3], null = open("/osystem/devices/null", O_RDWR), pid;
+    int saved[3], null = open("/osystem/devices/nothing", O_RDWR), pid;
 
     argv[0] = (char *)(base ? base + 1 : path);
     argv[1] = (char *)arg;

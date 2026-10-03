@@ -1,13 +1,13 @@
 #include "aegis.h"
 
-// Starts a desktop session. The greeter runs this as root with pipes for
+// Starts a shift: a signed-in user's desktop. The greeter runs this as root with pipes for
 // standard input and output:
 //
-//   greeter -> session:  <user>\n<password>\n
-//   session -> greeter:  ok <uid>\n   or   fail <reason>\n
-//   greeter -> session:  go\n         (once the display accepts the user)
+//   greeter -> shift:  <user>\n<password>\n
+//   shift -> greeter:  ok <uid>\n   or   fail <reason>\n
+//   greeter -> shift:  go\n         (once the display accepts the user)
 //
-// The session then becomes the user, prepares their folders and runs the
+// The shift then becomes the user, prepares their folders and runs the
 // desktop until it exits. The exit status tells the greeter what to do
 // next: 0 sign out, 10 shut down, 11 restart.
 
@@ -23,16 +23,16 @@ static void redirect_output(const struct user_info *u)
     char path[256];
     int fd;
 
-    // The desktop's messages go to the user's session log.
-    user_path(u, "system/session.log", path, sizeof(path));
+    // The desktop's messages go to the user's shift log.
+    user_path(u, "system/shift.log", path, sizeof(path));
     if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600)) < 0)
-        fd = open("/osystem/devices/null", O_WRONLY);
+        fd = open("/osystem/devices/nothing", O_WRONLY);
     if (fd >= 0) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
         close(fd);
     }
-    if ((fd = open("/osystem/devices/null", O_RDONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/nothing", O_RDONLY)) >= 0) {
         dup2(fd, STDIN_FILENO);
         close(fd);
     }
@@ -66,7 +66,7 @@ int main(int argc, char **argv)
             reply("fail %s\n", "auto");
             return 1;
         }
-        syslog("session", "signed in %s automatically", name);
+        syslog("shift", "signed in %s automatically", name);
     } else if (login(name, pass) < 0) {
         memset(pass, 0, sizeof(pass));
         reply("fail %s\n", "password");
@@ -78,7 +78,7 @@ int main(int argc, char **argv)
         if (cred_unlock(&u, pass, key, sizeof(key)) == 0)
             setenv("AEGIS_CRED_KEY", key);
         else
-            syslog("session", "the credential store of %s could not be unlocked", name);
+            syslog("shift", "the credential store of %s could not be unlocked", name);
         memset(key, 0, sizeof(key));
     }
     memset(pass, 0, sizeof(pass));
@@ -97,7 +97,7 @@ int main(int argc, char **argv)
         chdir("/");
     redirect_output(&u);
     if ((pid = spawn(DESKTOP, desktop_argv, environ)) < 0) {
-        dprintf(STDERR_FILENO, "session: cannot start %s: %s\n", DESKTOP, strerror(errno));
+        dprintf(STDERR_FILENO, "shift: cannot start %s: %s\n", DESKTOP, strerror(errno));
         return 1;
     }
     while (waitpid(pid, &status, 0) != pid)

@@ -236,7 +236,7 @@ static bool tick(void *u)
     snprintf(buf, sizeof(buf), "%s of %s in use (%.0f%%)", a, b, mem_hist.v[mem_hist.len - 1]);
     ui_set_text(ui_get(win, "mem"), buf);
     ui_format_size(si.memory_free, a, sizeof(a));
-    snprintf(buf, sizeof(buf), "%s free, %u processes, %u threads", a, si.processes, si.threads);
+    snprintf(buf, sizeof(buf), "%s free, %u threads, %u strands", a, si.processes, si.threads);
     ui_set_text(ui_get(win, "memdetail"), buf);
     ui_format_size(rx, a, sizeof(a));
     ui_format_size(tx, b, sizeof(b));
@@ -261,7 +261,7 @@ static void open_tasks(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/sysapps/tasks", NULL);
+    launch("/sysapps/taskmanager", NULL);
 }
 
 int main(void)

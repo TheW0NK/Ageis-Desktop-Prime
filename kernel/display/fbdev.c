@@ -123,5 +123,5 @@ static int fb_open(void *ctx, uint32_t flags, struct file **out)
 
 void display_devfs_init(void)
 {
-    devfs_register("fb0", 0660, 0, DEVFS_GID_VIDEO, fb_open, NULL);
+    devfs_register("display", 0660, 0, DEVFS_GID_VIDEO, fb_open, NULL);
 }

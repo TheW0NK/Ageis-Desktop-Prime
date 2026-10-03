@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-// /osystem/devices/fb0: the primary display. Opening it for writing takes the display
+// /osystem/devices/display: the primary display. Opening it for writing takes the display
 // over from the text console until the descriptor is closed. mmap it with
 // MAP_SHARED to draw; pixels are 32-bit with the channel shifts below.
 

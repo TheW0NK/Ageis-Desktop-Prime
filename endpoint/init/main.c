@@ -1,8 +1,9 @@
 #include "aegis.h"
 
 // The first process. It keeps these running:
-//  - the privilege helper (/osystem/core/privd), the job scheduler (/osystem/core/crond) and
-//    the audio server (/osystem/core/audiod),
+//  - the sentries: the account sentry (/osystem/core/account-sentry), the
+//    routine sentry (/osystem/core/routine-sentry) and the audio sentry
+//    (/osystem/core/audio-sentry),
 //  - the text console's shell (the login prompt shown with Ctrl+Alt+F2),
 //  - the display (/osystem/core/compositor, which starts the sign-in screen).
 // Either is started again when it exits. If the display keeps failing (no
@@ -10,9 +11,9 @@
 
 #define TERMINAL    "/sysapps/terminal"
 #define COMPOSITOR  "/osystem/core/compositor"
-#define PRIVD       "/osystem/core/privd"
-#define CROND       "/osystem/core/crond"
-#define AUDIOD      "/osystem/core/audiod"
+#define PRIVD       "/osystem/core/account-sentry"
+#define CROND       "/osystem/core/routine-sentry"
+#define AUDIOD      "/osystem/core/audio-sentry"
 
 struct service {
     const char *path;
@@ -96,9 +97,9 @@ static bool has_word(const char *s, const char *w)
 int main(int argc, char **argv)
 {
     struct service services[] = {
-        { PRIVD, { "privd", NULL }, -1, 0, 0, false },
-        { CROND, { "crond", NULL }, -1, 0, 0, false },
-        { AUDIOD, { "audiod", NULL }, -1, 0, 0, false },
+        { PRIVD, { "account-sentry", NULL }, -1, 0, 0, false },
+        { CROND, { "routine-sentry", NULL }, -1, 0, 0, false },
+        { AUDIOD, { "audio-sentry", NULL }, -1, 0, 0, false },
         { TERMINAL, { "terminal", NULL }, -1, 0, 0, false },
         { COMPOSITOR, { "compositor", NULL, NULL }, -1, 0, 0, false },
     };
@@ -135,17 +136,17 @@ int main(int argc, char **argv)
                 sync();
             }
             services[1].disabled = services[2].disabled = true;
-            dprintf(STDERR_FILENO, "init: safe mode: scheduled jobs and sound are off\n");
+            dprintf(STDERR_FILENO, "init: safe mode: routines and sound are off\n");
         }
     }
     if (!feature_enabled("audio"))
         services[2].disabled = true;
     // No screen to draw on: text mode only (and then the console must run).
-    if (stat("/osystem/devices/fb0", &st) < 0)
+    if (stat("/osystem/devices/display", &st) < 0)
         services[4].disabled = true;
     else if (!feature_enabled("console"))
         services[3].disabled = true;
-    if (!feature_enabled("cron"))
+    if (!feature_enabled("routines"))
         services[1].disabled = true;
     for (int i = 0; i < n; i++)
         if (!services[i].disabled)

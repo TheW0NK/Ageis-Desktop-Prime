@@ -13,7 +13,12 @@ struct command {
     int (*fn)(int argc, char **argv);
 };
 
+struct renamed_command {
+    const char *old, *now;
+};
+
 extern const struct command commands[];
+extern const struct renamed_command renamed_commands[];
 extern const size_t command_count;
 
 extern char user_name[32];

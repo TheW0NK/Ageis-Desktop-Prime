@@ -35,7 +35,7 @@ int cmd_cd(int argc, char **argv)
 
     if (!strcmp(target, "-")) {
         if (!previous_dir[0]) {
-            dprintf(STDERR_FILENO, "cd: no previous directory\n");
+            dprintf(STDERR_FILENO, "go: no previous directory\n");
             return 1;
         }
         target = previous_dir;
@@ -43,7 +43,7 @@ int cmd_cd(int argc, char **argv)
     if (!getcwd(cwd, sizeof(cwd)))
         cwd[0] = '\0';
     if (chdir(target) < 0) {
-        fail("cd", target);
+        fail("go", target);
         return 1;
     }
     strlcpy(previous_dir, cwd, sizeof(previous_dir));
@@ -57,7 +57,7 @@ int cmd_pwd(int argc, char **argv)
     (void)argc;
     (void)argv;
     if (!getcwd(cwd, sizeof(cwd))) {
-        perror("pwd");
+        perror("where");
         return 1;
     }
     printf("%s\n", cwd);
@@ -98,7 +98,7 @@ static void print_entry(const char *dir, const char *name, bool lng)
 
     join(path, sizeof(path), dir, name);
     if (lstat(path, &st) < 0) {
-        fail("ls", path);
+        fail("list", path);
         return;
     }
     if (!lng) {
@@ -158,7 +158,7 @@ static int list_dir(const char *path, bool all, bool lng)
     size_t n = 0, cap = 0;
 
     if (!d) {
-        fail("ls", path);
+        fail("list", path);
         return 1;
     }
     while ((e = readdir(d))) {
@@ -190,7 +190,7 @@ int cmd_ls(int argc, char **argv)
         return list_dir(".", all, lng);
     for (int i = first; i < argc; i++) {
         if (stat(argv[i], &st) < 0) {
-            fail("ls", argv[i]);
+            fail("list", argv[i]);
             ret = 1;
             continue;
         }
@@ -227,7 +227,7 @@ int cmd_cat(int argc, char **argv)
         int fd = open(argv[i], O_RDONLY);
 
         if (fd < 0 || copy_fd(fd, STDOUT_FILENO) < 0) {
-            fail("cat", argv[i]);
+            fail("show", argv[i]);
             ret = 1;
         }
         if (fd >= 0)
@@ -255,30 +255,18 @@ int cmd_mkdir(int argc, char **argv)
     bool parents = flag(argc, argv, &first, 'p');
 
     if (first >= argc) {
-        dprintf(STDERR_FILENO, "usage: mkdir [-p] DIR...\n");
+        dprintf(STDERR_FILENO, "usage: newfolder [-p] FOLDER...\n");
         return 1;
     }
     for (int i = first; i < argc; i++) {
         if ((parents ? mkdir_parents(argv[i]) : mkdir(argv[i], 0755)) < 0) {
-            fail("mkdir", argv[i]);
+            fail("newfolder", argv[i]);
             ret = 1;
         }
     }
     return ret;
 }
 
-int cmd_rmdir(int argc, char **argv)
-{
-    int ret = 0;
-
-    for (int i = 1; i < argc; i++) {
-        if (rmdir(argv[i]) < 0) {
-            fail("rmdir", argv[i]);
-            ret = 1;
-        }
-    }
-    return ret;
-}
 
 static int remove_tree(const char *path)
 {
@@ -311,10 +299,12 @@ int cmd_rm(int argc, char **argv)
     bool recursive = flag(argc, argv, &first, 'r'), force = flag(argc, argv, &first, 'f');
 
     for (int i = first; i < argc; i++) {
-        int r = recursive ? remove_tree(argv[i]) : unlink(argv[i]);
+        struct aegis_stat st;
+        int r = recursive ? remove_tree(argv[i])
+              : lstat(argv[i], &st) == 0 && S_ISDIR(st.mode) ? rmdir(argv[i]) : unlink(argv[i]);
 
         if (r < 0 && !(force && errno == ENOENT)) {
-            fail("rm", argv[i]);
+            fail("delete", argv[i]);
             ret = 1;
         }
     }
@@ -374,7 +364,7 @@ static int copy_tree(const char *src, const char *dst, bool recursive)
         join(s, sizeof(s), src, e->name);
         join(d, sizeof(d), dst, e->name);
         if (copy_tree(s, d, true) < 0) {
-            fail("cp", s);
+            fail("copy", s);
             ret = -1;
         }
     }
@@ -418,7 +408,7 @@ int cmd_cp(int argc, char **argv)
     int first = 1;
     bool recursive = flag(argc, argv, &first, 'r');
 
-    return over_sources(argc, argv, first, "cp", copy_tree, recursive);
+    return over_sources(argc, argv, first, "copy", copy_tree, recursive);
 }
 
 static int move(const char *src, const char *dst, bool unused)
@@ -435,7 +425,7 @@ static int move(const char *src, const char *dst, bool unused)
 
 int cmd_mv(int argc, char **argv)
 {
-    return over_sources(argc, argv, 1, "mv", move, false);
+    return over_sources(argc, argv, 1, "move", move, false);
 }
 
 int cmd_touch(int argc, char **argv)
@@ -447,7 +437,7 @@ int cmd_touch(int argc, char **argv)
         int fd = open(argv[i], O_WRONLY | O_CREAT, 0644);
 
         if (fd < 0) {
-            fail("touch", argv[i]);
+            fail("newfile", argv[i]);
             ret = 1;
             continue;
         }
@@ -464,17 +454,17 @@ int cmd_chmod(int argc, char **argv)
     int ret = 0;
 
     if (argc < 3) {
-        dprintf(STDERR_FILENO, "usage: chmod MODE PATH...\n");
+        dprintf(STDERR_FILENO, "usage: access MODE PATH...\n");
         return 1;
     }
     mode = strtoul(argv[1], &end, 8);
     if (*end || mode > 07777) {
-        dprintf(STDERR_FILENO, "chmod: invalid mode: %s\n", argv[1]);
+        dprintf(STDERR_FILENO, "access: invalid mode: %s\n", argv[1]);
         return 1;
     }
     for (int i = 2; i < argc; i++) {
         if (chmod(argv[i], mode) < 0) {
-            fail("chmod", argv[i]);
+            fail("access", argv[i]);
             ret = 1;
         }
     }
@@ -488,7 +478,7 @@ int cmd_chown(int argc, char **argv)
     int ret = 0;
 
     if (argc < 3) {
-        dprintf(STDERR_FILENO, "usage: chown USER[:GROUP] PATH...\n");
+        dprintf(STDERR_FILENO, "usage: owner USER[:GROUP] PATH...\n");
         return 1;
     }
     strlcpy(spec, argv[1], sizeof(spec));
@@ -496,16 +486,16 @@ int cmd_chown(int argc, char **argv)
     if (colon)
         *colon++ = '\0';
     if (spec[0] && name_to_uid(spec, &uid) < 0) {
-        dprintf(STDERR_FILENO, "chown: unknown user: %s\n", spec);
+        dprintf(STDERR_FILENO, "owner: unknown user: %s\n", spec);
         return 1;
     }
     if (colon && *colon && name_to_gid(colon, &gid) < 0) {
-        dprintf(STDERR_FILENO, "chown: unknown group: %s\n", colon);
+        dprintf(STDERR_FILENO, "owner: unknown group: %s\n", colon);
         return 1;
     }
     for (int i = 2; i < argc; i++) {
         if (chown(argv[i], uid, gid) < 0) {
-            fail("chown", argv[i]);
+            fail("owner", argv[i]);
             ret = 1;
         }
     }
@@ -518,11 +508,11 @@ int cmd_ln(int argc, char **argv)
     bool sym = flag(argc, argv, &first, 's');
 
     if (argc - first != 2) {
-        dprintf(STDERR_FILENO, "usage: ln [-s] TARGET LINK\n");
+        dprintf(STDERR_FILENO, "usage: link [-s] TARGET LINK\n");
         return 1;
     }
     if ((sym ? symlink(argv[first], argv[first + 1]) : link(argv[first], argv[first + 1])) < 0) {
-        fail("ln", argv[first + 1]);
+        fail("link", argv[first + 1]);
         return 1;
     }
     return 0;
@@ -536,7 +526,7 @@ int cmd_stat(int argc, char **argv)
 
     for (int i = 1; i < argc; i++) {
         if (lstat(argv[i], &st) < 0) {
-            fail("stat", argv[i]);
+            fail("details", argv[i]);
             ret = 1;
             continue;
         }
@@ -575,7 +565,7 @@ int cmd_sync(int argc, char **argv)
     (void)argc;
     (void)argv;
     if (sync() < 0) {
-        perror("sync");
+        perror("flush");
         return 1;
     }
     return 0;
@@ -640,13 +630,13 @@ int cmd_grep(int argc, char **argv)
             else if (*f == 'c')
                 count = true;
             else {
-                dprintf(STDERR_FILENO, "grep: unknown option -%c\n", *f);
+                dprintf(STDERR_FILENO, "find: unknown option -%c\n", *f);
                 return 2;
             }
         }
     }
     if (i >= argc) {
-        dprintf(STDERR_FILENO, "usage: grep [-ivnc] TEXT [FILE...]\n");
+        dprintf(STDERR_FILENO, "usage: find [-ivnc] TEXT [FILE...]\n");
         return 2;
     }
     text = argv[i++];
@@ -656,7 +646,7 @@ int cmd_grep(int argc, char **argv)
         int fd = open(argv[k], O_RDONLY);
 
         if (fd < 0) {
-            fail("grep", argv[k]);
+            fail("find", argv[k]);
             continue;
         }
         found += grep_fd(fd, argv[k], text, nocase, invert, numbers, count, argc - i > 1);

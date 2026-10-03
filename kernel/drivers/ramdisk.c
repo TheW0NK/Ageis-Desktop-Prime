@@ -6,7 +6,7 @@
 // system on the install media). It is identity mapped like all RAM, and
 // writable, so the live system can change files until it is switched off.
 
-static struct block_device ram = { .name = "ram0", .lock = MUTEX_INIT };
+static struct block_device ram = { .name = "ramdisk", .kind = "Memory", .lock = MUTEX_INIT };
 static uint8_t *ram_base;
 
 static int ram_read(struct block_device *dev, uint64_t lba, uint32_t count, void *buf)
