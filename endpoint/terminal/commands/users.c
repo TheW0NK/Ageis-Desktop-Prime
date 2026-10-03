@@ -1,6 +1,6 @@
 #include "commands.h"
 
-// Finds the line in an /etc file whose field `key` equals `value`, and copies
+// Finds the line in an /msc file whose field `key` equals `value`, and copies
 // field `want` of that line into out.
 static bool lookup(const char *path, int key, const char *value, int want, char *out, size_t size)
 {
@@ -38,7 +38,7 @@ int name_to_uid(const char *name, uint32_t *uid)
         *uid = atoi(name);
         return 0;
     }
-    if (!lookup("/etc/passwd", 0, name, 2, buf, sizeof(buf)))
+    if (!lookup("/msc/passwd", 0, name, 2, buf, sizeof(buf)))
         return -1;
     *uid = atoi(buf);
     return 0;
@@ -52,7 +52,7 @@ int name_to_gid(const char *name, uint32_t *gid)
         *gid = atoi(name);
         return 0;
     }
-    if (!lookup("/etc/group", 0, name, 2, buf, sizeof(buf)))
+    if (!lookup("/msc/group", 0, name, 2, buf, sizeof(buf)))
         return -1;
     *gid = atoi(buf);
     return 0;
@@ -63,7 +63,7 @@ const char *uid_to_name(uint32_t uid, char *buf, size_t size)
     char id[16];
 
     snprintf(id, sizeof(id), "%u", uid);
-    if (!lookup("/etc/passwd", 2, id, 0, buf, size))
+    if (!lookup("/msc/passwd", 2, id, 0, buf, size))
         strlcpy(buf, id, size);
     return buf;
 }
@@ -73,7 +73,7 @@ const char *gid_to_name(uint32_t gid, char *buf, size_t size)
     char id[16];
 
     snprintf(id, sizeof(id), "%u", gid);
-    if (!lookup("/etc/group", 2, id, 0, buf, size))
+    if (!lookup("/msc/group", 2, id, 0, buf, size))
         strlcpy(buf, id, size);
     return buf;
 }

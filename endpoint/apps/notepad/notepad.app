@@ -1,5 +1,5 @@
 name=Notepad
-exec=/bin/notepad
+exec=/sysapps/notepad
 icon=notepad
 suite=Default
 description=Write and edit plain text

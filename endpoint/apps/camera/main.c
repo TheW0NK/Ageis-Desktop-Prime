@@ -1,7 +1,7 @@
 #include "aegis.h"
 #include "ui.h"
 
-// Camera: a live picture from /dev/video0, photos saved to ~/Images, a
+// Camera: a live picture from /osystem/devices/video0, photos saved to ~/Images, a
 // self-timer, colour effects and a strip of the latest photos.
 
 static const char window_aui[] =

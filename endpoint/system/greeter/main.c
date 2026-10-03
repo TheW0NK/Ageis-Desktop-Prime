@@ -2,10 +2,10 @@
 #include "ui.h"
 
 // The sign-in screen. The compositor starts it as root; it hands a
-// successful sign-in to /sbin/session and shows itself again when the
+// successful sign-in to /osystem/core/session and shows itself again when the
 // session ends.
 
-#define SESSION "/sbin/session"
+#define SESSION "/osystem/core/session"
 
 static const char page[] =
     "<window role='overlay' padding='0' spacing='0'>"
@@ -295,7 +295,7 @@ int main(void)
     load_users();
     {
         char host[64];
-        int fd = open("/etc/hostname", O_RDONLY);
+        int fd = open("/msc/hostname", O_RDONLY);
 
         if (fd >= 0 && read_line(fd, host, sizeof(host)) > 0)
             ui_set_text(ui_get(win, "host"), host);

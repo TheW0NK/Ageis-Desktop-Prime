@@ -159,12 +159,12 @@ static void test_memory(void)
     run_child("exit42", &status);
     CHECK("exit status", WIFEXITED(status) && WEXITSTATUS(status) == 42);
 
-    int fd = open("/tmp/ktest.dat", O_RDWR | O_CREAT | O_TRUNC, 0644);
+    int fd = open("/osystem/temp/ktest.dat", O_RDWR | O_CREAT | O_TRUNC, 0644);
     write(fd, "mapped file contents", 20);
     char *m = mmap(NULL, 4096, PROT_READ, MAP_PRIVATE, fd, 0);
     CHECK("mmap a file", m != MAP_FAILED && !memcmp(m, "mapped file contents", 20) && m[20] == 0);
     close(fd);
-    unlink("/tmp/ktest.dat");
+    unlink("/osystem/temp/ktest.dat");
 }
 
 static void test_shm(void)
@@ -345,9 +345,9 @@ static void test_sockets(void)
     close(sv[1]);
 
     // A named socket in the filesystem.
-    unlink("/tmp/ktest.sock");
-    lfd = unix_listen("/tmp/ktest.sock", SOCK_STREAM);
-    c = unix_connect("/tmp/ktest.sock", SOCK_STREAM);
+    unlink("/osystem/temp/ktest.sock");
+    lfd = unix_listen("/osystem/temp/ktest.sock", SOCK_STREAM);
+    c = unix_connect("/osystem/temp/ktest.sock", SOCK_STREAM);
     int s = accept(lfd, NULL, NULL);
     struct pollfd p = { s, POLLIN, 0 };
     send(c, "x", 1, 0);
@@ -355,7 +355,7 @@ static void test_sockets(void)
     close(c);
     close(s);
     close(lfd);
-    unlink("/tmp/ktest.sock");
+    unlink("/osystem/temp/ktest.sock");
 }
 
 static void test_pty(void)
@@ -368,7 +368,7 @@ static void test_pty(void)
     CHECK("openpty", openpty(fds, O_CLOEXEC) == 0);
     int saved = dup(1);
     dup2(fds[1], 1);
-    int pid = spawn("/bin/hello", argv, environ);
+    int pid = spawn("/sysapps/hello", argv, environ);
     dup2(saved, 1);
     close(saved);
     waitpid(pid, &status, 0);
@@ -408,7 +408,7 @@ static void test_info(void)
 
 int main(int argc, char **argv)
 {
-    self_path = argc > 0 && strchr(argv[0], '/') ? argv[0] : "/bin/ktest";
+    self_path = argc > 0 && strchr(argv[0], '/') ? argv[0] : "/sysapps/ktest";
     if (argc > 1) {
         if (!strcmp(argv[1], "segv"))
             return *(volatile int *)0;

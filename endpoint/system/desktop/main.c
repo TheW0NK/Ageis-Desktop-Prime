@@ -1,6 +1,6 @@
 #include "desktop.h"
 
-// The desktop shell, started by /sbin/session as the signed-in user.
+// The desktop shell, started by /osystem/core/session as the signed-in user.
 
 struct user_info me;
 

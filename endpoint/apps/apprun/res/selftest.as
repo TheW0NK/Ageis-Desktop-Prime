@@ -64,9 +64,9 @@ check("int", int("42"), 42);
 check("min max", min(4, 2, 9) + max([1, 7, 3]), 9);
 check("pow", pow(2, 10), 1024);
 
-write("/tmp/selftest.txt", "line one\n");
-append("/tmp/selftest.txt", "line two\n");
-check("files", len(split(trim(read("/tmp/selftest.txt")), "\n")), 2);
+write("/osystem/temp/selftest.txt", "line one\n");
+append("/osystem/temp/selftest.txt", "line two\n");
+check("files", len(split(trim(read("/osystem/temp/selftest.txt")), "\n")), 2);
 check("run", trim(run("echo from the shell")), "from the shell");
 
 if (failures == 0) { print("selftest: ok"); } else { print("selftest:", failures, "failures"); }

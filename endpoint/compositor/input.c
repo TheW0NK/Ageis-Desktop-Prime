@@ -112,7 +112,7 @@ void key_text(uint16_t code, uint32_t m, char *out)
 
 int input_open_device(void)
 {
-    int fd = open("/dev/input", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    int fd = open("/osystem/devices/input", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 
     if (fd >= 0)
         ioctl(fd, IOCTL_INPUT_GRAB, 1);
@@ -372,7 +372,7 @@ static void save_screenshot(void)
     struct tm tm;
 
     if (uid == (uint32_t)-1 || user_by_uid(uid, &u) < 0) {
-        snprintf(path, sizeof(path), "/tmp/screenshot-%ld.png", (long)now);
+        snprintf(path, sizeof(path), "/osystem/temp/screenshot-%ld.png", (long)now);
         screenshot(path);
         return;
     }

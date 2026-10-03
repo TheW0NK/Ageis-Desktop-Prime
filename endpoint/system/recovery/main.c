@@ -3,11 +3,11 @@
 
 // Aegis Recovery: what the Recovery boot entry starts (the live system from
 // the EFI partition, with "recovery" on its command line). It finds the
-// installed system, mounts it at /mnt/system (its EFI partition at
-// /mnt/esp) and offers ways to get it going again.
+// installed system, mounts it at /osystem/volumes/system (its EFI partition at
+// /osystem/volumes/esp) and offers ways to get it going again.
 
-#define SYS     "/mnt/system"
-#define ESP     "/mnt/esp"
+#define SYS     "/osystem/volumes/system"
+#define ESP     "/osystem/volumes/esp"
 #define BCD     ESP "/EFI/Aegis/bcd"
 
 static const char page[] =
@@ -82,7 +82,7 @@ static const char page[] =
     "            <vbox spacing='8'>"
     "              <h2 text='System image'/>"
     "              <p text='An image holds the whole system: apps, settings, accounts and everyone&apos;s files."
-    " Images are kept in /var/backups on the system, which restoring leaves alone.'/>"
+    " Images are kept in /osystem/backups on the system, which restoring leaves alone.'/>"
     "              <table id='images' expand='1' columns='Image|Made:170|Size:90:right'"
     "                     placeholder='No images yet.'/>"
     "              <progress id='imgprogress' value='0'/>"
@@ -105,8 +105,8 @@ static const char page[] =
     // 6: terminal
     "            <vbox spacing='10'>"
     "              <h2 text='Recovery terminal'/>"
-    "              <p text='A terminal as root. The installed system is at /mnt/system and its EFI partition at"
-    " /mnt/esp. Changes take effect at once: take care.'/>"
+    "              <p text='A terminal as root. The installed system is at /osystem/volumes/system and its EFI partition at"
+    " /osystem/volumes/esp. Changes take effect at once: take care.'/>"
     "              <hbox><button text='Open terminal' onclick='terminal'/></hbox>"
     "            </vbox>"
     "          </stack>"
@@ -175,16 +175,16 @@ static int spill(const char *path, const char *text, uint32_t mode)
 
 static void find_system(void)
 {
-    struct dir_stream *d = opendir("/dev");
+    struct dir_stream *d = opendir("/osystem/devices");
     struct aegis_dirent *de;
     char parent[16] = "";
     struct aegis_stat st;
 
-    mkdir("/mnt", 0755);
+    mkdir("/osystem/volumes", 0755);
     mkdir(SYS, 0755);
     mkdir(ESP, 0755);
     if (!d) {
-        dprintf(STDERR_FILENO, "recovery: cannot read /dev: %s\n", strerror(errno));
+        dprintf(STDERR_FILENO, "recovery: cannot read /osystem/devices: %s\n", strerror(errno));
         return;
     }
     while (!have_system && (de = readdir(d))) {
@@ -194,7 +194,7 @@ static void find_system(void)
 
         if (de->type != DT_BLK)
             continue;
-        snprintf(path, sizeof(path), "/dev/%s", de->name);
+        snprintf(path, sizeof(path), "/osystem/devices/%s", de->name);
         if ((fd = open(path, O_RDONLY)) < 0)
             continue;
         if (ioctl(fd, IOCTL_BLOCK_INFO, (uint64_t)&bi) == 0 && (bi.flags & BLOCK_INFO_PARTITION)
@@ -203,7 +203,7 @@ static void find_system(void)
             if (!strcmp(guid, DISK_TYPE_DATA) && mount("ext4", de->name, SYS, 0) < 0)
                 dprintf(STDERR_FILENO, "recovery: cannot mount %s: %s\n", de->name, strerror(errno));
             else if (!strcmp(guid, DISK_TYPE_DATA)) {
-                if (stat(SYS "/etc/passwd", &st) == 0) {
+                if (stat(SYS "/msc/passwd", &st) == 0) {
                     have_system = true;
                     strlcpy(sys_dev, de->name, sizeof(sys_dev));
                     strlcpy(parent, bi.parent, sizeof(parent));
@@ -216,7 +216,7 @@ static void find_system(void)
     }
     closedir(d);
     // Its EFI partition: on the same disk.
-    if (have_system && (d = opendir("/dev"))) {
+    if (have_system && (d = opendir("/osystem/devices"))) {
         while (!have_esp && (de = readdir(d))) {
             struct aegis_blockinfo bi;
             char path[64], guid[37];
@@ -224,7 +224,7 @@ static void find_system(void)
 
             if (de->type != DT_BLK)
                 continue;
-            snprintf(path, sizeof(path), "/dev/%s", de->name);
+            snprintf(path, sizeof(path), "/osystem/devices/%s", de->name);
             if ((fd = open(path, O_RDONLY)) < 0)
                 continue;
             if (ioctl(fd, IOCTL_BLOCK_INFO, (uint64_t)&bi) == 0 && (bi.flags & BLOCK_INFO_PARTITION)
@@ -255,7 +255,7 @@ static bool feature_on(const char *text, const char *name, bool def)
 
 static void features_set(const char *const *names, const bool *values, int count)
 {
-    char *old = slurp(SYS "/etc/features.conf"), out[2048] = "";
+    char *old = slurp(SYS "/msc/features.conf"), out[2048] = "";
 
     // Keep other lines; replace the ones being set.
     for (const char *l = old ? old : ""; *l;) {
@@ -275,7 +275,7 @@ static void features_set(const char *const *names, const bool *values, int count
     }
     for (int i = 0; i < count; i++)
         snprintf(out + strlen(out), sizeof(out) - strlen(out), "%s=%s\n", names[i], values[i] ? "on" : "off");
-    spill(SYS "/etc/features.conf", out, 0644);
+    spill(SYS "/msc/features.conf", out, 0644);
     free(old);
 }
 
@@ -359,7 +359,7 @@ static char *bcd_update(const char *bcd, const char *timeout, const char *resolu
 
 static void load_startup(void)
 {
-    char *features = slurp(SYS "/etc/features.conf"), *bcd = have_esp ? slurp(BCD) : NULL;
+    char *features = slurp(SYS "/msc/features.conf"), *bcd = have_esp ? slurp(BCD) : NULL;
     char v[64], root[96], extra[300];
 
     ui_set_value(ui_get(win, "svc_console"), feature_on(features ? features : "", "console", true));
@@ -435,7 +435,7 @@ static void on_save_bcd(struct widget *w, void *u)
 
 static void load_users(void)
 {
-    char *passwd = slurp(SYS "/etc/passwd");
+    char *passwd = slurp(SYS "/msc/passwd");
     struct widget *dd = ui_get(win, "users");
 
     ui_list_clear(dd);
@@ -457,7 +457,7 @@ static void load_users(void)
         struct aegis_stat st;
 
         ui_set_text(ui_get(win, "pwmsg"), ui_list_count(dd) ? ""
-                    : stat(SYS "/etc/firstboot", &st) == 0 ? "The account is made on the system's first start: start it once first."
+                    : stat(SYS "/msc/firstboot", &st) == 0 ? "The account is made on the system's first start: start it once first."
                     : "This system has no accounts.");
     }
 }
@@ -477,7 +477,7 @@ static void on_reset_pw(struct widget *w, void *u)
         ui_set_text(ui_get(win, "pwmsg"), strlen(p1) < 4 ? "Use at least 4 characters." : "The passwords differ.");
         return;
     }
-    if (password_hash(p1, hash, sizeof(hash)) < 0 || !(shadow = slurp(SYS "/etc/shadow"))) {
+    if (password_hash(p1, hash, sizeof(hash)) < 0 || !(shadow = slurp(SYS "/msc/shadow"))) {
         ui_set_text(ui_get(win, "pwmsg"), "The password file could not be read.");
         return;
     }
@@ -498,12 +498,12 @@ static void on_reset_pw(struct widget *w, void *u)
     }
     free(shadow);
     memset(hash, 0, sizeof(hash));
-    if (spill(SYS "/etc/shadow", out, 0600) < 0) {
+    if (spill(SYS "/msc/shadow", out, 0600) < 0) {
         ui_set_text(ui_get(win, "pwmsg"), "The password could not be saved.");
         return;
     }
     // The old credential store is locked with the old password.
-    snprintf(cred, sizeof(cred), SYS "/users/%s/system/credentials", user);
+    snprintf(cred, sizeof(cred), SYS "/userfiles/%s/system/credentials", user);
     snprintf(old, sizeof(old), "%s.old", cred);
     remove_path(old);
     if (rename(cred, old) == 0) {
@@ -605,7 +605,7 @@ static int nimages;
 static void load_images(void)
 {
     struct widget *t = ui_get(win, "images");
-    struct dir_stream *d = opendir(SYS "/var/backups");
+    struct dir_stream *d = opendir(SYS "/osystem/backups");
     struct aegis_dirent *de;
 
     ui_list_clear(t);
@@ -618,7 +618,7 @@ static void load_images(void)
 
         if (!strstr(de->name, ".aimg"))
             continue;
-        snprintf(path, sizeof(path), SYS "/var/backups/%s", de->name);
+        snprintf(path, sizeof(path), SYS "/osystem/backups/%s", de->name);
         if (sysimage_info(path, &created, &bytes) < 0)
             continue;
         localtime_r(&created, &tm);
@@ -642,10 +642,10 @@ static void on_mkimage(struct widget *w, void *u)
     (void)u;
     if (!have_system)
         return;
-    mkdir(SYS "/var/backups", 0700);
+    mkdir(SYS "/osystem/backups", 0700);
     localtime_r(&now, &tm);
     strftime(name, sizeof(name), "system-%Y-%m-%d-%H%M.aimg", &tm);
-    snprintf(path, sizeof(path), SYS "/var/backups/%s", name);
+    snprintf(path, sizeof(path), SYS "/osystem/backups/%s", name);
     if (start_job(0, path))
         ui_set_text(ui_get(win, "imgmsg"), "Saving the system...");
 }
@@ -696,14 +696,14 @@ static void on_erase(struct widget *w, void *u)
         return;
     unmount_all();
     have_system = have_esp = false;
-    launch("/sbin/installer", NULL);
+    launch("/osystem/core/installer", NULL);
 }
 
 static void on_terminal(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/bin/term", have_system ? SYS : "/");
+    launch("/sysapps/term", have_system ? SYS : "/");
 }
 
 static void on_restart(struct widget *w, void *u)
@@ -761,7 +761,7 @@ static void on_safe(struct widget *w, void *u)
         return;
     }
     free(updated);
-    spill(SYS "/etc/safe-mode-once", "\n", 0644);
+    spill(SYS "/msc/safe-mode-once", "\n", 0644);
     on_restart(NULL, NULL);
 }
 

@@ -2,7 +2,7 @@
 #include <bearssl.h>
 
 // Stored secrets (passwords for mail accounts and the like), encrypted in
-// /users/<name>/system/credentials.
+// /userfiles/<name>/system/credentials.
 //
 // A random 256-bit master key is kept in master.key, sealed with a key made
 // from the user's password (PBKDF2-HMAC-SHA256). Signing in unlocks it and
@@ -18,7 +18,7 @@
 
 static int random_bytes(void *buf, size_t len)
 {
-    int fd = open("/dev/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/urandom", O_RDONLY);
     ssize_t n;
 
     if (fd < 0)

@@ -1,7 +1,7 @@
 #include "aegis.h"
 
 // Calendar time. Local time is UTC plus a fixed offset read from
-// /etc/timezone ("<name> <minutes east of UTC>"), or TZ_OFFSET (minutes).
+// /msc/timezone ("<name> <minutes east of UTC>"), or TZ_OFFSET (minutes).
 
 static const char *const day_names[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
                                          "Saturday" };
@@ -87,7 +87,7 @@ static void load_zone(void)
         zone_offset = atoi(env) * 60;
         return;
     }
-    if ((fd = open("/etc/timezone", O_RDONLY)) < 0)
+    if ((fd = open("/msc/timezone", O_RDONLY)) < 0)
         return;
     n = read(fd, buf, sizeof(buf) - 1);
     close(fd);

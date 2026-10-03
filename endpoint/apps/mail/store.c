@@ -12,7 +12,7 @@ static void base_dir(char *out, size_t size)
     struct user_info me;
 
     if (user_current(&me) < 0) {
-        strlcpy(out, "/tmp/mail", size);
+        strlcpy(out, "/osystem/temp/mail", size);
         return;
     }
     user_path(&me, "system/appdata/mail", out, size);

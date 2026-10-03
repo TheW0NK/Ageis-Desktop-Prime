@@ -98,9 +98,9 @@ run-serial: image build/ovmf_vars.fd
 
 test: image
 	tools/qemu-test.py @reject:FAIL @reject:PANIC @reject:crashed @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \
-		'ls /dev' @expect:input 'uname' @expect:Aegis 'echo piped | cat' @expect:piped \
-		'apprun /usr/share/apprun/selftest.as' @expect:'selftest: ok' \
-		'browser --check /usr/share/browser/welcome.html' @expect:'browser: ok' \
+		'ls /osystem/devices' @expect:input 'uname' @expect:Aegis 'echo piped | cat' @expect:piped \
+		'apprun /osystem/resources/apprun/selftest.as' @expect:'selftest: ok' \
+		'browser --check /osystem/resources/browser/welcome.html' @expect:'browser: ok' \
 		'cred set test-secret s3cr3t-value' 'cred get test-secret' @expect:'s3cr3t-value'
 	tools/qemu-test.py --cpus 4 --timeout 180 @reject:FAIL @reject:PANIC \
 		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ktest' @expect:'ktest: all passed'

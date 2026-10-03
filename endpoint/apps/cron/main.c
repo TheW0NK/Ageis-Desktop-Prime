@@ -280,8 +280,8 @@ static void set_scope(bool sys)
 {
     system_scope = sys;
     if (sys) {
-        strlcpy(crontab, "/etc/crontab", sizeof(crontab));
-        strlcpy(logfile, "/var/log/cron.log", sizeof(logfile));
+        strlcpy(crontab, "/msc/crontab", sizeof(crontab));
+        strlcpy(logfile, "/osystem/logs/cron.log", sizeof(logfile));
     } else {
         char dir[256];
 
@@ -544,7 +544,7 @@ static void on_run(struct widget *w, void *u)
     saved[1] = dup(2);
     dup2(fd, 1);
     dup2(fd, 2);
-    pid = spawn("/bin/terminal", argv, environ);
+    pid = spawn("/sysapps/terminal", argv, environ);
     dup2(saved[0], 1);
     dup2(saved[1], 2);
     close(saved[0]);

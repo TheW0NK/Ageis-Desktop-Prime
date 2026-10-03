@@ -9,7 +9,7 @@
 #include "abi/errno.h"
 #include "abi/video.h"
 
-// The test camera: /dev/video0 when there is no real camera (QEMU has none
+// The test camera: /osystem/devices/video0 when there is no real camera (QEMU has none
 // to offer). Each frame is drawn on demand: a sky, a sun that moves across
 // it, a ball that bounces, colour bars and a running clock, so programs see
 // a live picture. Integer arithmetic only.

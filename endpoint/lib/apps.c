@@ -1,10 +1,10 @@
 #include "aegis.h"
 
-// The application registry: one /usr/share/applications/<id>.app file per
+// The application registry: one /sysapps/registry/<id>.app file per
 // app, with key=value lines:
 //
 //   name=Terminal
-//   exec=/bin/term
+//   exec=/sysapps/term
 //   icon=terminal
 //   suite=System
 //   description=Command line
@@ -12,7 +12,7 @@
 //   tier=basic              (basic, elevated, system, powersudo)
 //   hidden=true             (not shown in the launcher)
 
-#define APPS_DIR "/usr/share/applications"
+#define APPS_DIR "/sysapps/registry"
 
 static void parse(const char *path, const char *id, struct app_info *a)
 {
@@ -168,7 +168,7 @@ int launch(const char *path, const char *arg)
 {
     char *argv[3];
     const char *base = strrchr(path, '/');
-    int saved[3], null = open("/dev/null", O_RDWR), pid;
+    int saved[3], null = open("/osystem/devices/null", O_RDWR), pid;
 
     argv[0] = (char *)(base ? base + 1 : path);
     argv[1] = (char *)arg;

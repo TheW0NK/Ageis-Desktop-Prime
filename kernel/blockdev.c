@@ -5,7 +5,7 @@
 #include "vm.h"
 #include "abi/block.h"
 
-// /dev nodes for disks and partitions: raw sector access for the installer
+// /osystem/devices nodes for disks and partitions: raw sector access for the installer
 // and disk tools (root only).
 
 #define BOUNCE  (64 * 1024)

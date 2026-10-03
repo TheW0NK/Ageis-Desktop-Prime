@@ -74,7 +74,7 @@ static void fill_computer(struct widget *t)
         snprintf(row, sizeof(row), "Operating system\t%s %s (%s)", un.sysname, un.release, un.machine);
         ui_list_add(t, row);
     }
-    if ((fd = open("/etc/hostname", O_RDONLY)) >= 0) {
+    if ((fd = open("/msc/hostname", O_RDONLY)) >= 0) {
         char h[64];
 
         if (read_line(fd, h, sizeof(h)) > 0) {
@@ -123,7 +123,7 @@ static void act_users(void) { open_app("users", NULL); }
 
 static void fill_groups(struct widget *t)
 {
-    int fd = open("/etc/group", O_RDONLY);
+    int fd = open("/msc/group", O_RDONLY);
     char line[512];
 
     if (fd < 0)
@@ -150,12 +150,12 @@ static void fill_groups(struct widget *t)
 static const struct {
     const char *name, *path, *about;
 } services[] = {
-    { "init", "/sbin/init", "Starts and keeps the services below running" },
-    { "privd", "/sbin/privd", "Lets users change their own password" },
-    { "crond", "/sbin/crond", "Runs scheduled jobs" },
-    { "compositor", "/sbin/compositor", "The display and window system" },
-    { "greeter", "/sbin/greeter", "The sign-in screen" },
-    { "terminal", "/bin/terminal", "Text console shells" },
+    { "init", "/osystem/core/init", "Starts and keeps the services below running" },
+    { "privd", "/osystem/core/privd", "Lets users change their own password" },
+    { "crond", "/osystem/core/crond", "Runs scheduled jobs" },
+    { "compositor", "/osystem/core/compositor", "The display and window system" },
+    { "greeter", "/osystem/core/greeter", "The sign-in screen" },
+    { "terminal", "/sysapps/terminal", "Text console shells" },
 };
 
 static void fill_services(struct widget *t)
@@ -238,7 +238,7 @@ static void fill_jobs(struct widget *t)
     struct user_info users[64];
     int n = user_list(users, 64);
 
-    add_crontab(t, "/etc/crontab", true, NULL);
+    add_crontab(t, "/msc/crontab", true, NULL);
     // Other users' jobs are private unless unlocked.
     for (int i = 0; i < n; i++) {
         char path[256];
@@ -256,7 +256,7 @@ static void act_cron(void) { open_app("cron", NULL); }
 
 static void fill_storage(struct widget *t)
 {
-    static const char *const mounts[] = { "/", "/boot" };
+    static const char *const mounts[] = { "/", "/osystem/boot" };
     uint64_t last = 0;
 
     for (size_t i = 0; i < sizeof(mounts) / sizeof(mounts[0]); i++) {
@@ -277,7 +277,7 @@ static void fill_storage(struct widget *t)
 
 static void fill_devices(struct widget *t)
 {
-    struct dir_stream *d = opendir("/dev");
+    struct dir_stream *d = opendir("/osystem/devices");
     struct aegis_dirent *e;
 
     if (!d)
@@ -289,7 +289,7 @@ static void fill_devices(struct widget *t)
 
         if (e->name[0] == '.')
             continue;
-        snprintf(path, sizeof(path), "/dev/%s", e->name);
+        snprintf(path, sizeof(path), "/osystem/devices/%s", e->name);
         if (stat(path, &st) < 0)
             continue;
         if (!strncmp(e->name, "sata", 4) || !strncmp(e->name, "nvme", 4))
@@ -365,7 +365,7 @@ static void act_open_app(void)
 
 static void fill_events(struct widget *t)
 {
-    int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+    int fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK);
     char *buf = malloc(256 * 1024), *p;
     ssize_t n, len = 0;
 
@@ -421,7 +421,7 @@ static const struct snapin snapins[] = {
       "Job:150|Runs as:100|Schedule:130|State:60|Command", fill_jobs, { { "Open Cron Jobs", act_cron } } },
     { "Storage", "glyph:disk", "Mounted file systems and their free space.",
       "Mounted at:120|Type:80|Size:100:right|Free:100:right|Used:70:right", fill_storage, { { NULL, NULL } } },
-    { "Devices", "glyph:cpu", "Devices the system offers to programs, in /dev.",
+    { "Devices", "glyph:cpu", "Devices the system offers to programs, in /osystem/devices.",
       "Device:140|Kind:220|Permissions:110|Owner", fill_devices, { { NULL, NULL } } },
     { "Network", "glyph:network", "Network interfaces and their addresses.",
       "Interface:110|Address:140|Gateway:140|MTU:70:right|Received / sent", fill_network,

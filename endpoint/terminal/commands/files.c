@@ -553,7 +553,7 @@ int cmd_stat(int argc, char **argv)
 
 int cmd_df(int argc, char **argv)
 {
-    static char *defaults[] = { "/", "/boot" };
+    static char *defaults[] = { "/", "/osystem/boot" };
     char **paths = argc > 1 ? argv + 1 : defaults;
     int n = argc > 1 ? argc - 1 : 2;
 

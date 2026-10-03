@@ -3,7 +3,7 @@
 
 // The audio server. Programs connect to "@aegis/audio" (see lib/audio.c)
 // and send PCM; this mixes every stream, resampled to 48 kHz stereo with its
-// own volume, into /dev/audio, and keeps the master volume.
+// own volume, into /osystem/devices/audio, and keeps the master volume.
 
 #define RATE        48000
 #define CHUNK       480                     // frames mixed at a time (10 ms)
@@ -43,7 +43,7 @@ static void open_device(void)
         return;
     tried = true;
     last_try = uptime_ms();
-    if ((dev = open("/dev/audio", O_WRONLY | O_CLOEXEC)) >= 0) {
+    if ((dev = open("/osystem/devices/audio", O_WRONLY | O_CLOEXEC)) >= 0) {
         ioctl(dev, IOCTL_AUDIO_SET_RATE, RATE);
         apply_volume();
     }
@@ -222,7 +222,7 @@ int main(void)
         return 1;
     }
     open_device();
-    syslog("audiod", dev >= 0 ? "playing to /dev/audio" : "no sound device; streams are discarded");
+    syslog("audiod", dev >= 0 ? "playing to /osystem/devices/audio" : "no sound device; streams are discarded");
     for (;;) {
         struct pollfd fds[MAX_CLIENTS + 1];
         int map[MAX_CLIENTS + 1], n = 0;

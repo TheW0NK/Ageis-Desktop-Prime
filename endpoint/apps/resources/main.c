@@ -160,7 +160,7 @@ static void rate(double bytes_per_s, char *buf, size_t size)
 
 static void show_disks(void)
 {
-    static const char *const mounts[] = { "/", "/boot" };
+    static const char *const mounts[] = { "/", "/osystem/boot" };
     struct widget *box = ui_get(win, "disks");
     uint64_t seen_blocks = 0;
 
@@ -261,7 +261,7 @@ static void open_tasks(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/bin/tasks", NULL);
+    launch("/sysapps/tasks", NULL);
 }
 
 int main(void)

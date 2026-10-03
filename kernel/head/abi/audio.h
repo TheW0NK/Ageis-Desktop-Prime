@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-// /dev/audio plays 16-bit little-endian stereo PCM written to it. One
+// /osystem/devices/audio plays 16-bit little-endian stereo PCM written to it. One
 // program (the audio server) opens it for writing at a time.
 
 #define IOCTL_AUDIO_INFO        0x300   // arg: struct aegis_audioinfo *

@@ -655,7 +655,7 @@ int64_t mime_date(const char *date)
 static void random_hex(char *out, int n)
 {
     uint8_t b[16];
-    int fd = open("/dev/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/urandom", O_RDONLY);
 
     if (fd < 0 || read(fd, b, sizeof(b)) != sizeof(b)) {
         int64_t t = time(NULL);

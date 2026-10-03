@@ -98,7 +98,7 @@ static const struct {
     { "slider", "Slider", "value=50" },
     { "progress", "Progress bar", "value=40" },
     { "spin", "Number field", "value=1" },
-    { "image", "Image", "src=/usr/share/backgrounds/Sea.png|width=200|height=125|scale=fit" },
+    { "image", "Image", "src=/osystem/resources/backgrounds/Sea.png|width=200|height=125|scale=fit" },
     { "separator", "Separator", "" },
     { "spacer", "Spacer", "" },
     { "canvas", "Canvas", "height=120" },
@@ -751,11 +751,11 @@ static void on_test(struct widget *w, void *u)
             char folder[512];
 
             snprintf(folder, sizeof(folder), "%.*s", (int)(strlen(path) - 8), path);
-            launch("/bin/apprun", folder);
+            launch("/sysapps/apprun", folder);
             return;
         }
     }
-    snprintf(dir, sizeof(dir), "/tmp/builder-%d", getpid());
+    snprintf(dir, sizeof(dir), "/osystem/temp/builder-%d", getpid());
     mkdir(dir, 0700);
     snprintf(file, sizeof(file), "%s/app.aui", dir);
     {
@@ -768,7 +768,7 @@ static void on_test(struct widget *w, void *u)
         }
         free(aui);
     }
-    launch("/bin/apprun", dir);
+    launch("/sysapps/apprun", dir);
 }
 
 int main(int argc, char **argv)

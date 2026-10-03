@@ -8,7 +8,7 @@
 #include "sched.h"
 #include "abi/poll.h"
 
-// /dev: a flat, in-memory directory of device nodes. Opening a node asks its
+// /osystem/devices: a flat, in-memory directory of device nodes. Opening a node asks its
 // driver for a struct file with the driver's own file_ops.
 
 #define MAX_NODES   64
@@ -226,7 +226,7 @@ static int open_input(void *ctx, uint32_t flags, struct file **out)
     return *out ? 0 : -ENOMEM;
 }
 
-// /dev/kmsg: the kernel log, from the oldest message still kept.
+// /osystem/devices/kmsg: the kernel log, from the oldest message still kept.
 static struct wait_queue kmsg_wq = WAIT_QUEUE_INIT;
 
 static int64_t kmsg_read(struct file *f, void *buf, size_t size)

@@ -69,7 +69,7 @@ void ui_load_user_theme(void)
     }
     if (!home)
         return;
-    // /users/<name>/home -> /users/<name>/system/settings/theme
+    // /userfiles/<name>/home -> /userfiles/<name>/system/settings/theme
     snprintf(path, sizeof(path), "%s/../system/settings/theme", home);
     if ((fd = open(path, O_RDONLY)) < 0)
         return;

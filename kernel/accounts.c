@@ -93,14 +93,14 @@ int account_by_name(const char *name, struct account *out)
 {
     struct account_query q = { name, 0, out };
 
-    return each_line("/etc/passwd", 7, passwd_match, &q);
+    return each_line("/msc/passwd", 7, passwd_match, &q);
 }
 
 int account_by_uid(uint32_t uid, struct account *out)
 {
     struct account_query q = { NULL, uid, out };
 
-    return each_line("/etc/passwd", 7, passwd_match, &q);
+    return each_line("/msc/passwd", 7, passwd_match, &q);
 }
 
 struct group_query {
@@ -148,7 +148,7 @@ static bool in_group(const char *user, const char *group)
 {
     struct group_query q = { user, NULL, group, false };
 
-    each_line("/etc/group", 4, group_scan, &q);
+    each_line("/msc/group", 4, group_scan, &q);
     return q.member;
 }
 
@@ -201,7 +201,7 @@ static bool verify_password(const char *name, const char *password)
     uint8_t diff = 0;
     struct sha256 ctx;
 
-    if (each_line("/etc/shadow", 2, shadow_match, &q))
+    if (each_line("/msc/shadow", 2, shadow_match, &q))
         return false;
     s = q.hash;
     if (*s != '$')
@@ -252,7 +252,7 @@ int account_login(struct process *p, const char *name, const char *password)
     c.uid = c.euid = a.uid;
     c.gid = c.egid = a.gid;
     q = (struct group_query){ a.name, &c, NULL, false };
-    each_line("/etc/group", 4, group_scan, &q);
+    each_line("/msc/group", 4, group_scan, &q);
     p->cred = c;
     return 0;
 }
@@ -272,7 +272,7 @@ int account_become(struct process *p, uint32_t uid)
     c.uid = c.euid = a.uid;
     c.gid = c.egid = a.gid;
     q = (struct group_query){ a.name, &c, NULL, false };
-    each_line("/etc/group", 4, group_scan, &q);
+    each_line("/msc/group", 4, group_scan, &q);
     p->cred = c;
     return 0;
 }

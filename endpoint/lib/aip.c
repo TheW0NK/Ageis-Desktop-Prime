@@ -11,13 +11,13 @@
 //   SHA-256 of everything above (32 bytes), then "AIPEND\0\0"
 //
 // The manifest's exec is the program and its arguments: a path inside the
-// package, or an absolute path (a system program such as /bin/apprun),
+// package, or an absolute path (a system program such as /sysapps/apprun),
 // with %d standing for the folder the app is installed in.
 //
-// Installed apps go to /apps/<id> (everyone; needs an administrator) or the
+// Installed apps go to /userApps/<id> (everyone; needs an administrator) or the
 // user's system/appdata/apps/<id>. Each install leaves a record (the
 // manifest, the granted permissions, the file list and a copy of the
-// package for repair) in /var/lib/aip/<id> or system/appdata/aip/<id>.
+// package for repair) in /osystem/data/aip/<id> or system/appdata/aip/<id>.
 
 #define MAGIC       "AEGISAIP"
 #define TRAILER     "AIPEND\0\0"
@@ -244,9 +244,9 @@ static void scope_dirs(bool everyone, char *apps, char *records, char *registry,
     struct user_info me;
 
     if (everyone) {
-        strlcpy(apps, "/apps", size);
-        strlcpy(records, "/var/lib/aip", size);
-        strlcpy(registry, "/usr/share/applications", size);
+        strlcpy(apps, "/userApps", size);
+        strlcpy(records, "/osystem/data/aip", size);
+        strlcpy(registry, "/sysapps/registry", size);
         return;
     }
     user_current(&me);
@@ -392,10 +392,10 @@ int aip_install(const struct aip *p, bool everyone, const char *granted, char *e
         char exec[600], script[800];
 
         // A small script, so arguments in exec are kept.
-        mkdirs("/apps/bin", 0755);
+        mkdirs("/userApps/commands", 0755);
         expand_exec(p->exec, dir, exec, sizeof(exec));
-        snprintf(path, sizeof(path), "/apps/bin/%s", p->command);
-        snprintf(script, sizeof(script), "#!/bin/terminal\n%s $@\n", exec);
+        snprintf(path, sizeof(path), "/userApps/commands/%s", p->command);
+        snprintf(script, sizeof(script), "#!/sysapps/terminal\n%s $@\n", exec);
         unlink(path);
         if (*p->exec != '/' && !strchr(p->exec, ' ')) {
             symlink(exec, path);
@@ -489,7 +489,7 @@ int aip_uninstall(const char *id, bool everyone, char *error, size_t esize)
     }
     manifest_get(manifest, "command", command, sizeof(command));
     if (everyone && *command && valid_id(command)) {
-        snprintf(path, sizeof(path), "/apps/bin/%s", command);
+        snprintf(path, sizeof(path), "/userApps/commands/%s", command);
         unlink(path);
     }
     snprintf(path, sizeof(path), "%s/aip-%s.app", registry, id);

@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-// /dev/<disk> and /dev/<disk>p<N>: disks and their partitions, for root.
+// /osystem/devices/<disk> and /osystem/devices/<disk>p<N>: disks and their partitions, for root.
 // read() and write() work at the file offset (lseek) and must be whole
 // sectors at sector-aligned offsets.
 

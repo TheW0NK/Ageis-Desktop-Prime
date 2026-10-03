@@ -1,10 +1,10 @@
 #include "aegis.h"
 
-// Optional parts of the system, switched in /etc/features.conf
+// Optional parts of the system, switched in /msc/features.conf
 // ("name=on" or "name=off"). Unlisted features use their default.
 
-#define FEATURES "/etc/features.conf"
-#define BCD_PATH "/boot/EFI/Aegis/bcd"
+#define FEATURES "/msc/features.conf"
+#define BCD_PATH "/osystem/boot/EFI/Aegis/bcd"
 
 static const struct feature features[] = {
     { "console", "Text console", "A shell on Ctrl+Alt+F2 for when the desktop cannot help. Takes effect after "

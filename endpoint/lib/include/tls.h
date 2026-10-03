@@ -4,9 +4,9 @@
 #include "aegis.h"
 
 // TLS client connections (BearSSL). Certificates are checked against the
-// roots in /etc/ssl/certs/ca-bundle.pem (or ca_file) and the host name.
+// roots in /osystem/resources/certificates/ca-bundle.pem (or ca_file) and the host name.
 
-#define TLS_CA_BUNDLE   "/etc/ssl/certs/ca-bundle.pem"
+#define TLS_CA_BUNDLE   "/osystem/resources/certificates/ca-bundle.pem"
 
 struct tls;
 

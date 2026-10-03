@@ -15,7 +15,7 @@ int cmd_help(int argc, char **argv)
     printf("Built-in commands:\n");
     for (size_t i = 0; i < command_count; i++)
         printf("  %-11s %s\n", commands[i].name, commands[i].help);
-    printf("Programs in /bin can be run by name, or by path with ./NAME or run.\n");
+    printf("Programs in /sysapps can be run by name, or by path with ./NAME or run.\n");
     return 0;
 }
 

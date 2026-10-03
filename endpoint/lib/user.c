@@ -1,9 +1,9 @@
 #include "aegis.h"
 
-// The user database (/etc/passwd, /etc/group) and per-user settings.
+// The user database (/msc/passwd, /msc/group) and per-user settings.
 //
-// Every user has /users/<name>/home (their files: Desktop, Documents,
-// Downloads, Images, Music) and /users/<name>/system (settings, credentials,
+// Every user has /userfiles/<name>/home (their files: Desktop, Documents,
+// Downloads, Images, Music) and /userfiles/<name>/system (settings, credentials,
 // appdata). Settings are small files in system/settings: name, theme,
 // language, background, picture.
 
@@ -48,7 +48,7 @@ static void fill(struct user_info *u, char **f)
 // Calls fn for each passwd entry until it returns true.
 static bool each_user(bool (*fn)(char **f, void *ctx), void *ctx)
 {
-    int fd = open("/etc/passwd", O_RDONLY);
+    int fd = open("/msc/passwd", O_RDONLY);
     char line[512];
     bool found = false;
 
@@ -137,7 +137,7 @@ int user_list(struct user_info *out, int max)
 
 bool user_in_group(const char *name, const char *group)
 {
-    int fd = open("/etc/group", O_RDONLY);
+    int fd = open("/msc/group", O_RDONLY);
     char line[1024];
     bool found = false;
 
@@ -230,14 +230,14 @@ static int make_dir(const char *path, uint32_t mode, uint32_t uid, uint32_t gid,
 }
 
 // Creates whatever is missing of the user's folders. Run as root (it sets
-// ownership) or as the user (folders under an existing /users/<name>).
+// ownership) or as the user (folders under an existing /userfiles/<name>).
 int user_setup_dirs(const struct user_info *u)
 {
     char path[256];
     bool root = geteuid() == 0;
     int bad = 0;
 
-    make_dir("/users", 0755, 0, 0, root);
+    make_dir("/userfiles", 0755, 0, 0, root);
     bad |= make_dir(u->dir, 0711, u->uid, u->gid, root);
     snprintf(path, sizeof(path), "%s/home", u->dir);
     bad |= make_dir(path, 0700, u->uid, u->gid, root);

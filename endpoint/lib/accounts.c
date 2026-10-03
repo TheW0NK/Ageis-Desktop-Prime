@@ -1,8 +1,8 @@
 #include "aegis.h"
 #include "bearssl.h"
 
-// Account administration: password hashes, /etc/passwd, /etc/shadow and
-// /etc/group. Changing these needs root.
+// Account administration: password hashes, /msc/passwd, /msc/shadow and
+// /msc/group. Changing these needs root.
 //
 // Hash format (checked by the kernel): $aegis-sha256$ITER$SALT_HEX$HASH_HEX,
 // H1 = SHA256(salt || password), Hn = SHA256(Hn-1 || salt || password).
@@ -58,7 +58,7 @@ int password_hash(const char *password, char *out, size_t size)
 {
     uint8_t salt[16], h[32];
     char salt_hex[33], h_hex[65];
-    int fd = open("/dev/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/urandom", O_RDONLY);
 
     if (fd < 0 || read(fd, salt, sizeof(salt)) != sizeof(salt)) {
         if (fd >= 0)
@@ -198,12 +198,12 @@ int account_set_password(const char *name, const char *password)
 
     if (password_hash(password, hash, sizeof(hash)) < 0)
         return -1;
-    return set_field("/etc/shadow", name, 1, hash);
+    return set_field("/msc/shadow", name, 1, hash);
 }
 
 int account_check_password(const char *name, const char *password)
 {
-    int fd = open("/etc/shadow", O_RDONLY);
+    int fd = open("/msc/shadow", O_RDONLY);
     char line[512];
     size_t n = strlen(name);
     bool ok = false;
@@ -226,7 +226,7 @@ int account_check_password(const char *name, const char *password)
 
 int account_set_display_name(const char *name, const char *display)
 {
-    return set_field("/etc/passwd", name, 4, display);
+    return set_field("/msc/passwd", name, 4, display);
 }
 
 // Adds or removes name from a group's member list.
@@ -284,7 +284,7 @@ int group_set_member(const char *group, const char *user, bool member)
 {
     struct member_edit m = { group, user, member, { 0 } };
 
-    return rewrite("/etc/group", edit_member, &m, NULL);
+    return rewrite("/msc/group", edit_member, &m, NULL);
 }
 
 static bool valid_name(const char *name)
@@ -335,15 +335,15 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
         return -1;
     }
     uid = next_uid();
-    snprintf(line, sizeof(line), "%s:x:%u:%u:%s:/users/%s/home:/bin/terminal", name, uid, uid,
+    snprintf(line, sizeof(line), "%s:x:%u:%u:%s:/userfiles/%s/home:/sysapps/terminal", name, uid, uid,
              display && *display ? display : name, name);
-    if (rewrite("/etc/passwd", NULL, NULL, line) < 0)
+    if (rewrite("/msc/passwd", NULL, NULL, line) < 0)
         return -1;
     snprintf(line, sizeof(line), "%s:x:%u:%s", name, uid, name);
-    if (rewrite("/etc/group", NULL, NULL, line) < 0)
+    if (rewrite("/msc/group", NULL, NULL, line) < 0)
         return -1;
     snprintf(line, sizeof(line), "%s:%s:", name, hash);
-    if (rewrite("/etc/shadow", NULL, NULL, line) < 0)
+    if (rewrite("/msc/shadow", NULL, NULL, line) < 0)
         return -1;
     group_set_member("audio", name, true);
     group_set_member("video", name, true);
@@ -393,9 +393,9 @@ int account_remove(const char *name, bool remove_files)
     group_set_member("adm", name, false);
     group_set_member("audio", name, false);
     group_set_member("video", name, false);
-    if (rewrite("/etc/passwd", drop_line, (void *)name, NULL) < 0
-        || rewrite("/etc/shadow", drop_line, (void *)name, NULL) < 0
-        || rewrite("/etc/group", drop_line, (void *)name, NULL) < 0)
+    if (rewrite("/msc/passwd", drop_line, (void *)name, NULL) < 0
+        || rewrite("/msc/shadow", drop_line, (void *)name, NULL) < 0
+        || rewrite("/msc/group", drop_line, (void *)name, NULL) < 0)
         return -1;
     if (remove_files)
         remove_path(u.dir);

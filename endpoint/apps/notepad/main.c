@@ -254,7 +254,7 @@ static void on_newwin(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/bin/notepad", NULL);
+    launch("/sysapps/notepad", NULL);
 }
 
 static void on_open(struct widget *w, void *u)

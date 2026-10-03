@@ -1,5 +1,5 @@
 name=Audio Player
-exec=/bin/music
+exec=/sysapps/music
 icon=music
 suite=Default
 description=Play music and sounds

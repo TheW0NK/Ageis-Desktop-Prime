@@ -140,10 +140,10 @@ static void open_source(int i)
     log_len = 0;
     if (log_text)
         log_text[0] = 0;
-    if (!strcmp(sources[i].path, "/dev/kmsg")) {
-        if ((kmsg_fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK)) < 0
+    if (!strcmp(sources[i].path, "/osystem/devices/kmsg")) {
+        if ((kmsg_fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK)) < 0
             && ui_elevate(win, "The system log is only for administrators."))
-            kmsg_fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+            kmsg_fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK);
         if (kmsg_fd < 0) {
             snprintf(msg, sizeof(msg), "The system log cannot be read: %s.\n", strerror(errno));
             append_log(msg, strlen(msg));
@@ -241,16 +241,16 @@ int main(int argc, char **argv)
     ui_load_user_theme();
     if (!(win = ui_load_string_named(page, handlers, NULL, "logs")))
         return 1;
-    add_source("Kernel and system", "/dev/kmsg");
+    add_source("Kernel and system", "/osystem/devices/kmsg");
     if (user_current(&me) == 0) {
         user_path(&me, "system/session.log", path, sizeof(path));
         add_source("This session", path);
     }
-    if ((d = opendir("/var/log"))) {
+    if ((d = opendir("/osystem/logs"))) {
         while ((e = readdir(d))) {
             if (e->name[0] == '.')
                 continue;
-            snprintf(path, sizeof(path), "/var/log/%s", e->name);
+            snprintf(path, sizeof(path), "/osystem/logs/%s", e->name);
             add_source(e->name, path);
         }
         closedir(d);

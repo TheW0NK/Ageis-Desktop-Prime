@@ -422,7 +422,7 @@ static void on_terminal(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/bin/term", "/");
+    launch("/sysapps/term", "/");
 }
 
 static void on_poweroff(struct widget *w, void *u)

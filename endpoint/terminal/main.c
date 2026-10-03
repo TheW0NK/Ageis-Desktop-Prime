@@ -628,7 +628,7 @@ static void prompt_string(char *buf, size_t size)
 static void load_identity(void)
 {
     char line[512];
-    int fd = open("/etc/passwd", O_RDONLY);
+    int fd = open("/msc/passwd", O_RDONLY);
     uint32_t uid = getuid();
 
     snprintf(user_name, sizeof(user_name), "%u", uid);
@@ -704,9 +704,9 @@ static void do_login(void)
         chdir("/");
     setenv("HOME", home_dir);
     setenv("USER", user_name);
-    setenv("PATH", "/bin:/sbin:/apps/bin");
+    setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
     printf("\n");
-    show_file("/etc/motd");
+    show_file("/msc/motd");
 }
 
 int main(int argc, char **argv)
@@ -724,12 +724,12 @@ int main(int argc, char **argv)
         if (!getenv("USER"))
             setenv("USER", user_name);
         if (!getenv("PATH"))
-            setenv("PATH", "/bin:/sbin:/apps/bin");
+            setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
         if (!run_line(argv[2], &code))
             return code;
         return last_status;
     }
-    // terminal SCRIPT [ARGS...]: run each line of a script ("#!/bin/terminal");
+    // terminal SCRIPT [ARGS...]: run each line of a script ("#!/sysapps/terminal");
     // $@ in a line stands for the arguments.
     if (argc > 1 && argv[1][0] != '-') {
         struct aegis_stat st;
@@ -748,7 +748,7 @@ int main(int argc, char **argv)
         if (!getenv("HOME"))
             setenv("HOME", home_dir);
         if (!getenv("PATH"))
-            setenv("PATH", "/bin:/sbin:/apps/bin");
+            setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
         for (char *l = text, *next; l && *l; l = next) {
             char expanded[LINE_MAX], *at;
 
@@ -781,7 +781,7 @@ int main(int argc, char **argv)
         setenv("HOME", home_dir);
         setenv("USER", user_name);
         if (!getenv("PATH"))
-            setenv("PATH", "/bin:/sbin:/apps/bin");
+            setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
     } else {
         if (uname(&u) == 0)
             printf("\n%s %s (%s)\n", u.sysname, u.release, u.machine);

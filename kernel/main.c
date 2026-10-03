@@ -96,19 +96,19 @@ static void mount_boot(void)
     for (size_t i = 0; i < block_count(); i++) {
         struct block_device *d = block_at(i);
 
-        if (d->parent && !memcmp(d->type_guid, guid, 16) && vfs_mount("fat", d, "/boot", false) == 0)
+        if (d->parent && !memcmp(d->type_guid, guid, 16) && vfs_mount("fat", d, "/osystem/boot", false) == 0)
             return;
     }
 }
 
 static void mount_dev(void)
 {
-    int ret = vfs_mkdir("/dev", NULL, &root_cred, 0755);
+    int ret = vfs_mkdir("/osystem/devices", NULL, &root_cred, 0755);
 
     devfs_set_time(rtc_now());
-    if ((ret == 0 || ret == -EEXIST) && (ret = vfs_mount("devfs", NULL, "/dev", false)) == 0)
+    if ((ret == 0 || ret == -EEXIST) && (ret = vfs_mount("devfs", NULL, "/osystem/devices", false)) == 0)
         return;
-    kprintf("Cannot mount /dev: error %d\n", ret);
+    kprintf("Cannot mount /osystem/devices: error %d\n", ret);
 }
 
 static void kinit(void *arg)
@@ -137,11 +137,11 @@ static void kinit(void *arg)
     e1000_init();
 
     static char *argv[] = { "init", NULL };
-    static char *envp[] = { "PATH=/bin:/sbin:/apps/bin", "HOME=/", NULL };
-    int pid, ret = vfs_root() ? process_spawn("/sbin/init", argv, envp, NULL, &pid) : -ENOENT;
+    static char *envp[] = { "PATH=/sysapps:/osystem/core:/userApps/commands", "HOME=/", NULL };
+    int pid, ret = vfs_root() ? process_spawn("/osystem/core/init", argv, envp, NULL, &pid) : -ENOENT;
 
     if (ret < 0) {
-        kprintf("Cannot start /sbin/init (error %d); starting the kernel monitor\n", ret);
+        kprintf("Cannot start /osystem/core/init (error %d); starting the kernel monitor\n", ret);
         if (!thread_create("monitor", monitor_thread, NULL))
             panic_code(STOP_THREAD_START, "Cannot start the kernel monitor");
     }

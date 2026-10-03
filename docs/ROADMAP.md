@@ -38,7 +38,7 @@ records the plan for turning it into a desktop OS and the decisions behind it.
 ### Per-user layout
 
 ```
-/users/<name>/
+/userfiles/<name>/
     home/        Downloads, Documents, Music, Images, Desktop (shortcuts)
     system/      settings (theme, language, background, picture, display name)
                  credentials/  (encrypted with a key derived from the login password)
@@ -56,7 +56,7 @@ reset a forgotten password but cannot recover the encrypted credentials.
 | 2. Kernel services | Done |
 | 3. Networking | Done for IPv4 and TLS. IPv6 is deferred until something needs it. |
 | 4. Graphics and windowing | Done: compositor, libgfx, AUI and toolkit, sign-in screen, desktop shell, Terminal. Ctrl+Alt+F2 shows the text console, Ctrl+Alt+F1 returns. |
-| 5. Audio and camera | Done: Intel HD Audio driver, audio server with per-app streams and volume keys, WAV/Ogg/MP3 playback, Audio Player; a virtual test camera (/dev/video0) and the Camera app. A USB Video Class driver for real cameras comes later. |
+| 5. Audio and camera | Done: Intel HD Audio driver, audio server with per-app streams and volume keys, WAV/Ogg/MP3 playback, Audio Player; a virtual test camera (/osystem/devices/video0) and the Camera app. A USB Video Class driver for real cameras comes later. |
 | 6. Users and language | Started: encrypted credential store (PBKDF2-SHA256 sealed master key, ChaCha20-Poly1305 per secret), unlocked at sign-in. Translations not started. |
 | 7. Desktop basics | Mostly done: shared clipboard, notifications, screenshots, lock screen, recycle bin, file search in the launcher, window snapping. Left: drag and drop, workspaces, command palette, guest account. |
 | 8. App model | Started: `.aip` packages with an installer that asks which permissions to grant (see [PACKAGES.md](PACKAGES.md)), repair and uninstall, `aip` in the terminal. Left: signing, the sandbox that enforces permissions, powersudo. |
@@ -68,7 +68,7 @@ reset a forgotten password but cannot recover the encrypted credentials.
 
 1. **Input and test tooling.** Automated QEMU test script; PS/2 and USB mouse and
    tablet; full-size keyboards (numpad, F13-F24, media keys, lock LEDs); one
-   event stream at `/dev/input`; `/dev` filesystem; QEMU run targets with USB,
+   event stream at `/osystem/devices/input`; `/osystem/devices` filesystem; QEMU run targets with USB,
    network and audio devices.
 2. **Kernel services.** Memory mapping and shared memory, pipes (and `|` / `>` in
    the shell), local sockets, message passing, `poll`, signals, threads, FPU/SSE

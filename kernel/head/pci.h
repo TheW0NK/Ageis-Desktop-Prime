@@ -29,9 +29,9 @@ int pci_alloc_vector(irq_handler_t handler);
 int pci_enable_msi(const struct pci_device *d, irq_handler_t handler);
 int pci_enable_msix(const struct pci_device *d, int count, irq_handler_t handler);
 
-// Sound (drivers/hda.c): /dev/audio.
+// Sound (drivers/hda.c): /osystem/devices/audio.
 void hda_init(void);
-// The test camera (drivers/vcam.c): /dev/video0.
+// The test camera (drivers/vcam.c): /osystem/devices/video0.
 void vcam_init(void);
 
 #endif

@@ -428,7 +428,7 @@ const char *input_device_name(int dev, uint32_t *kind)
     return in.devs[dev].name;
 }
 
-// ---- /dev/input ----
+// ---- /osystem/devices/input ----
 
 static int64_t f_read(struct file *f, void *buf, size_t size)
 {

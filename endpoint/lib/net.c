@@ -155,7 +155,7 @@ int netconfig(int op, int index, struct aegis_netif *info)
 static bool hosts_lookup(const char *name, uint32_t *addr)
 {
     char line[256];
-    int fd = open("/etc/hosts", O_RDONLY);
+    int fd = open("/msc/hosts", O_RDONLY);
     bool found = false;
 
     if (fd < 0)

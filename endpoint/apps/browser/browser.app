@@ -1,5 +1,5 @@
 name=Web Browser
-exec=/bin/browser
+exec=/sysapps/browser
 icon=browser
 suite=Default
 description=Browse web pages and local files

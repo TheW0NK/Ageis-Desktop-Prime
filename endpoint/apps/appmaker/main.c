@@ -305,7 +305,7 @@ static void on_design(struct widget *w, void *u)
         return;
     save_code();
     project_file("app.aui", path, sizeof(path));
-    launch("/bin/builder", path);
+    launch("/sysapps/builder", path);
     status("Window Builder is open. Save there, then run the app here.");
 }
 
@@ -315,7 +315,7 @@ static void on_run(struct widget *w, void *u)
     (void)u;
     if (!*current || !save_code())
         return;
-    launch("/bin/apprun", current);
+    launch("/sysapps/apprun", current);
 }
 
 static void on_save(struct widget *w, void *u)
@@ -357,7 +357,7 @@ static void on_install(struct widget *w, void *u)
     user_path(&me, "system/appdata/applications", dir, sizeof(dir));
     mkdir(dir, 0755);
     installed_path(strrchr(current, '/') + 1, path, sizeof(path));
-    snprintf(text, sizeof(text), "name=%s\nexec=/bin/apprun %s\nicon=%s\nsuite=%s\ndescription=%s\n", name,
+    snprintf(text, sizeof(text), "name=%s\nexec=/sysapps/apprun %s\nicon=%s\nsuite=%s\ndescription=%s\n", name,
              current, *icon ? icon : "appmaker", *suite ? suite : "Default", about);
     if (!spill(path, text)) {
         ui_message(win, "App Maker", "The app could not be installed.", "OK");
@@ -386,7 +386,7 @@ static void on_folder(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/bin/files", *current ? current : apps_dir);
+    launch("/sysapps/files", *current ? current : apps_dir);
 }
 
 static void on_delete(struct widget *w, void *u)

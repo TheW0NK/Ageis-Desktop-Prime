@@ -11,7 +11,7 @@
 // desktop until it exits. The exit status tells the greeter what to do
 // next: 0 sign out, 10 shut down, 11 restart.
 
-#define DESKTOP "/sbin/desktop"
+#define DESKTOP "/osystem/core/desktop"
 
 static void reply(const char *fmt, const char *arg)
 {
@@ -26,13 +26,13 @@ static void redirect_output(const struct user_info *u)
     // The desktop's messages go to the user's session log.
     user_path(u, "system/session.log", path, sizeof(path));
     if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600)) < 0)
-        fd = open("/dev/null", O_WRONLY);
+        fd = open("/osystem/devices/null", O_WRONLY);
     if (fd >= 0) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
         close(fd);
     }
-    if ((fd = open("/dev/null", O_RDONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/null", O_RDONLY)) >= 0) {
         dup2(fd, STDIN_FILENO);
         close(fd);
     }
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
     setenv("HOME", u.home);
     setenv("USER", u.name);
-    setenv("PATH", "/bin:/sbin:/apps/bin");
+    setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
     if (user_setting_get(&u, "theme", theme, sizeof(theme)) > 0)
         setenv("AEGIS_THEME", theme);
     if (user_setting_get(&u, "language", lang, sizeof(lang)) > 0)

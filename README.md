@@ -27,7 +27,7 @@ The default account is `user` with password `aegis`
     make iso            # build/aegis-install.iso, the install media
 
 The ISO starts on UEFI computers and virtual machines from a CD/DVD drive, or
-written to a USB stick (`dd if=build/aegis-install.iso of=/dev/sdX bs=4M`).
+written to a USB stick (`dd if=build/aegis-install.iso of=/osystem/devices/sdX bs=4M`).
 It loads a live copy of the system into memory and opens the installer,
 which asks for a disk, your name, a password and a computer name, then
 **erases that disk** and installs Aegis on it: a 256 MiB EFI system partition
@@ -49,10 +49,10 @@ Recovery too. Recovery finds the installed system and offers:
   boot menu wait, screen resolution and extra kernel options.
 - **Boot configuration**: edit the BCD file directly.
 - **Reset a password** (the account's saved credentials are set aside).
-- **System image**: save the whole system to `/var/backups`, or restore one.
+- **System image**: save the whole system to `/osystem/backups`, or restore one.
 - **Reinstall**: put back fresh system files keeping accounts, settings, apps
   and files, or erase the disk and install again.
-- **Terminal**: a root terminal with the system at `/mnt/system`.
+- **Terminal**: a root terminal with the system at `/osystem/volumes/system`.
 
 `sudo crash` stops the computer with the crash screen, to see it; the stop
 codes and their lines are in `kernel/head/stopcodes.h`.
@@ -63,7 +63,7 @@ codes and their lines are in `kernel/head/stopcodes.h`.
 commands, key presses, mouse and tablet input, device hot-plug and screenshots,
 then prints the serial log. For example:
 
-    tools/qemu-test.py @login:user:aegis 'ls /dev' @expect:input
+    tools/qemu-test.py @login:user:aegis 'ls /osystem/devices' @expect:input
     tools/qemu-test.py --usb --tablet @login:user:aegis 'sudo evtest 10' aegis @click:640,400
 
 Run it with `--help` for every step type. `make test` runs the smoke tests and

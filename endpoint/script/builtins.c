@@ -517,7 +517,7 @@ static struct script_value b_random(struct script *s, struct script_value *a, in
 
     (void)s;
     if (!rng_state) {
-        int fd = open("/dev/urandom", O_RDONLY);
+        int fd = open("/osystem/devices/urandom", O_RDONLY);
 
         if (fd < 0 || read(fd, &rng_state, 8) != 8)
             rng_state = uptime_ms() | 1;
@@ -691,7 +691,7 @@ static struct script_value b_run(struct script *s, struct script_value *a, int n
         return script_nil();
     saved = dup(STDOUT_FILENO);
     dup2(fds[1], STDOUT_FILENO);
-    pid = spawn("/bin/terminal", argv, environ);
+    pid = spawn("/sysapps/terminal", argv, environ);
     dup2(saved, STDOUT_FILENO);
     close(saved);
     close(fds[1]);

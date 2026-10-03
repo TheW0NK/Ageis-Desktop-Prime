@@ -3,7 +3,7 @@
 // The Aegis compositor: owns the display, keyboard and pointer; shows client
 // windows from shared memory with frames, shadows and a cursor.
 //
-// compositor [PROGRAM [ARGS...]]   starts PROGRAM (default /sbin/greeter)
+// compositor [PROGRAM [ARGS...]]   starts PROGRAM (default /osystem/core/greeter)
 
 #define MAX_CLIENTS     64
 
@@ -678,7 +678,7 @@ void vt_enter(void)
 
 static bool open_screen(void)
 {
-    if ((screen.fd = open("/dev/fb0", O_RDWR | O_CLOEXEC)) < 0)
+    if ((screen.fd = open("/osystem/devices/fb0", O_RDWR | O_CLOEXEC)) < 0)
         return false;
     if (ioctl(screen.fd, IOCTL_FB_INFO, (unsigned long)&screen.info) < 0)
         return false;
@@ -702,11 +702,11 @@ int main(int argc, char **argv)
 
     signal(SIGPIPE, SIG_IGN);
     if (!open_screen()) {
-        perror("compositor: /dev/fb0");
+        perror("compositor: /osystem/devices/fb0");
         return 1;
     }
     if ((input = input_open_device()) < 0) {
-        perror("compositor: /dev/input");
+        perror("compositor: /osystem/devices/input");
         return 1;
     }
     if ((lfd = unix_listen(WM_SOCKET, SOCK_SEQPACKET)) < 0) {
@@ -721,9 +721,9 @@ int main(int argc, char **argv)
     damage((struct rect){ 0, 0, screen.width, screen.height });
     render();
 
-    snprintf(path, sizeof(path), strchr(session[0], '/') ? "%s" : "/sbin/%s", session[0]);
+    snprintf(path, sizeof(path), strchr(session[0], '/') ? "%s" : "/osystem/core/%s", session[0]);
     if ((session_pid = spawn(path, session, environ)) < 0) {
-        snprintf(path, sizeof(path), "/bin/%s", session[0]);
+        snprintf(path, sizeof(path), "/sysapps/%s", session[0]);
         if ((session_pid = spawn(path, session, environ)) < 0)
             dprintf(STDERR_FILENO, "compositor: cannot start %s\n", session[0]);
     }

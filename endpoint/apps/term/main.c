@@ -425,7 +425,7 @@ static int start_shell(const char *cmd)
         argv[1] = "--no-login";
         argv[2] = NULL;
     }
-    child = spawn("/bin/terminal", argv, environ);
+    child = spawn("/sysapps/terminal", argv, environ);
     for (int i = 0; i < 3; i++) {
         dup2(saved[i], i);
         close(saved[i]);

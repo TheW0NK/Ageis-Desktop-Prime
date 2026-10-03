@@ -21,12 +21,12 @@ One `key=value` per line.
 | `id` | Lowercase letters, digits, `-` and `.`; at most 31 characters. Required. |
 | `name` | Shown in the launcher. Required. |
 | `version`, `publisher`, `description` | Shown before installing. |
-| `exec` | The program and its arguments. Required. A relative path is inside the package; an absolute one is a system program (`/bin/apprun`). `%d` is the folder the app is installed in. |
+| `exec` | The program and its arguments. Required. A relative path is inside the package; an absolute one is a system program (`/sysapps/apprun`). `%d` is the folder the app is installed in. |
 | `icon` | A PNG in the package, or the name of a built-in icon. |
 | `suite` | `Default`, `System`, `Administrative` or `Development`. |
 | `opens` | File types it opens: `.txt;.md`. |
 | `permissions` | Comma-separated: see below. |
-| `command` | A command name put on everyone's `PATH` (`/apps/bin`) when installed for everyone. |
+| `command` | A command name put on everyone's `PATH` (`/userApps/commands`) when installed for everyone. |
 | `scope` | `user`, `machine` or `either` (default). |
 
 ### Permissions
@@ -45,9 +45,9 @@ install record). Enforcing it is the sandbox's job, which is not built yet.
 
 | | Just me | Everyone (administrator) |
 |---|---|---|
-| Files | `~/../system/appdata/apps/<id>` | `/apps/<id>` |
-| Launcher entry | `system/appdata/applications/aip-<id>.app` | `/usr/share/applications/aip-<id>.app` |
-| Install record | `system/appdata/aip/<id>` | `/var/lib/aip/<id>` |
+| Files | `~/../system/appdata/apps/<id>` | `/userApps/<id>` |
+| Launcher entry | `system/appdata/applications/aip-<id>.app` | `/sysapps/registry/aip-<id>.app` |
+| Install record | `system/appdata/aip/<id>` | `/osystem/data/aip/<id>` |
 
 The record keeps the manifest, the granted permissions, the file list and a
 copy of the package, which **Repair** reinstalls from.

@@ -18,11 +18,11 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
-// Fonts live in /usr/share/fonts. A family file is loaded once; each pixel
+// Fonts live in /osystem/resources/fonts. A family file is loaded once; each pixel
 // size gets its own glyph cache. Code points missing from a font are looked
 // up in the fallback files (for example a CJK font, when installed).
 
-#define FONT_DIR        "/usr/share/fonts/"
+#define FONT_DIR        "/osystem/resources/fonts/"
 #define CACHE_BUCKETS   256
 
 struct family {

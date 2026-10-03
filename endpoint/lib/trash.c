@@ -1,6 +1,6 @@
 #include "aegis.h"
 
-// The recycle bin: /users/<name>/system/trash/files holds what was deleted,
+// The recycle bin: /userfiles/<name>/system/trash/files holds what was deleted,
 // and trash/info/<item>.info says where each one came from and when.
 
 static int trash_dirs(char *files, char *info, size_t size)

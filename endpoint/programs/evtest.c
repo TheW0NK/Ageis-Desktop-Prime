@@ -1,7 +1,7 @@
 #include "aegis.h"
 #include "abi/input.h"
 
-// Prints events from /dev/input. Usage: evtest [COUNT]
+// Prints events from /osystem/devices/input. Usage: evtest [COUNT]
 // Reads until COUNT events have arrived (default: forever, Ctrl+C to stop).
 
 static const char *type_name(uint16_t type)
@@ -31,12 +31,12 @@ int main(int argc, char **argv)
 {
     long limit = argc > 1 ? strtol(argv[1], NULL, 10) : -1;
     struct input_event ev[32];
-    int fd = open("/dev/input", O_RDONLY);
+    int fd = open("/osystem/devices/input", O_RDONLY);
     long count = 0;
     int n;
 
     if (fd < 0) {
-        perror("evtest: /dev/input");
+        perror("evtest: /osystem/devices/input");
         return 1;
     }
     printf("evtest: %ld input device(s)\n", ioctl(fd, IOCTL_INPUT_DEVICES, 0));

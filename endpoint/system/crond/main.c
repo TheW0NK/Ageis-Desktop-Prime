@@ -1,7 +1,7 @@
 #include "aegis.h"
 
 // The job scheduler. Started by init as root. Once a minute it reads
-// /etc/crontab (lines name a user) and every user's crontab, and starts
+// /msc/crontab (lines name a user) and every user's crontab, and starts
 // the jobs that are due. Each job runs as its owner through
 // "crond --run UID COMMAND", which drops to that account and logs the
 // outcome.
@@ -35,8 +35,8 @@ static int run_job(uint32_t uid, const char *command)
     uint64_t started = uptime_ms();
 
     if (uid == 0) {
-        strlcpy(log, "/var/log/cron.log", sizeof(log));
-        strlcpy(u.home, "/root", sizeof(u.home));
+        strlcpy(log, "/osystem/logs/cron.log", sizeof(log));
+        strlcpy(u.home, "/userfiles/superuser", sizeof(u.home));
         strlcpy(u.name, "root", sizeof(u.name));
     } else {
         if (user_by_uid(uid, &u) < 0)
@@ -51,7 +51,7 @@ static int run_job(uint32_t uid, const char *command)
     append_log(log, uid, uid ? u.gid : 0, line);
     setenv("HOME", u.home);
     setenv("USER", u.name);
-    setenv("PATH", "/bin:/sbin:/apps/bin");
+    setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
     chdir(u.home);
     // The job's output goes into the log as well.
     if ((fd = open(log, O_WRONLY | O_CREAT, 0600)) >= 0) {
@@ -60,11 +60,11 @@ static int run_job(uint32_t uid, const char *command)
         dup2(fd, STDERR_FILENO);
         close(fd);
     }
-    if ((fd = open("/dev/null", O_RDONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/null", O_RDONLY)) >= 0) {
         dup2(fd, STDIN_FILENO);
         close(fd);
     }
-    if ((pid = spawn("/bin/terminal", argv, environ)) < 0)
+    if ((pid = spawn("/sysapps/terminal", argv, environ)) < 0)
         status = 127 << 8;
     else
         while (waitpid(pid, &status, 0) != pid)
@@ -81,7 +81,7 @@ static void start_job(uint32_t uid, const char *command)
     char id[16], *argv[] = { "crond", "--run", id, (char *)command, NULL };
 
     snprintf(id, sizeof(id), "%u", uid);
-    spawn("/sbin/crond", argv, environ);
+    spawn("/osystem/core/crond", argv, environ);
 }
 
 static void run_file(const char *path, bool system, uint32_t owner, const struct tm *tm, bool boot)
@@ -132,7 +132,7 @@ static void run_due(bool boot)
     char path[256];
 
     localtime_r(&now, &tm);
-    run_file("/etc/crontab", true, 0, &tm, boot);
+    run_file("/msc/crontab", true, 0, &tm, boot);
     for (int i = 0; i < n; i++) {
         cron_user_path(&users[i], "crontab", path, sizeof(path));
         run_file(path, false, users[i].uid, &tm, boot);
@@ -149,8 +149,8 @@ int main(int argc, char **argv)
         dprintf(STDERR_FILENO, "crond: must run as root\n");
         return 1;
     }
-    mkdir("/var", 0755);
-    mkdir("/var/log", 0755);
+    mkdir("/osystem", 0755);
+    mkdir("/osystem/logs", 0755);
     syslog("crond", "started");
     run_due(true);
     for (;;) {

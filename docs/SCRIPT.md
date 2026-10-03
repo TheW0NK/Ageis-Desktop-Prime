@@ -2,7 +2,7 @@
 
 AegisScript is a small language for making apps on Aegis itself. Aegis has
 no C compiler, so App Maker builds apps from an AUI window (see
-[AUI.md](AUI.md)) plus a script. `/bin/apprun` runs them:
+[AUI.md](AUI.md)) plus a script. `/sysapps/apprun` runs them:
 
 ```
 apprun script.as [ARG...]    # a script; print() writes to the terminal
@@ -134,6 +134,6 @@ text).
 | `ui.open(path)` | Whether the file or folder opened in its app. |
 | `ui.quit()` | Nothing. Closes the app. |
 
-`/usr/share/apprun/counter` is a complete example app.
-`/usr/share/apprun/selftest.as` exercises the whole language. `make test`
+`/osystem/resources/apprun/counter` is a complete example app.
+`/osystem/resources/apprun/selftest.as` exercises the whole language. `make test`
 runs it.

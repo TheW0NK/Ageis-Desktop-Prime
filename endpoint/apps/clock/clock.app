@@ -1,5 +1,5 @@
 name=Clock
-exec=/bin/clock
+exec=/sysapps/clock
 icon=clock
 suite=Default
 description=Time around the world, timer and stopwatch

@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-// Records read from /dev/input. Every driver reports through the same codes,
+// Records read from /osystem/devices/input. Every driver reports through the same codes,
 // so a program never needs to know whether a key came from PS/2 or USB.
 struct input_event {
     uint64_t time_ms;           // milliseconds since boot
@@ -156,7 +156,7 @@ struct input_event {
 
 #define KEY_CODE_MAX    0x210
 
-// ioctls on /dev/input.
+// ioctls on /osystem/devices/input.
 #define IOCTL_INPUT_GRAB        0x100   // arg 1: stop delivering keys to the text console
 #define IOCTL_INPUT_DEVICES     0x101   // returns the number of input devices
 #define IOCTL_INPUT_VT          0x102   // returns 1 while the text console is in front

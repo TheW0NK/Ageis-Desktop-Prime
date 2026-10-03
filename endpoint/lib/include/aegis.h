@@ -185,7 +185,7 @@ bool inet_parse(const char *text, uint32_t *addr);
 // Formats a network-order address into buf (at least 16 bytes).
 char *inet_format(uint32_t addr, char *buf);
 int netconfig(int op, int index, struct aegis_netif *info);
-// Looks a host name up (numeric, /etc/hosts, then DNS). Returns 0 or -1 with
+// Looks a host name up (numeric, /msc/hosts, then DNS). Returns 0 or -1 with
 // errno set (ENOENT: no such host, ETIMEDOUT: no answer).
 int resolve_host(const char *name, uint32_t *addr);
 // Connects a TCP socket to host:port; returns the descriptor or -1.
@@ -277,29 +277,29 @@ size_t strftime(char *buf, size_t size, const char *fmt, const struct tm *tm);
 int timezone_offset(void);          // seconds east of UTC
 const char *timezone_name(void);
 
-// Users (lib/user.c). Each user has /users/<name>/home and /users/<name>/system.
+// Users (lib/user.c). Each user has /userfiles/<name>/home and /userfiles/<name>/system.
 struct user_info {
     char name[32];
     uint32_t uid, gid;
     char display[64];               // from settings/name, else the passwd comment
-    char home[128];                 // /users/<name>/home
+    char home[128];                 // /userfiles/<name>/home
     char shell[128];
-    char dir[128];                  // /users/<name>
+    char dir[128];                  // /userfiles/<name>
 };
 int user_by_name(const char *name, struct user_info *out);
 int user_by_uid(uint32_t uid, struct user_info *out);
 int user_current(struct user_info *out);
-// People (uid 1000 and up), in /etc/passwd order.
+// People (uid 1000 and up), in /msc/passwd order.
 int user_list(struct user_info *out, int max);
 bool user_in_group(const char *name, const char *group);
-// rel is relative to /users/<name>, e.g. "system/appdata".
+// rel is relative to /userfiles/<name>, e.g. "system/appdata".
 void user_path(const struct user_info *u, const char *rel, char *buf, size_t size);
 // Settings: name, theme, language, background, picture. Returns the length or -1.
 int user_setting_get(const struct user_info *u, const char *key, char *buf, size_t size);
 int user_setting_set(const struct user_info *u, const char *key, const char *value);
 int user_setup_dirs(const struct user_info *u);
 
-// Applications (lib/apps.c): /usr/share/applications/<id>.app files.
+// Applications (lib/apps.c): /sysapps/registry/<id>.app files.
 struct app_info {
     char id[32];
     char name[64];
@@ -317,7 +317,7 @@ int app_list(struct app_info *out, int max);        // sorted by name
 int app_find(const char *id, struct app_info *out);
 int app_for_file(const char *name, struct app_info *out);
 int app_launch(const struct app_info *a, const char *arg);
-// Starts a program with its standard streams on /dev/null; returns the pid.
+// Starts a program with its standard streams on /osystem/devices/null; returns the pid.
 int launch(const char *path, const char *arg);
 
 // Accounts (lib/accounts.c). Changes need root.
@@ -331,7 +331,7 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
 int account_remove(const char *name, bool remove_files);
 bool account_is_admin(const char *name);
 int group_set_member(const char *group, const char *user, bool member);
-// Any user: through /sbin/privd.
+// Any user: through /osystem/core/privd.
 #define PRIVD_SOCKET "@aegis/privd"
 int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
 // Checks the signed-in user's password (the lock screen). 0 if right.
@@ -351,7 +351,7 @@ int audio_set_mute(bool mute);
 int audio_streams(struct audio_stream *out, int max);
 int audio_set_stream_volume(int id, int volume);
 
-// Cameras (lib/camera.c): /dev/video<index>.
+// Cameras (lib/camera.c): /osystem/devices/video<index>.
 struct camera_info {
     int width, height, fps;
     char name[48];
@@ -380,7 +380,7 @@ int cred_delete(const char *name);
 // Cron schedules (lib/cron.c).
 struct cron_job {
     char schedule[64];
-    char user[32];                  // /etc/crontab only
+    char user[32];                  // /msc/crontab only
     char command[256];
     char name[64];
     bool enabled;
@@ -389,10 +389,10 @@ bool cron_matches(const char *schedule, const struct tm *tm);
 bool cron_parse(char *line, bool with_user, struct cron_job *job);
 void cron_format(const struct cron_job *job, bool with_user, char *out, size_t size);
 int64_t cron_next(const char *schedule, int64_t after);
-// /users/<name>/system/appdata/cron/<file> ("crontab", "log").
+// /userfiles/<name>/system/appdata/cron/<file> ("crontab", "log").
 void cron_user_path(const struct user_info *u, const char *file, char *out, size_t size);
 
-// Optional features (lib/features.c), in /etc/features.conf.
+// Optional features (lib/features.c), in /msc/features.conf.
 struct feature {
     const char *id, *name, *description;
     bool default_on;
@@ -410,7 +410,7 @@ void unique_name(const char *dir, const char *name, char *out, size_t size);
 
 // Disks (lib/disk.c), as root: listing, partitioning and formatting.
 struct disk_info {
-    char name[16];                  // under /dev
+    char name[16];                  // under /osystem/devices
     char description[48];
     uint64_t size;                  // bytes
     uint32_t sector_size;
@@ -486,7 +486,7 @@ int sysimage_restore(const char *image, const char *root, sysimage_progress_fn p
                      size_t esize);
 int sysimage_info(const char *path, int64_t *created, uint64_t *size);
 
-// The recycle bin (lib/trash.c), in /users/<name>/system/trash.
+// The recycle bin (lib/trash.c), in /userfiles/<name>/system/trash.
 struct trash_item {
     char name[256];         // its name in the bin
     char path[512];         // where it is now

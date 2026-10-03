@@ -6,8 +6,8 @@
 // configuration, and the account to create on first boot.
 
 #define ESP_MB      256
-#define TARGET      "/mnt/target"
-#define TARGET_ESP  "/mnt/esp"
+#define TARGET      "/osystem/volumes/target"
+#define TARGET_ESP  "/osystem/volumes/esp"
 
 struct ctx {
     bool keep;                      // reinstalling: keep accounts, settings and files
@@ -37,12 +37,13 @@ static bool keeping;                // see struct ctx.keep
 
 static bool skipped(const char *rel)
 {
-    static const char *const skip[] = { "/dev", "/tmp", "/mnt", "/boot", "/users", "/etc/live", "/etc/firstboot",
-                                        "/usr/share/installer", "/var/log/session.log", NULL };
+    static const char *const skip[] = { "/osystem/devices", "/osystem/temp", "/osystem/volumes", "/osystem/boot", "/userfiles", "/msc/live", "/msc/firstboot",
+                                        "/osystem/installer", "/osystem/logs/session.log", NULL };
     // A reinstall leaves the computer's own settings and data alone.
-    static const char *const keep[] = { "/etc/passwd", "/etc/group", "/etc/shadow", "/etc/hostname",
-                                        "/etc/timezone", "/etc/features.conf", "/etc/crontab", "/var", "/apps",
-                                        "/root", NULL };
+    static const char *const keep[] = { "/msc/passwd", "/msc/group", "/msc/shadow", "/msc/hostname",
+                                        "/msc/timezone", "/msc/features.conf", "/msc/crontab", "/osystem/logs",
+                                        "/osystem/data", "/osystem/backups", "/userApps",
+                                        "/userfiles/superuser", NULL };
 
     for (int i = 0; skip[i]; i++)
         if (!strcmp(rel, skip[i]))
@@ -127,7 +128,7 @@ static int copy_tree(struct ctx *c, const char *src, const char *dst, const char
         }
         if (skipped(r)) {
             // Mount points and scratch space exist, empty.
-            if (!keeping && S_ISDIR(st.mode) && strcmp(r, "/users") && mkdir(t, st.mode & 07777) == 0) {
+            if (!keeping && S_ISDIR(st.mode) && strcmp(r, "/userfiles") && mkdir(t, st.mode & 07777) == 0) {
                 chown(t, st.uid, st.gid);
                 chmod(t, st.mode & 07777);
             }
@@ -192,16 +193,16 @@ static void format_progress(int percent, void *u)
 }
 
 // The accounts the new system starts with: root and the system groups. The
-// person's own account is made on first boot from /etc/firstboot.
+// person's own account is made on first boot from /msc/firstboot.
 static int write_accounts(struct ctx *c)
 {
     const struct install_options *o = c->o;
     char text[1024], hash[160];
 
-    if (write_text(TARGET "/etc/passwd", "root:x:0:0:root:/root:/bin/terminal\n", 0644) < 0
-        || write_text(TARGET "/etc/group", "root:x:0:root\nadm:x:4:\nsudo:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n",
+    if (write_text(TARGET "/msc/passwd", "root:x:0:0:root:/userfiles/superuser:/sysapps/terminal\n", 0644) < 0
+        || write_text(TARGET "/msc/group", "root:x:0:root\nadm:x:4:\nsudo:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n",
                       0644) < 0
-        || write_text(TARGET "/etc/shadow", "root:!:\n", 0600) < 0)
+        || write_text(TARGET "/msc/shadow", "root:!:\n", 0600) < 0)
         return fail(c, "Writing the account files");
     if (password_hash(o->password, hash, sizeof(hash)) < 0)
         return fail(c, "Protecting the password");
@@ -209,16 +210,16 @@ static int write_accounts(struct ctx *c)
     snprintf(text, sizeof(text), "user=%s\ndisplay=%s\nhash=%s\nadmin=%d\nlanguage=%s\n", o->user,
              o->display && *o->display ? o->display : o->user, hash, o->admin ? 1 : 0,
              o->language && *o->language ? o->language : "en");
-    if (write_text(TARGET "/etc/firstboot", text, 0600) < 0)
+    if (write_text(TARGET "/msc/firstboot", text, 0600) < 0)
         return fail(c, "Writing the first-boot settings");
     memset(hash, 0, sizeof(hash));
     if (o->hostname && *o->hostname) {
         snprintf(text, sizeof(text), "%s\n", o->hostname);
-        write_text(TARGET "/etc/hostname", text, 0644);
+        write_text(TARGET "/msc/hostname", text, 0644);
     }
     if (o->timezone && *o->timezone) {
         snprintf(text, sizeof(text), "%s %d\n", o->timezone, o->tz_offset_min);
-        write_text(TARGET "/etc/timezone", text, 0644);
+        write_text(TARGET "/msc/timezone", text, 0644);
     }
     return 0;
 }
@@ -252,7 +253,7 @@ static int copy_recovery_image(const char *esp_root)
 {
     static char buf[64 * 1024];
     char dst[200];
-    int in = open("/dev/ram0", O_RDONLY), out;
+    int in = open("/osystem/devices/ram0", O_RDONLY), out;
     ssize_t n;
 
     if (in < 0)
@@ -279,7 +280,7 @@ static const char *esp_source(void)
 {
     struct aegis_stat st;
 
-    return stat("/usr/share/installer/esp/EFI", &st) == 0 ? "/usr/share/installer/esp" : "/boot";
+    return stat("/osystem/installer/esp/EFI", &st) == 0 ? "/osystem/installer/esp" : "/osystem/boot";
 }
 
 int install_system(const struct install_options *o, install_progress_fn progress, void *u, char *error,
@@ -319,7 +320,7 @@ int install_system(const struct install_options *o, install_progress_fn progress
     }
 
     step(&c, 26, "Preparing the new system");
-    mkdir("/mnt", 0755);
+    mkdir("/osystem/volumes", 0755);
     mkdir(TARGET, 0755);
     mkdir(TARGET_ESP, 0755);
     if (mount("ext4", sys, TARGET, 0) < 0) {
@@ -338,8 +339,10 @@ int install_system(const struct install_options *o, install_progress_fn progress
     if (copy_tree(&c, "/", TARGET, "") < 0)
         goto out;
     chmod(TARGET, 0755);
-    mkdir(TARGET "/users", 0755);
-    chmod(TARGET "/tmp", 01777);
+    mkdir(TARGET "/userfiles", 0755);
+    mkdir(TARGET "/userfiles/superuser", 0700);
+    mkdir(TARGET "/serve", 0755);
+    chmod(TARGET "/osystem/temp", 01777);
 
     step(&c, 86, "Setting up accounts");
     if (write_accounts(&c) < 0)

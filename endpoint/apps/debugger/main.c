@@ -126,9 +126,9 @@ static void load_symbols(const char *name)
         return;
     strlcpy(loaded_for, name, sizeof(loaded_for));
     free_symbols();
-    snprintf(path, sizeof(path), "/bin/%s", name);
+    snprintf(path, sizeof(path), "/sysapps/%s", name);
     if ((fd = open(path, O_RDONLY)) < 0) {
-        snprintf(path, sizeof(path), "/sbin/%s", name);
+        snprintf(path, sizeof(path), "/osystem/core/%s", name);
         if ((fd = open(path, O_RDONLY)) < 0)
             return;
     }
@@ -370,7 +370,7 @@ static void hexdump(uint64_t addr)
 
 static void show_crashes(void)
 {
-    int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+    int fd = open("/osystem/devices/kmsg", O_RDONLY | O_NONBLOCK);
     char *buf = malloc(256 * 1024), *out = malloc(64 * 1024);
     ssize_t len = 0, n;
     size_t ol = 0;

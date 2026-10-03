@@ -28,7 +28,7 @@ int main(void)
 {
     static const struct ui_handler_entry handlers[] = { { "greet", greet }, { NULL, NULL } };
 
-    if (!ui_load("/usr/share/hello/hello.aui", handlers, NULL))
+    if (!ui_load("/osystem/resources/hello/hello.aui", handlers, NULL))
         return 1;
     return ui_run();
 }
@@ -205,7 +205,7 @@ These functions run their own event loop and return when the user answers.
 - `ui_set_theme("light" | "dark" | "high-contrast")` changes the theme.
 - `ui_load_user_theme()` applies the theme from the `AEGIS_THEME`
   environment variable, or from the user's settings file
-  `/users/<name>/system/settings/theme`.
+  `/userfiles/<name>/system/settings/theme`.
 - The high-contrast theme also uses larger text.
 
 ## Aliases

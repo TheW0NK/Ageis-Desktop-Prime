@@ -1,7 +1,7 @@
 #include "devfs.h"
 #include "string.h"
 
-// /dev/cmdline: the kernel command line from the boot entry, for init and
+// /osystem/devices/cmdline: the kernel command line from the boot entry, for init and
 // the recovery tools ("recovery", "safe").
 
 static int64_t cmdline_read(struct file *f, void *buf, size_t size)

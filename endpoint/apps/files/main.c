@@ -737,14 +737,14 @@ static void terminal(struct widget *w, void *u)
         join(path, sizeof(path), cwd, e->name);
     else
         strlcpy(path, cwd, sizeof(path));
-    launch("/bin/term", path);
+    launch("/sysapps/term", path);
 }
 
 static void new_window(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
-    launch("/bin/files", cwd);
+    launch("/sysapps/files", cwd);
 }
 
 static void close_window(struct widget *w, void *u)

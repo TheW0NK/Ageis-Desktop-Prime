@@ -518,7 +518,7 @@ void closedir(struct dir_stream *d)
     }
 }
 
-// Adds a line to the system log (/dev/kmsg, root only); others write to
+// Adds a line to the system log (/osystem/devices/kmsg, root only); others write to
 // standard error.
 void syslog(const char *tag, const char *fmt, ...)
 {
@@ -530,7 +530,7 @@ void syslog(const char *tag, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(line + n, sizeof(line) - n, fmt, ap);
     va_end(ap);
-    if ((fd = open("/dev/kmsg", O_WRONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/kmsg", O_WRONLY)) >= 0) {
         write(fd, line, strlen(line));
         close(fd);
     } else {

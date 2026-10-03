@@ -2,7 +2,7 @@
 
 // Disks for the installer and recovery: listing them, writing a GPT and
 // creating FAT32 (the EFI system partition) and ext4 (the system) on
-// partitions. Everything goes through /dev/<name> as root.
+// partitions. Everything goes through /osystem/devices/<name> as root.
 
 // ---- Helpers ----
 
@@ -29,7 +29,7 @@ static uint32_t crc32(const void *data, size_t len)
 
 static void random_fill(void *buf, size_t n)
 {
-    int fd = open("/dev/urandom", O_RDONLY);
+    int fd = open("/osystem/devices/urandom", O_RDONLY);
 
     if (fd < 0 || read(fd, buf, n) != (ssize_t)n) {
         uint64_t x = uptime_ms() * 6364136223846793005ULL + 1442695040888963407ULL;
@@ -73,7 +73,7 @@ static int open_dev(const char *name, int flags)
 {
     char path[64];
 
-    snprintf(path, sizeof(path), "/dev/%s", name);
+    snprintf(path, sizeof(path), "/osystem/devices/%s", name);
     return open(path, flags);
 }
 
@@ -106,7 +106,7 @@ static int zero(int fd, uint64_t off, uint64_t len)
 
 int disk_list(struct disk_info *out, int max)
 {
-    struct dir_stream *d = opendir("/dev");
+    struct dir_stream *d = opendir("/osystem/devices");
     struct aegis_dirent *de;
     int n = 0;
 

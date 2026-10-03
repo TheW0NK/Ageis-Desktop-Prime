@@ -141,7 +141,7 @@ static char *downloads_dir(void)
     char path[512];
 
     if (user_current(&me) < 0)
-        return strdup("/tmp");
+        return strdup("/osystem/temp");
     user_path(&me, "home/Downloads", path, sizeof(path));
     return strdup(path);
 }
@@ -659,7 +659,7 @@ static const char home_html[] =
     "<div class=hero><h1>Aegis Web Browser</h1><p>Type an address above, or start here.</p></div>"
     "<div class=grid>"
     "<div class=card><h2>Welcome tour</h2><p>A page that shows what this browser draws: text, lists, "
-    "tables, flexible boxes, forms and pictures.</p><a href='file:///usr/share/browser/welcome.html'>Open the tour</a></div>"
+    "tables, flexible boxes, forms and pictures.</p><a href='file:///osystem/resources/browser/welcome.html'>Open the tour</a></div>"
     "<div class=card><h2>Your files</h2><p>Browse the folders in your home and open pages, pictures and text "
     "files.</p><a href='~'>Open your home folder</a></div>"
     "<div class=card><h2>The web</h2><p>Plain HTTP and secure HTTPS sites work when the computer is "

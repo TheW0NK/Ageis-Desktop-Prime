@@ -1,5 +1,5 @@
 name=Cron Jobs
-exec=/bin/cron
+exec=/sysapps/cron
 icon=cron
 suite=Administrative
 description=Run commands on a schedule

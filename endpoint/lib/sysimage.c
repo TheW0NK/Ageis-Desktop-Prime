@@ -2,7 +2,7 @@
 
 // System images: a whole installed system (system files, settings,
 // accounts and everyone's files) in one file, made and restored from
-// recovery. Images are kept in /var/backups on the system itself, which a
+// recovery. Images are kept in /osystem/backups on the system itself, which a
 // restore leaves alone, or anywhere else.
 //
 //   "AEGISIMG"  u32 version (1)  u32 0  i64 created
@@ -39,7 +39,8 @@ static char iobuf[64 * 1024];
 // Not saved, and not removed by a restore.
 static bool left_alone(const char *rel)
 {
-    static const char *const skip[] = { "dev", "tmp", "mnt", "boot", "lost+found", "var/backups", NULL };
+    static const char *const skip[] = { "osystem/devices", "osystem/temp", "osystem/volumes", "osystem/boot",
+                                        "osystem/backups", "lost+found", NULL };
 
     for (int i = 0; skip[i]; i++)
         if (!strcmp(rel, skip[i]))
@@ -223,8 +224,8 @@ static int clear_tree(const char *root)
         if (left_alone(names[i]))
             continue;
         snprintf(p, sizeof(p), "%s/%s", root, names[i]);
-        if (!strcmp(names[i], "var")) {
-            // Everything in /var but the backups.
+        if (!strcmp(names[i], "osystem")) {
+            // Everything in /osystem but the backups.
             struct dir_stream *v = opendir(p);
             struct aegis_dirent *ve;
             char vn[64][256];
@@ -233,7 +234,9 @@ static int clear_tree(const char *root)
             if (!v)
                 continue;
             while ((ve = readdir(v)) && k < 64)
-                if (strcmp(ve->name, ".") && strcmp(ve->name, "..") && strcmp(ve->name, "backups"))
+                if (strcmp(ve->name, ".") && strcmp(ve->name, "..") && strcmp(ve->name, "backups")
+                    && strcmp(ve->name, "devices") && strcmp(ve->name, "temp") && strcmp(ve->name, "volumes")
+                    && strcmp(ve->name, "boot"))
                     strlcpy(vn[k++], ve->name, sizeof(vn[0]));
             closedir(v);
             for (int m = 0; m < k; m++) {

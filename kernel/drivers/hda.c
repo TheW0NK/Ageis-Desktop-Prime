@@ -363,7 +363,7 @@ static void pump_thread(void *arg)
     }
 }
 
-// ---- /dev/audio ----
+// ---- /osystem/devices/audio ----
 
 static int64_t audio_write(struct file *f, const void *buf, size_t size)
 {

@@ -328,7 +328,7 @@ static void on_zone(struct widget *w, void *u)
         return;
     }
     snprintf(line, sizeof(line), "%s %d\n", zones[i].name, zones[i].minutes);
-    if ((fd = open("/etc/timezone", O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
+    if ((fd = open("/msc/timezone", O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
         write(fd, line, strlen(line));
         close(fd);
     }
@@ -423,7 +423,7 @@ static void show_about(void)
         snprintf(buf, sizeof(buf), "%s, %s free (%s)", a, b, fs.fstype);
         ui_set_text(ui_get(win, "disk"), buf);
     }
-    if ((fd = open("/etc/hostname", O_RDONLY)) >= 0) {
+    if ((fd = open("/msc/hostname", O_RDONLY)) >= 0) {
         if (read_line(fd, buf, sizeof(buf)) > 0)
             ui_set_text(ui_get(win, "hostname"), buf);
         close(fd);
@@ -444,7 +444,7 @@ static void on_hostname(struct widget *w, void *u)
         }
     if (!*name || !ui_elevate(win, "The computer's name is shared by everyone on it."))
         return;
-    if ((fd = open("/etc/hostname", O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
+    if ((fd = open("/msc/hostname", O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
         dprintf(fd, "%s\n", name);
         close(fd);
         ui_message(win, "Settings", "The computer has a new name.", "OK");

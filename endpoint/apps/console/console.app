@@ -1,5 +1,5 @@
 name=Management Console
-exec=/bin/console
+exec=/sysapps/console
 icon=console
 suite=Administrative
 description=Manage users, services, jobs, storage, devices and logs in one place

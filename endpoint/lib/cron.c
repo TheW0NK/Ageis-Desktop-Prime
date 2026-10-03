@@ -5,7 +5,7 @@
 // A crontab line is:   [#off ]SCHEDULE COMMAND[  #: NAME]
 // SCHEDULE is five fields (minute hour day month weekday; *, lists, ranges,
 // steps) or one of @hourly @daily @weekly @monthly @yearly @reboot.
-// "#off " keeps a job without running it. /etc/crontab lines have a user
+// "#off " keeps a job without running it. /msc/crontab lines have a user
 // name after the schedule.
 
 static bool field_matches(const char *f, int value, int lo, int hi)

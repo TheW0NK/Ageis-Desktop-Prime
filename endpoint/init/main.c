@@ -1,18 +1,18 @@
 #include "aegis.h"
 
 // The first process. It keeps these running:
-//  - the privilege helper (/sbin/privd), the job scheduler (/sbin/crond) and
-//    the audio server (/sbin/audiod),
+//  - the privilege helper (/osystem/core/privd), the job scheduler (/osystem/core/crond) and
+//    the audio server (/osystem/core/audiod),
 //  - the text console's shell (the login prompt shown with Ctrl+Alt+F2),
-//  - the display (/sbin/compositor, which starts the sign-in screen).
+//  - the display (/osystem/core/compositor, which starts the sign-in screen).
 // Either is started again when it exits. If the display keeps failing (no
 // screen), the computer stays in text mode.
 
-#define TERMINAL    "/bin/terminal"
-#define COMPOSITOR  "/sbin/compositor"
-#define PRIVD       "/sbin/privd"
-#define CROND       "/sbin/crond"
-#define AUDIOD      "/sbin/audiod"
+#define TERMINAL    "/sysapps/terminal"
+#define COMPOSITOR  "/osystem/core/compositor"
+#define PRIVD       "/osystem/core/privd"
+#define CROND       "/osystem/core/crond"
+#define AUDIOD      "/osystem/core/audiod"
 
 struct service {
     const char *path;
@@ -33,13 +33,13 @@ static void start(struct service *s)
     }
 }
 
-// The installer leaves the new owner's account in /etc/firstboot; it is
+// The installer leaves the new owner's account in /msc/firstboot; it is
 // made here, once, on the installed system's first start.
 static void first_boot(void)
 {
     char buf[1024], user[64] = "", display[128] = "", hash[200] = "", language[16] = "en";
     bool admin = false;
-    int fd = open("/etc/firstboot", O_RDONLY);
+    int fd = open("/msc/firstboot", O_RDONLY);
     ssize_t n;
 
     if (fd < 0)
@@ -79,7 +79,7 @@ static void first_boot(void)
         dprintf(STDERR_FILENO, "init: first boot: created the account %s\n", user);
     }
     memset(hash, 0, sizeof(hash));
-    unlink("/etc/firstboot");
+    unlink("/msc/firstboot");
     sync();
 }
 
@@ -107,11 +107,11 @@ int main(int argc, char **argv)
 
     (void)argc;
     (void)argv;
-    setenv("PATH", "/bin:/sbin:/apps/bin");
+    setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
     first_boot();
     {
         char cmdline[512] = "";
-        int fd = open("/dev/cmdline", O_RDONLY);
+        int fd = open("/osystem/devices/cmdline", O_RDONLY);
 
         if (fd >= 0) {
             ssize_t n = read(fd, cmdline, sizeof(cmdline) - 1);
@@ -122,16 +122,16 @@ int main(int argc, char **argv)
         // Recovery (a boot entry with "recovery") and the live system on the
         // install media start their own program instead of the sign-in screen.
         if (has_word(cmdline, "recovery"))
-            services[4].argv[1] = "/sbin/recovery";
-        else if (stat("/etc/live", &st) == 0)
-            services[4].argv[1] = "/sbin/installer";
+            services[4].argv[1] = "/osystem/core/recovery";
+        else if (stat("/msc/live", &st) == 0)
+            services[4].argv[1] = "/osystem/core/installer";
         // Safe mode: only what is needed to sign in and fix things.
         if (has_word(cmdline, "safe")) {
             setenv("AEGIS_SAFE_MODE", "1");
             // Safe mode chosen once from recovery: the next start is normal.
-            if (stat("/etc/safe-mode-once", &st) == 0) {
+            if (stat("/msc/safe-mode-once", &st) == 0) {
                 feature_set("bootlog", feature_enabled("bootlog"));
-                unlink("/etc/safe-mode-once");
+                unlink("/msc/safe-mode-once");
                 sync();
             }
             services[1].disabled = services[2].disabled = true;
@@ -141,7 +141,7 @@ int main(int argc, char **argv)
     if (!feature_enabled("audio"))
         services[2].disabled = true;
     // No screen to draw on: text mode only (and then the console must run).
-    if (stat("/dev/fb0", &st) < 0)
+    if (stat("/osystem/devices/fb0", &st) < 0)
         services[4].disabled = true;
     else if (!feature_enabled("console"))
         services[3].disabled = true;

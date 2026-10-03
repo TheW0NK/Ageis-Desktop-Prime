@@ -1,5 +1,5 @@
 name=Image Viewer
-exec=/bin/images
+exec=/sysapps/images
 icon=images
 suite=Default
 description=View pictures
