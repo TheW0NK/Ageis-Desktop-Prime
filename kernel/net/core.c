@@ -14,7 +14,7 @@ static struct {
 } rxq;
 
 static struct wait_queue net_wq = WAIT_QUEUE_INIT;
-static int next_index, next_eth;
+static int next_index, next_net;
 
 #define RX_QUEUE_MAX    1024
 #define TICK_MS         10
@@ -107,7 +107,7 @@ void netif_register(struct netif *nif)
     mutex_lock(&net_lock);
     nif->index = next_index++;
     if (!nif->name[0])
-        ksnprintf(nif->name, sizeof(nif->name), "eth%d", next_eth++);
+        ksnprintf(nif->name, sizeof(nif->name), "net%d", next_net++);
     if (!nif->mtu)
         nif->mtu = ETH_MTU;
     for (pp = &netifs; *pp; pp = &(*pp)->next)

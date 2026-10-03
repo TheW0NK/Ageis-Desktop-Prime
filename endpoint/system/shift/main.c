@@ -26,13 +26,13 @@ static void redirect_output(const struct user_info *u)
     // The desktop's messages go to the user's shift log.
     user_path(u, "system/shift.log", path, sizeof(path));
     if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600)) < 0)
-        fd = open("/osystem/devices/nothing", O_WRONLY);
+        fd = open("/osystem/devices/null", O_WRONLY);
     if (fd >= 0) {
         dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
         close(fd);
     }
-    if ((fd = open("/osystem/devices/nothing", O_RDONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/null", O_RDONLY)) >= 0) {
         dup2(fd, STDIN_FILENO);
         close(fd);
     }

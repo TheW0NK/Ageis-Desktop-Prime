@@ -60,7 +60,7 @@ static int run_job(uint32_t uid, const char *command)
         dup2(fd, STDERR_FILENO);
         close(fd);
     }
-    if ((fd = open("/osystem/devices/nothing", O_RDONLY)) >= 0) {
+    if ((fd = open("/osystem/devices/null", O_RDONLY)) >= 0) {
         dup2(fd, STDIN_FILENO);
         close(fd);
     }

@@ -294,7 +294,7 @@ static void fill_devices(struct widget *t)
             kind = "System log";
         else if (!strcmp(e->name, "terminal") || !strcmp(e->name, "console") || !strncmp(e->name, "pts", 3))
             kind = "Terminal";
-        else if (strstr(e->name, "random") || !strcmp(e->name, "nothing") || !strcmp(e->name, "zeros"))
+        else if (strstr(e->name, "random") || !strcmp(e->name, "null") || !strcmp(e->name, "zeros"))
             kind = "Built in";
         snprintf(owner, sizeof(owner), "%u:%u", st.uid, st.gid);
         snprintf(row, sizeof(row), "%s\t%s\t%o\t%s", e->name, kind, st.mode & 0777, owner);

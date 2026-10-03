@@ -363,7 +363,7 @@ int app_list(struct app_info *out, int max);        // sorted by name
 int app_find(const char *id, struct app_info *out);
 int app_for_file(const char *name, struct app_info *out);
 int app_launch(const struct app_info *a, const char *arg);
-// Starts a program with its standard streams on /osystem/devices/nothing; returns the pid.
+// Starts a program with its standard streams on /osystem/devices/null; returns the pid.
 int launch(const char *path, const char *arg);
 
 // Accounts (lib/accounts.c). Changes need root.

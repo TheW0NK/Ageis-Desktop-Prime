@@ -296,7 +296,7 @@ static struct filesystem devfs = { .name = "devfs", .mount = devfs_mount };
 void devfs_register_fs(void)
 {
     vfs_register(&devfs);
-    devfs_register("nothing", 0666, 0, 0, open_simple, (void *)&null_ops);
+    devfs_register("null", 0666, 0, 0, open_simple, (void *)&null_ops);
     devfs_register("zeros", 0666, 0, 0, open_simple, (void *)&zero_ops);
     devfs_register("random", 0666, 0, 0, open_simple, (void *)&random_ops);
     devfs_register("terminal", 0666, 0, 0, open_tty, NULL);
