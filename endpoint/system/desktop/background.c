@@ -9,7 +9,7 @@
 struct item {
     char name[128];                 // file name
     char label[96];
-    char icon[32];
+    char icon[256];
     char path[300];
 };
 
@@ -65,7 +65,7 @@ void open_path(const char *path)
     char msg[400];
 
     if (has_suffix(path, ".shortcut")) {
-        char name[96] = "", id[32] = "", target[256] = "", icon[32] = "";
+        char name[96] = "", id[32] = "", target[256] = "", icon[256] = "";
 
         read_shortcut(path, name, sizeof(name), id, sizeof(id), target, sizeof(target), icon, sizeof(icon));
         if (*id) {

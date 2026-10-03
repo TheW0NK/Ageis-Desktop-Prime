@@ -39,6 +39,10 @@ cp "$root"/usr/share/backgrounds/*.png "$ud"/home/Images/
 # Sample music: one tune made here, and Ogg and MP3 versions of others.
 "$here"/mkmusic.py "$ud/home/Music/Aegis Theme.wav" theme
 cp "$here"/samples/*.ogg "$here"/samples/*.mp3 "$ud"/home/Music/
+# A sample app package to try the package installer with.
+mkdir -p "$root"/usr/share/samples "$root"/apps/bin "$root"/var/lib/aip
+"$here"/mkaip.py "$here"/samples/aip/dice "$root"/usr/share/samples/Dice.aip >/dev/null
+cp "$root"/usr/share/samples/Dice.aip "$ud"/home/Downloads/
 cp "$endpoint"/sbin/* "$root"/sbin/
 cp "$endpoint"/bin/* "$root"/bin/
 cp -r "$here"/../endpoint/rootfs/. "$root"/
@@ -110,7 +114,7 @@ fakeroot sh -c "
           '$root'/etc/ssl/certs/ca-bundle.pem
     chmod 0600 '$root'/etc/shadow
     chmod 0644 '$root'/etc/crontab
-    chmod 0755 '$root'/var '$root'/var/log
+    chmod 0755 '$root'/var '$root'/var/log '$root'/var/lib '$root'/var/lib/aip '$root'/apps '$root'/apps/bin
     if [ '$live' = 1 ]; then
         '$here'/mkiso.sh '$out' '$esp' '$root'
     else

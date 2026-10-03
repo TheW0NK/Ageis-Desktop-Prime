@@ -51,7 +51,7 @@ static int run_job(uint32_t uid, const char *command)
     append_log(log, uid, uid ? u.gid : 0, line);
     setenv("HOME", u.home);
     setenv("USER", u.name);
-    setenv("PATH", "/bin:/sbin");
+    setenv("PATH", "/bin:/sbin:/apps/bin");
     chdir(u.home);
     // The job's output goes into the log as well.
     if ((fd = open(log, O_WRONLY | O_CREAT, 0600)) >= 0) {

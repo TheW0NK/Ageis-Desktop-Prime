@@ -225,8 +225,64 @@ static struct thread *new_user_thread(struct process *p, uint64_t rip, uint64_t 
 }
 
 // argv and envp must be kernel memory.
+static int spawn(const char *path, char *const argv[], char *const envp[], struct process *parent, int *pid_out,
+                 int depth);
+
+// "#!INTERPRETER [ARG]" on the first line: runs the interpreter with the
+// script's path (and the script's own arguments after it). Returns 1 if
+// the file is not a script.
+static int spawn_script(struct vnode *v, const char *path, char *const argv[], char *const envp[],
+                        struct process *parent, int *pid_out, int depth)
+{
+    char head[128], *interp, *arg = NULL, *e;
+    char **nargv;
+    int64_t n;
+    int argc = 0, k = 0, ret;
+
+    n = vfs_read(v, head, sizeof(head) - 1, 0);
+    if (n < 3 || head[0] != '#' || head[1] != '!')
+        return 1;
+    head[n] = 0;
+    if (!(e = strchr(head, '\n')))
+        return -ENOEXEC;
+    *e = 0;
+    for (interp = head + 2; *interp == ' '; interp++)
+        ;
+    for (e = interp; *e && *e != ' '; e++)
+        ;
+    if (*e) {
+        *e++ = 0;
+        while (*e == ' ')
+            e++;
+        if (*e)
+            arg = e;
+    }
+    if (*interp != '/' || depth > 0)
+        return -ENOEXEC;
+    while (argv && argv[argc])
+        argc++;
+    if (!(nargv = kmalloc(sizeof(char *) * (argc + 4))))
+        return -ENOMEM;
+    nargv[k++] = interp;
+    if (arg)
+        nargv[k++] = arg;
+    nargv[k++] = (char *)path;
+    for (int i = 1; i < argc; i++)
+        nargv[k++] = argv[i];
+    nargv[k] = NULL;
+    ret = spawn(interp, nargv, envp, parent, pid_out, depth + 1);
+    kfree(nargv);
+    return ret;
+}
+
 int process_spawn(const char *path, char *const argv[], char *const envp[],
                   struct process *parent, int *pid_out)
+{
+    return spawn(path, argv, envp, parent, pid_out, 0);
+}
+
+static int spawn(const char *path, char *const argv[], char *const envp[], struct process *parent, int *pid_out,
+                 int depth)
 {
     struct process *p;
     struct vnode *v;
@@ -244,6 +300,10 @@ int process_spawn(const char *path, char *const argv[], char *const envp[],
         return -EACCES;
     }
     if ((ret = vfs_permission(v, cred, X_OK))) {
+        vput(v);
+        return ret;
+    }
+    if ((ret = spawn_script(v, path, argv, envp, parent, pid_out, depth)) != 1) {
         vput(v);
         return ret;
     }

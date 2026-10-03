@@ -126,7 +126,7 @@ static void kinit(void *arg)
     e1000_init();
 
     static char *argv[] = { "init", NULL };
-    static char *envp[] = { "PATH=/bin:/sbin", "HOME=/", NULL };
+    static char *envp[] = { "PATH=/bin:/sbin:/apps/bin", "HOME=/", NULL };
     int pid, ret = vfs_root() ? process_spawn("/sbin/init", argv, envp, NULL, &pid) : -ENOENT;
 
     if (ret < 0) {

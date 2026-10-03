@@ -699,9 +699,46 @@ static void draw_file_icon(struct gfx *g, const char *name, struct rect r)
     }
 }
 
+// Icons that are image files (installed apps bring their own), kept loaded.
+static struct surface *file_icon(const char *path)
+{
+    static struct {
+        char path[200];
+        struct surface *s;
+    } cache[16];
+    static int next;
+
+    for (int i = 0; i < 16; i++)
+        if (cache[i].s && !strcmp(cache[i].path, path))
+            return cache[i].s;
+    {
+        struct surface *s = image_load(path);
+
+        if (!s)
+            return NULL;
+        surface_destroy(cache[next].s);
+        strlcpy(cache[next].path, path, sizeof(cache[next].path));
+        cache[next].s = s;
+        next = (next + 1) % 16;
+        return s;
+    }
+}
+
 void icon_draw(struct gfx *g, const char *name, struct rect r)
 {
     const struct symbol *s;
+
+    if (name[0] == '/') {
+        struct surface *img = file_icon(name);
+        int size = MIN(r.w, r.h);
+
+        if (img) {
+            gfx_blit_scaled(g, img, (struct rect){ 0, 0, img->width, img->height },
+                            (struct rect){ r.x + (r.w - size) / 2, r.y + (r.h - size) / 2, size, size });
+            return;
+        }
+        name = "package";
+    }
 
     // "glyph:name" is a symbol in the accent colour (sidebars, lists).
     if (!strncmp(name, "glyph:", 6)) {

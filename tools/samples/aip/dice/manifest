@@ -1,0 +1,10 @@
+id=dice
+name=Dice
+version=1.0
+publisher=Aegis samples
+description=Roll dice for board games
+exec=/bin/apprun %d
+icon=icon.png
+suite=Default
+permissions=appdata,notifications,network
+command=dice

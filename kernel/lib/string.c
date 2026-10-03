@@ -91,3 +91,13 @@ char *strstr(const char *haystack, const char *needle)
     }
     return n ? NULL : (char *)haystack;
 }
+
+char *strchr(const char *s, int c)
+{
+    for (;; s++) {
+        if (*s == (char)c)
+            return (char *)s;
+        if (!*s)
+            return NULL;
+    }
+}

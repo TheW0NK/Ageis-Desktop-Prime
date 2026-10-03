@@ -704,7 +704,7 @@ static void do_login(void)
         chdir("/");
     setenv("HOME", home_dir);
     setenv("USER", user_name);
-    setenv("PATH", "/bin:/sbin");
+    setenv("PATH", "/bin:/sbin:/apps/bin");
     printf("\n");
     show_file("/etc/motd");
 }
@@ -724,9 +724,54 @@ int main(int argc, char **argv)
         if (!getenv("USER"))
             setenv("USER", user_name);
         if (!getenv("PATH"))
-            setenv("PATH", "/bin:/sbin");
+            setenv("PATH", "/bin:/sbin:/apps/bin");
         if (!run_line(argv[2], &code))
             return code;
+        return last_status;
+    }
+    // terminal SCRIPT [ARGS...]: run each line of a script ("#!/bin/terminal");
+    // $@ in a line stands for the arguments.
+    if (argc > 1 && argv[1][0] != '-') {
+        struct aegis_stat st;
+        int fd, code = 0;
+        static char text[16384];
+        ssize_t n;
+
+        if (stat(argv[1], &st) < 0 || !S_ISREG(st.mode) || (fd = open(argv[1], O_RDONLY)) < 0) {
+            dprintf(STDERR_FILENO, "terminal: %s: cannot run this script\n", argv[1]);
+            return 127;
+        }
+        n = read(fd, text, sizeof(text) - 1);
+        close(fd);
+        text[n > 0 ? n : 0] = 0;
+        load_identity();
+        if (!getenv("HOME"))
+            setenv("HOME", home_dir);
+        if (!getenv("PATH"))
+            setenv("PATH", "/bin:/sbin:/apps/bin");
+        for (char *l = text, *next; l && *l; l = next) {
+            char expanded[LINE_MAX], *at;
+
+            if ((next = strchr(l, '\n')))
+                *next++ = 0;
+            if (*l == '#' || !*l)
+                continue;
+            strlcpy(expanded, l, sizeof(expanded));
+            if ((at = strstr(expanded, "$@"))) {
+                char rest[LINE_MAX];
+
+                strlcpy(rest, at + 2, sizeof(rest));
+                *at = 0;
+                for (int i = 2; i < argc; i++) {
+                    strlcat(expanded, argv[i], sizeof(expanded));
+                    if (i + 1 < argc)
+                        strlcat(expanded, " ", sizeof(expanded));
+                }
+                strlcat(expanded, rest, sizeof(expanded));
+            }
+            if (!run_line(expanded, &code))
+                return code;
+        }
         return last_status;
     }
     set_raw(true);
@@ -736,7 +781,7 @@ int main(int argc, char **argv)
         setenv("HOME", home_dir);
         setenv("USER", user_name);
         if (!getenv("PATH"))
-            setenv("PATH", "/bin:/sbin");
+            setenv("PATH", "/bin:/sbin:/apps/bin");
     } else {
         if (uname(&u) == 0)
             printf("\n%s %s (%s)\n", u.sysname, u.release, u.machine);

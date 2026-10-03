@@ -1,0 +1,8 @@
+<window title="Dice" width="300" padding="16" spacing="12">
+  <label id="face" text="?" size="huge" textalign="center"/>
+  <label id="total" dim="true" textalign="center"/>
+  <hbox justify="center" spacing="8">
+    <dropdown id="count"><option>1 die</option><option>2 dice</option><option>3 dice</option></dropdown>
+    <button text="Roll" onclick="roll" default="true"/>
+  </hbox>
+</window>

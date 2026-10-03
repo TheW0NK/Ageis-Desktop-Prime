@@ -305,7 +305,7 @@ struct app_info {
     char name[64];
     char exec[128];
     char exec_arg[160];             // an argument given in the exec line
-    char icon[32];
+    char icon[256];
     char suite[32];                 // System, Administrative, Default, Development
     char description[128];
     char opens[128];                // file types: ".txt;.md"
@@ -443,6 +443,36 @@ struct install_options {
 typedef void (*install_progress_fn)(int percent, const char *step, void *u);
 int install_system(const struct install_options *o, install_progress_fn progress, void *u, char *error,
                    size_t error_size);
+
+// .aip packages (lib/aip.c).
+enum { AIP_TIER_BASIC, AIP_TIER_ELEVATED, AIP_TIER_SYSTEM, AIP_TIER_POWERSUDO };
+struct aip_permission {
+    const char *id, *description;
+    int tier;
+};
+struct aip {
+    uint8_t *data;
+    size_t size, files_off;
+    uint64_t payload;               // bytes of files
+    uint32_t nfiles;
+    char *manifest;
+    char id[32], name[64], version[32], publisher[64], description[160], exec[256], icon[128];
+    char suite[32], opens[128], permissions[256], command[32], scope[16];
+};
+struct aip_installed {
+    char id[32], name[64], version[32], publisher[64], granted[256], package[400];
+    bool everyone;
+};
+int aip_open(const char *path, struct aip *p, char *error, size_t esize);
+void aip_close(struct aip *p);
+int aip_requested(const struct aip *p, const struct aip_permission **out, int max);
+const struct aip_permission *aip_permission_find(const char *id);
+const char *aip_tier_name(int tier);
+// granted: comma-separated permission ids. everyone needs root.
+int aip_install(const struct aip *p, bool everyone, const char *granted, char *error, size_t esize);
+int aip_list_installed(struct aip_installed *out, int max);
+int aip_uninstall(const char *id, bool everyone, char *error, size_t esize);
+int aip_repair(const struct aip_installed *a, char *error, size_t esize);
 
 // The recycle bin (lib/trash.c), in /users/<name>/system/trash.
 struct trash_item {

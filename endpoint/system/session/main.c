@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 
     setenv("HOME", u.home);
     setenv("USER", u.name);
-    setenv("PATH", "/bin:/sbin");
+    setenv("PATH", "/bin:/sbin:/apps/bin");
     if (user_setting_get(&u, "theme", theme, sizeof(theme)) > 0)
         setenv("AEGIS_THEME", theme);
     if (user_setting_get(&u, "language", lang, sizeof(lang)) > 0)

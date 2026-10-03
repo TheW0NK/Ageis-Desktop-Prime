@@ -97,7 +97,7 @@ int main(int argc, char **argv)
 
     (void)argc;
     (void)argv;
-    setenv("PATH", "/bin:/sbin");
+    setenv("PATH", "/bin:/sbin:/apps/bin");
     first_boot();
     // The live system on the install media starts the installer instead of
     // the sign-in screen.
