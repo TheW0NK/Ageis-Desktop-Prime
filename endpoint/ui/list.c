@@ -562,7 +562,8 @@ static bool list_pointer(struct widget *w, struct wm_event *ev)
             select_row(w, i);
         if (ev->detail == BTN_RIGHT) {
             ui_emit(w, "context");
-        } else if (ev->detail == BTN_LEFT && i >= 0 && ui_click_count(w) == 2) {
+        } else if (ev->detail == BTN_LEFT && i >= 0
+                   && (ui_click_count(w) == 2 || attr_bool(ui_attr(w, "singleclick") ? ui_attr(w, "singleclick") : "false"))) {
             ui_emit(w, "activate");
         }
         return true;

@@ -133,7 +133,7 @@ A window lays out its children top to bottom, like `<vbox>`.
 | `password` | `onchange`, `onactivate` | An `input` that shows bullets and cannot be copied from. |
 | `spin` | `onchange` | A number with up and down arrows. Takes `min`, `max`, `step`. Arrow keys and the wheel change it. |
 | `textarea` | `onchange` | Multi-line text. `wrap`, `mono`, `readonly`, `autoindent`, `tabfocus` (Tab moves focus instead of typing a tab), `placeholder`. |
-| `list` | `onselect`, `onactivate`, `oncontext` | Rows of text. Children are `<item>` elements, which take `icon` and `selected`. Typing a letter jumps to the matching row. |
+| `list` | `onselect`, `onactivate`, `oncontext` | Rows of text. Children are `<item>` elements, which take `icon` and `selected`. Typing a letter jumps to the matching row. `singleclick` activates a row on one click. |
 | `table` | as `list`, plus `onsort` | A list with column headers: `columns="Name\|Size:80:right\|Date:140"`. Each column is a title, an optional width and an optional alignment. Rows hold tab-separated values. Clicking a header sets `sortcolumn` and `sortdescending`, then fires `onsort`. |
 | `dropdown` | `onchange` | Choose one of its `<option>` children. |
 | `canvas` | | Custom drawing and input through `ui_canvas_set()`. Pointer positions are relative to the canvas. |

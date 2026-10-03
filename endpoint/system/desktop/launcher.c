@@ -8,9 +8,11 @@
 
 static const char page[] =
     "<window padding='16' spacing='12'>"
-    "  <input id='search' placeholder='Search apps' onchange='search' onactivate='first'/>"
+    "  <input id='search' placeholder='Search apps and files' onchange='search' onactivate='first'/>"
     "  <scroll id='scroll' expand='1'>"
     "    <vbox id='apps' spacing='6'/>"
+    "    <label id='fileshead' text='Files' bold='true' dim='true' visible='false'/>"
+    "    <list id='files' singleclick='true' onactivate='openfile' visible='false'/>"
     "  </scroll>"
     "  <separator/>"
     "  <hbox spacing='10'>"
@@ -32,6 +34,106 @@ static int napps;
 static uint64_t hidden_at;
 
 static void rebuild_tiles(void);
+
+// ---- File search: names under the home folder ----
+
+#define FILE_RESULTS 8
+#define SCAN_LIMIT   4000
+
+static char results[FILE_RESULTS][512];
+static bool result_dir[FILE_RESULTS];
+static int nresults, scanned, search_timer = -1;
+
+static bool contains(const char *s, const char *q, size_t n)
+{
+    for (; *s; s++)
+        if (!strncasecmp(s, q, n))
+            return true;
+    return false;
+}
+
+static void scan(const char *dir, const char *q, int depth)
+{
+    struct dir_stream *d;
+    struct aegis_dirent *de;
+    size_t n = strlen(q);
+
+    if (depth > 8 || !(d = opendir(dir)))
+        return;
+    while ((de = readdir(d)) && nresults < FILE_RESULTS && scanned < SCAN_LIMIT) {
+        char path[512];
+        struct aegis_stat st;
+        bool isdir;
+
+        if (de->name[0] == '.')
+            continue;
+        scanned++;
+        snprintf(path, sizeof(path), "%s/%s", dir, de->name);
+        isdir = stat(path, &st) == 0 && S_ISDIR(st.mode);
+        if (contains(de->name, q, n)) {
+            result_dir[nresults] = isdir;
+            strlcpy(results[nresults++], path, sizeof(results[0]));
+        }
+        if (isdir)
+            scan(path, q, depth + 1);
+    }
+    closedir(d);
+}
+
+static bool run_search(void *u)
+{
+    const char *q = ui_text(ui_get(win, "search"));
+    struct widget *list = ui_get(win, "files");
+    size_t hl = strlen(me.home);
+
+    (void)u;
+    search_timer = -1;
+    nresults = scanned = 0;
+    ui_list_clear(list);
+    if (strlen(q) >= 2)
+        scan(me.home, q, 0);
+    for (int i = 0; i < nresults; i++) {
+        const char *base = strrchr(results[i], '/') + 1;
+        char row[600], where[512];
+
+        // "name   in Documents/Notes"
+        strlcpy(where, results[i], sizeof(where));
+        where[base - results[i] - 1] = 0;
+        snprintf(row, sizeof(row), "%s    in %s", base,
+                 !strncmp(where, me.home, hl) ? (where[hl] ? where + hl + 1 : "Home") : where);
+        ui_list_add(list, row);
+        ui_list_set_icon_shared(list, i, icon_get(icon_for_file(base, result_dir[i]), 20));
+    }
+    {
+        char h[16];
+
+        snprintf(h, sizeof(h), "%d", nresults * ui_theme.row_height + 6);
+        ui_set_attr(list, "height", h);
+    }
+    ui_set_visible(ui_get(win, "fileshead"), nresults > 0);
+    ui_set_visible(list, nresults > 0);
+    ui_relayout(win);
+    return false;
+}
+
+static void open_result(int i)
+{
+    struct app_info a;
+
+    if (i < 0 || i >= nresults)
+        return;
+    if (result_dir[i] ? app_find("files", &a) == 0 : app_for_file(results[i], &a) == 0)
+        app_launch(&a, results[i]);
+    else if (app_find("notepad", &a) == 0)
+        app_launch(&a, results[i]);
+    ui_window_hide(win);
+}
+
+static void open_file(struct widget *w, void *u)
+{
+    (void)u;
+    open_result(ui_list_selected(w));
+}
 
 static void launch_app(struct widget *w, void *u)
 {
@@ -78,6 +180,10 @@ static void filter(struct widget *w, void *u)
         if (m)
             shown[suite_of(&apps[i])]++;
     }
+    // Searching the disk waits for a pause in typing.
+    if (search_timer >= 0)
+        ui_timer_cancel(search_timer);
+    search_timer = ui_timer(150, run_search, NULL);
     for (int s = 0; s < 5; s++) {
         if (headers[s])
             ui_set_visible(headers[s], shown[s] > 0);
@@ -95,6 +201,9 @@ static void first(struct widget *w, void *u)
             launch_app(tiles[i], &apps[i]);
             return;
         }
+    if (search_timer >= 0)
+        run_search(NULL);
+    open_result(0);
 }
 
 static void paint_avatar(struct widget *w, struct gfx *g, struct rect r, void *u)
@@ -239,7 +348,7 @@ void launcher_init(struct ui_window *panel)
 {
     static const struct ui_handler_entry handlers[] = {
         { "search", filter }, { "first", first }, { "signout", signout }, { "restart", restart },
-        { "poweroff", poweroff }, { NULL, NULL },
+        { "poweroff", poweroff }, { "openfile", open_file }, { NULL, NULL },
     };
     if (!(win = ui_load_string_named(page, handlers, NULL, "launcher")))
         return;
