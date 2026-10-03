@@ -72,6 +72,21 @@ static void pic_disable(void)
     outb(0xA1, 0xFF);
 }
 
+// Newer firmware can leave the local APIC in x2APIC mode, where the
+// memory-mapped registers used here do nothing (no timer, no interrupts
+// after the first). Switch it back to xAPIC mode: x2APIC cannot be turned
+// off directly, so the APIC is disabled, then enabled without it.
+static void lapic_use_xapic(void)
+{
+    uint64_t b = rdmsr(MSR_APIC_BASE);
+
+    if (b & (1 << 10)) {
+        wrmsr(MSR_APIC_BASE, b & ~((1ULL << 10) | (1ULL << 11)));
+        b &= ~(1ULL << 10);
+    }
+    wrmsr(MSR_APIC_BASE, b | (1 << 11));
+}
+
 void apic_init(void)
 {
     uint64_t base;
@@ -82,7 +97,7 @@ void apic_init(void)
     if (!paging_map_mmio(base, PAGE_SIZE))
         panic_code(STOP_APIC_FAILED, "Cannot map the local APIC at 0x%lx", base);
     lapic = (volatile uint32_t *)base;
-    wrmsr(MSR_APIC_BASE, rdmsr(MSR_APIC_BASE) | (1 << 11));
+    lapic_use_xapic();
 
     lapic_write(LAPIC_TPR, 0);
     lapic_write(LAPIC_SVR, 0x100 | VECTOR_SPURIOUS);
@@ -207,7 +222,7 @@ uint64_t timer_uptime_ms(void)
 
 void lapic_init_ap(void)
 {
-    wrmsr(MSR_APIC_BASE, rdmsr(MSR_APIC_BASE) | (1 << 11));
+    lapic_use_xapic();
     lapic_write(LAPIC_TPR, 0);
     lapic_write(LAPIC_SVR, 0x100 | VECTOR_SPURIOUS);
     lapic_write(LAPIC_TIMER_DIV, 0x3);
