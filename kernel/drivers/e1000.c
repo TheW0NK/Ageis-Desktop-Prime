@@ -180,11 +180,13 @@ static void poll_thread(void *arg)
 static uint16_t eeprom_read(struct e1000 *e, uint8_t addr)
 {
     wr(e, REG_EERD, 1 | ((uint32_t)addr << 8));
-    for (int i = 0; i < 100000; i++) {
+    for (int i = 0; i < 1000; i++) {
         uint32_t v = rd(e, REG_EERD);
 
         if (v & (1U << 4))
             return v >> 16;
+        if (i > 16)
+            sched_sleep(1);
     }
     return 0;
 }
@@ -204,8 +206,10 @@ static void device_init(const struct pci_device *pci)
 
     wr(e, REG_IMC, 0xFFFFFFFF);
     wr(e, REG_CTRL, rd(e, REG_CTRL) | CTRL_RST);
-    for (int i = 0; i < 1000000 && (rd(e, REG_CTRL) & CTRL_RST); i++)
-        __asm__ volatile ("pause");
+    // The reset takes about a millisecond; check once a millisecond rather
+    // than in a tight loop that keeps an emulator busy.
+    for (int i = 0; i < 100 && (rd(e, REG_CTRL) & CTRL_RST); i++)
+        sched_sleep(1);
     wr(e, REG_IMC, 0xFFFFFFFF);
     rd(e, REG_ICR);
     wr(e, REG_CTRL, (rd(e, REG_CTRL) | CTRL_SLU | CTRL_ASDE) & ~(1U << 3));

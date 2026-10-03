@@ -207,11 +207,15 @@ static struct trb wait_event(uint32_t type, uint32_t slot, uint32_t timeout_ms)
         struct trb *e = event_peek();
 
         if (!e) {
-            // The timer may not be running yet during early setup.
-            if (spins > (uint64_t)timeout_ms * 20000 || timer_uptime_ms() > deadline)
+            if (timer_uptime_ms() > deadline || spins > (uint64_t)timeout_ms + 1000)
                 return none;
-            for (int i = 0; i < 50; i++)
-                __asm__ volatile ("pause");
+            // A few quick checks, then give the CPU (and an emulator) a rest.
+            if (spins < 64) {
+                for (int i = 0; i < 50; i++)
+                    __asm__ volatile ("pause");
+            } else {
+                sched_sleep(1);
+            }
             continue;
         }
         struct trb copy = *e;
@@ -508,6 +512,8 @@ fail:
 }
 
 // Resets a newly connected port; returns its speed, or 0.
+static bool wait_bits(volatile uint8_t *base, uint32_t off, uint32_t mask, uint32_t want, uint32_t ms);
+
 static uint32_t reset_port(uint32_t port)
 {
     uint32_t off = 0x400 + 0x10 * (port - 1);
@@ -517,8 +523,8 @@ static uint32_t reset_port(uint32_t port)
         return 0;
     if (!(sc & 2)) {
         wr(x.op, off, (sc & PORTSC_KEEP) | (1 << 4));
-        for (int i = 0; i < 2000000 && !(rd(x.op, off) & (1 << 21)); i++)
-            __asm__ volatile ("pause");
+        // The reset takes a few milliseconds on real hardware.
+        wait_bits(x.op, off, 1 << 21, 1 << 21, 200);
         sc = rd(x.op, off);
         wr(x.op, off, (sc & PORTSC_KEEP) | (1 << 21));
         sc = rd(x.op, off);
@@ -585,22 +591,29 @@ static void bios_handoff(void)
 
         if ((v & 0xFF) == 1) {
             wr(c, 0, v | (1U << 24));
-            for (int i = 0; i < 1000000 && (rd(c, 0) & (1U << 16)); i++)
-                __asm__ volatile ("pause");
+            // The firmware lets go of the controller (up to a second).
+            wait_bits(c, 0, 1U << 16, 0, 1000);
             wr(c, 4, rd(c, 4) & 0xFFFF1FEE);
         }
         off = ((v >> 8) & 0xFF) ? off + (((v >> 8) & 0xFF) << 2) : 0;
     }
 }
 
+// Waits for register bits, checking about once a millisecond: a tight
+// loop of register reads keeps an emulator (QEMU without acceleration
+// especially) so busy that its window stops responding.
 static bool wait_bits(volatile uint8_t *base, uint32_t off, uint32_t mask, uint32_t want, uint32_t ms)
 {
-    for (uint64_t i = 0; i < (uint64_t)ms * 10000; i++) {
+    uint64_t deadline = timer_uptime_ms() + ms;
+
+    for (uint32_t i = 0; i <= ms + 10; i++) {
         if ((rd(base, off) & mask) == want)
             return true;
-        __asm__ volatile ("pause");
+        if (timer_uptime_ms() > deadline)
+            break;
+        sched_sleep(1);
     }
-    return false;
+    return (rd(base, off) & mask) == want;
 }
 
 static void controller_init(const struct pci_device *pci)
