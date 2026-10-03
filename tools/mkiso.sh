@@ -66,15 +66,18 @@ fi
 mkfs.fat -n AEGIS-BOOT -C "$work/efi.img" "$esp_kb" >/dev/null
 mcopy -s -i "$work/efi.img" "$work/esp/"* ::/
 
-mkdir -p "$work/iso"
+mkdir -p "$work/iso/boot"
 cat > "$work/iso/README.TXT" <<'README'
 Aegis install media. Start the computer from this disc or USB stick in
 UEFI mode to install Aegis. Installing erases the disk you choose.
 README
+# The EFI image as a file inside the ISO (what CD/DVD firmware looks for,
+# VirtualBox's included), and again as a GPT partition for USB sticks.
+cp "$work/efi.img" "$work/iso/boot/efi.img"
 
 rm -f "$out"
 xorriso -as mkisofs -quiet -iso-level 3 -V AEGIS_INSTALL -o "$out" \
-    -partition_offset 16 -append_partition 2 0xef "$work/efi.img" -appended_part_as_gpt \
-    -e --interval:appended_partition_2:all:: -no-emul-boot \
+    -e boot/efi.img -no-emul-boot \
+    -append_partition 2 0xef "$work/efi.img" -appended_part_as_gpt \
     "$work/iso"
 echo "Built $out ($(( $(stat -c %s "$out") / 1048576 )) MiB)"
