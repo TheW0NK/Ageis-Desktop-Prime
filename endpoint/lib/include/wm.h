@@ -25,6 +25,9 @@ struct wm_window {
 enum wm_event_type {
     WM_EV_NONE, WM_EV_KEY, WM_EV_POINTER, WM_EV_RESIZE, WM_EV_CLOSE, WM_EV_FOCUS,
     WM_EV_FRAME, WM_EV_POPUP_DONE, WM_EV_LIST, WM_EV_SCREEN, WM_EV_SETTING,
+    WM_EV_DRAG,         // a drag is over the window: x, y, kind (WM_DRAG_*), mods, drag_type, actions, data
+    WM_EV_DROP,         // dropped: x, y, mods, drag_type, action, data
+    WM_EV_DRAG_END,     // the drag this window started is over: action (0: nothing was done)
 };
 
 struct wm_event {
@@ -43,6 +46,13 @@ struct wm_event {
     // Resize: new content size. Focus: focused or not.
     int width, height;
     bool focused;
+    // Drag and drop: the data's type, what the source allows (WM_DND_*),
+    // the action chosen, and the data (valid until another drag enters).
+    char drag_type[32];
+    uint32_t actions;
+    int action;
+    const char *data;
+    size_t data_len;
     // Window list (panels): the raw message.
     struct wm_msg msg;
 };
@@ -80,5 +90,13 @@ void wm_setting_changed(const char *key, const char *value);
 // before anything was copied.
 bool wm_clipboard_set(const char *text);
 const char *wm_clipboard_get(void);
+// Drag and drop. Start a drag while a pointer button is held in w: type
+// names the data ("files": paths, one per line; "text": UTF-8), label is
+// shown beside the cursor, actions are the WM_DND_* the target may take.
+// The window gets WM_EV_DRAG_END when it is over.
+bool wm_drag_start(struct wm_window *w, const char *type, const void *data, size_t len, const char *label,
+                   uint32_t actions);
+// Answers a WM_EV_DRAG: what a drop at that point would do (0: nothing).
+void wm_drag_status(struct wm_window *w, int action);
 
 #endif

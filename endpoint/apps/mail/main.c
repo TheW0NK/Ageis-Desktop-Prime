@@ -700,14 +700,11 @@ static void on_delete(struct widget *w, void *u)
 
 // ---- Writing ----
 
-static void compose_attach(struct widget *w, void *u)
+// Takes path (malloc'd) as an attachment.
+static void add_attachment(struct compose *c, char *path)
 {
-    struct compose *c = u;
-    char *path = ui_file_dialog(c->win, "Attach a file", NULL, false, NULL), **m, names[512] = "";
+    char **m, names[512] = "";
 
-    (void)w;
-    if (!path)
-        return;
     if (!(m = realloc(c->files, (c->nfiles + 1) * sizeof(char *)))) {
         free(path);
         return;
@@ -722,6 +719,45 @@ static void compose_attach(struct widget *w, void *u)
         strlcat(names, base, sizeof(names));
     }
     ui_set_text(ui_get(c->win, "files"), names);
+}
+
+static void compose_attach(struct widget *w, void *u)
+{
+    struct compose *c = u;
+    char *path = ui_file_dialog(c->win, "Attach a file", NULL, false, NULL);
+
+    (void)w;
+    if (path)
+        add_attachment(c, path);
+}
+
+// Files dropped on a message being written are attached (folders are not).
+static int attach_over(struct widget *w, struct ui_drop *d, void *u)
+{
+    (void)w;
+    (void)u;
+    if (d->kind == WM_DRAG_LEAVE || strcmp(d->type, "files"))
+        return 0;
+    return d->actions & WM_DND_COPY ? WM_DND_COPY : d->actions & WM_DND_LINK ? WM_DND_LINK : 0;
+}
+
+static void attach_drop(struct widget *w, struct ui_drop *d, int action, void *u)
+{
+    struct compose *c = u;
+
+    (void)w;
+    (void)action;
+    for (const char *p = d->data; *p;) {
+        const char *nl = strchr(p, '\n');
+        char *one = strndup(p, nl ? (size_t)(nl - p) : strlen(p));
+        struct aegis_stat st;
+
+        p = nl ? nl + 1 : p + strlen(p);
+        if (one && *one == '/' && stat(one, &st) == 0 && S_ISREG(st.mode))
+            add_attachment(c, one);
+        else
+            free(one);
+    }
 }
 
 static void compose_discard(struct widget *w, void *u)
@@ -782,6 +818,7 @@ static struct compose *compose(const char *to, const char *cc, const char *subje
     if (subject && *subject)
         ui_window_set_title(c->win, subject);
     c->in_reply_to = in_reply_to ? strdup(in_reply_to) : NULL;
+    ui_set_drop_target(ui_root(c->win), attach_over, attach_drop, c);
     ui_window_show(c->win);
     ui_focus(ui_get(c->win, to && *to ? "body" : "to"));
     return c;

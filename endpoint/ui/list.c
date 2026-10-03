@@ -25,6 +25,9 @@ struct list {
     int bar_grab;
     char find[32];                  // type-to-find prefix
     uint64_t find_ms;
+    int drop_row;                   // where a drag would land (-1: none)
+    bool armed;                     // a row was pressed: moving away drags it
+    int press_x, press_y;
 };
 
 static struct list *L(struct widget *w)
@@ -360,7 +363,7 @@ static void list_init(struct widget *w)
     w->value = -1;
     w->step = 1;
     if (l)
-        l->hover = -1;
+        l->hover = l->drop_row = -1;
     if (strcmp(w->tag, "dropdown"))
         w->expand = 1;
 }
@@ -439,9 +442,14 @@ static void list_paint(struct widget *w, struct gfx *g)
         if (sel) {
             gfx_fill(g, row, focused ? ui_theme.accent : ui_theme.selection);
             tc = focused ? ui_theme.accent_text : ui_theme.selection_text;
+        } else if (i == l->drop_row) {
+            gfx_fill(g, row, ui_theme.selection);
+            tc = ui_theme.selection_text;
         } else if (i == l->hover) {
             gfx_fill(g, row, ui_theme.hover);
         }
+        if (i == l->drop_row)
+            gfx_outline_rounded(g, row, 4, 2, ui_theme.accent);
         for (int c = 0; c < ncol; c++) {
             struct rect cr = { xs[c] + 8, row.y, ws[c] - 16, rh };
 
@@ -491,6 +499,21 @@ static int row_at(struct widget *w, int y)
     return i < L(w)->n ? i : -1;
 }
 
+int ui_list_row_at(struct widget *w, int x, int y)
+{
+    if (!is_list(w) || !rect_contains(rows_rect(w), x, y))
+        return -1;
+    return row_at(w, y);
+}
+
+void ui_list_set_drop_row(struct widget *w, int index)
+{
+    if (is_list(w) && L(w)->drop_row != index) {
+        L(w)->drop_row = index;
+        ui_redraw(w);
+    }
+}
+
 static struct rect list_bar(struct widget *w)
 {
     struct rect rr = rows_rect(w);
@@ -511,6 +534,12 @@ static bool list_pointer(struct widget *w, struct wm_event *ev)
         if (l->bar_drag) {
             l->sy = ui_scrollbar_offset(bar, total_h(w), rr.h, ev->y, l->bar_grab);
             ui_redraw(w);
+            return true;
+        }
+        if (l->armed && (ev->buttons & 1) && (abs(ev->x - l->press_x) > 6 || abs(ev->y - l->press_y) > 6)) {
+            // Pulled away from the pressed row.
+            l->armed = false;
+            ui_emit(w, "drag");
             return true;
         }
         if (has_bar && ev->x >= bar.x)
@@ -560,6 +589,11 @@ static bool list_pointer(struct widget *w, struct wm_event *ev)
         i = row_at(w, ev->y);
         if (i >= 0)
             select_row(w, i);
+        if (i >= 0 && ev->detail == BTN_LEFT && ui_has_handler(w, "drag")) {
+            l->armed = true;
+            l->press_x = ev->x;
+            l->press_y = ev->y;
+        }
         if (ev->detail == BTN_RIGHT) {
             ui_emit(w, "context");
         } else if (ev->detail == BTN_LEFT && i >= 0
@@ -569,7 +603,7 @@ static bool list_pointer(struct widget *w, struct wm_event *ev)
         return true;
     }
     case WM_PTR_UP:
-        l->bar_drag = false;
+        l->bar_drag = l->armed = false;
         return true;
     case WM_PTR_WHEEL: {
         int old = l->sy;

@@ -51,7 +51,7 @@ static const char page[] =
     "  <hbox expand='1' padding='8' spacing='8'>"
     "    <list id='places' width='170' onselect='place'/>"
     "    <table id='files' expand='1' columns='Name|Size:90:right|Type:110|Modified:150'"
-    "           onactivate='open' oncontext='context' onsort='sort' onselect='selected'"
+    "           onactivate='open' oncontext='context' onsort='sort' onselect='selected' ondrag='dragout'"
     "           placeholder='This folder is empty'/>"
     "  </hbox>"
     "  <statusbar>"
@@ -417,6 +417,18 @@ static void home(struct widget *w, void *u)
     load(me.home, true);
 }
 
+static void place_path(int i, char *path, size_t size)
+{
+    if (i == 6)
+        strlcpy(path, "/", size);
+    else if (i == 7)
+        strlcpy(path, trash_files, size);
+    else if (i == 0)
+        strlcpy(path, me.home, size);
+    else
+        snprintf(path, size, "%s/%s", me.home, place_names[i]);
+}
+
 static void place(struct widget *w, void *u)
 {
     int i = ui_list_selected(w);
@@ -425,14 +437,7 @@ static void place(struct widget *w, void *u)
     (void)u;
     if (i < 0)
         return;
-    if (i == 6)
-        strlcpy(path, "/", sizeof(path));
-    else if (i == 7)
-        strlcpy(path, trash_files, sizeof(path));
-    else if (i == 0)
-        strlcpy(path, me.home, sizeof(path));
-    else
-        snprintf(path, sizeof(path), "%s/%s", me.home, place_names[i]);
+    place_path(i, path, sizeof(path));
     load(path, true);
 }
 
@@ -760,6 +765,135 @@ static void context(struct widget *w, void *u)
     ui_menu_popup(ui_get(win, "ctx"), w, -1, -1);
 }
 
+// ---- Drag and drop ----
+
+// Dragging a row out gives its path to whatever it is dropped on.
+static bool refresh_later(void *u)
+{
+    (void)u;
+    refresh(NULL, NULL);
+    return false;
+}
+
+static void drag_done(struct widget *w, int action, void *u)
+{
+    (void)w;
+    (void)u;
+    // Moved somewhere else (or to the Trash): it is gone from here once the
+    // program it was dropped on has moved it.
+    if (action == WM_DND_MOVE) {
+        ui_timer(400, refresh_later, NULL);
+        ui_timer(1500, refresh_later, NULL);
+    }
+}
+
+static void drag_out(struct widget *w, void *u)
+{
+    struct entry *e = current();
+    char path[800];
+
+    (void)u;
+    if (!e)
+        return;
+    current_path(path, sizeof(path));
+    strlcat(path, "\n", sizeof(path));
+    ui_drag_start(w, "files", path, strlen(path), e->name, in_trash() ? WM_DND_COPY : WM_DND_COPY | WM_DND_MOVE | WM_DND_LINK,
+                  drag_done, NULL);
+}
+
+// The folder a drop at d lands in, for the file table or the places list;
+// false if it cannot take files.
+static bool drop_dir(struct widget *w, struct ui_drop *d, char *dir, size_t size, int *row)
+{
+    *row = -1;
+    if (strcmp(d->type, "files"))
+        return false;
+    if (w == places) {
+        if ((*row = ui_list_row_at(w, d->x, d->y)) < 0)
+            return false;
+        place_path(*row, dir, size);
+        return true;
+    }
+    *row = ui_list_row_at(w, d->x, d->y);
+    if (*row >= 0 && *row < nshown && entries[shown[*row]].dir && !in_trash()) {
+        join(dir, size, cwd, entries[shown[*row]].name);
+        return true;
+    }
+    *row = -1;
+    strlcpy(dir, cwd, size);
+    return true;
+}
+
+static void first_path(const char *paths, char *out, size_t size)
+{
+    const char *nl = strchr(paths, '\n');
+
+    snprintf(out, size, "%.*s", nl ? (int)(nl - paths) : (int)strlen(paths), paths);
+}
+
+static int drop_over(struct widget *w, struct ui_drop *d, void *u)
+{
+    char dir[512], src[512];
+    int row, action;
+
+    (void)u;
+    if (d->kind == WM_DRAG_LEAVE || !drop_dir(w, d, dir, sizeof(dir), &row)) {
+        ui_list_set_drop_row(w, -1);
+        return 0;
+    }
+    ui_list_set_drop_row(w, row);
+    // Into the Trash is always a move; elsewhere files move within a disk
+    // and are copied between disks.
+    if (*trash_files && !strcmp(dir, trash_files))
+        return d->actions & WM_DND_MOVE ? WM_DND_MOVE : 0;
+    first_path(d->data, src, sizeof(src));
+    action = ui_drop_action(d, same_disk(src, dir) ? WM_DND_MOVE : WM_DND_COPY);
+    // Not onto itself, nor moved to where it already is.
+    {
+        const char *slash = strrchr(src, '/');
+        size_t plen = slash ? (size_t)(slash - src) : 0;
+        bool here = plen ? strlen(dir) == plen && !strncmp(dir, src, plen) : !strcmp(dir, "/");
+
+        if (!strcmp(src, dir) || (here && action == WM_DND_MOVE)) {
+            ui_list_set_drop_row(w, -1);
+            return 0;
+        }
+    }
+    return action;
+}
+
+static void drop(struct widget *w, struct ui_drop *d, int action, void *u)
+{
+    char dir[512], failed[256] = "", msg[700];
+    int row, bad = 0;
+
+    (void)u;
+    ui_list_set_drop_row(w, -1);
+    if (!drop_dir(w, d, dir, sizeof(dir), &row))
+        return;
+    if (*trash_files && !strcmp(dir, trash_files)) {
+        // One per line, each into the Trash.
+        for (const char *p = d->data; *p;) {
+            const char *nl = strchr(p, '\n');
+            char one[512];
+
+            snprintf(one, sizeof(one), "%.*s", nl ? (int)(nl - p) : (int)strlen(p), p);
+            p = nl ? nl + 1 : p + strlen(p);
+            if (*one == '/' && trash_put(one) < 0 && !bad++)
+                strlcpy(failed, strrchr(one, '/') + 1, sizeof(failed));
+        }
+    } else {
+        bad = drop_files(d->data, dir, action, failed, sizeof(failed));
+    }
+    if (bad) {
+        snprintf(msg, sizeof(msg), "%s \"%s\"%s failed: %s.",
+                 action == WM_DND_MOVE ? "Moving" : action == WM_DND_LINK ? "Making a shortcut to" : "Copying", failed,
+                 bad > 1 ? " and others" : "", strerror(errno));
+        ui_message(win, "Files", msg, "OK");
+    }
+    refresh(NULL, NULL);
+}
+
 int main(int argc, char **argv)
 {
     static const struct ui_handler_entry handlers[] = {
@@ -770,7 +904,7 @@ int main(int argc, char **argv)
         { "destroy", destroy_entry }, { "restore", restore_entry }, { "emptytrash", empty_trash },
         { "copy", copy }, { "paste", paste }, { "copypath", copy_path_text }, { "properties", properties },
         { "terminal", terminal }, { "newwin", new_window }, { "close", close_window }, { "context", context },
-        { NULL, NULL },
+        { "dragout", drag_out }, { NULL, NULL },
     };
 
     ui_load_user_theme();
@@ -781,6 +915,8 @@ int main(int argc, char **argv)
     table = ui_get(win, "files");
     places = ui_get(win, "places");
     trash_dir(trash_files, sizeof(trash_files));
+    ui_set_drop_target(table, drop_over, drop, NULL);
+    ui_set_drop_target(places, drop_over, drop, NULL);
     for (int i = 0; i < NPLACES; i++) {
         ui_list_add(places, place_names[i]);
         ui_list_set_icon_shared(places, i, icon_get(place_icons[i], 20));

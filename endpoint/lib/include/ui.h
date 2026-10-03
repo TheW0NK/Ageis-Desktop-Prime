@@ -112,7 +112,8 @@ void ui_set_handler(struct widget *w, const char *event, ui_handler fn, void *us
 // Lists, tables and dropdowns: rows of tab-separated columns. Events:
 // "select" (selection changed), "activate" (double click or Enter),
 // "context" (right click or the Menu key), "sort" (a table header was
-// clicked; read the "sortcolumn" and "sortdescending" attributes).
+// clicked; read the "sortcolumn" and "sortdescending" attributes), "drag"
+// (a row was pulled away with the pointer: call ui_drag_start).
 void ui_list_clear(struct widget *w);
 int ui_list_add(struct widget *w, const char *text);
 int ui_list_count(struct widget *w);
@@ -125,6 +126,10 @@ void ui_list_select(struct widget *w, int index);
 void ui_list_set_icon(struct widget *w, int index, struct surface *icon);
 // The same for an icon the list must not free (from icon_get()).
 void ui_list_set_icon_shared(struct widget *w, int index, struct surface *icon);
+// The row at window coordinates x, y, or -1.
+int ui_list_row_at(struct widget *w, int x, int y);
+// Marks a row as where a drop would go (-1: none).
+void ui_list_set_drop_row(struct widget *w, int index);
 // Copies one column of a row into buf and returns buf.
 const char *ui_list_column(struct widget *w, int index, int column, char *buf, size_t size);
 
@@ -191,6 +196,42 @@ char *ui_file_dialog(struct ui_window *parent, const char *title, const char *st
 // The same, listing only files matching filter ("*.txt;*.md").
 char *ui_file_dialog_filtered(struct ui_window *parent, const char *title, const char *start_dir, bool save,
                               const char *suggested_name, const char *filter);
+
+// ---- Drag and drop ----
+
+// Data travels with a type: "files" is paths, one per line; "text" is UTF-8.
+struct ui_drop {
+    const char *type;
+    int kind;                       // WM_DRAG_ENTER, WM_DRAG_MOVE, WM_DRAG_LEAVE; WM_DRAG_MOVE for a drop
+    int x, y;                       // window coordinates
+    uint32_t actions;               // WM_DND_* the source allows
+    uint32_t mods;                  // keyboard modifiers
+    const char *data;
+    size_t len;
+};
+
+// over: returns what a drop at d->x, d->y would do (WM_DND_COPY, _MOVE or
+// _LINK), or 0 to refuse (the parent widget is asked next). It is called
+// once more with kind WM_DRAG_LEAVE when the drag moves away.
+// drop: takes the data; action is the value over returned.
+typedef int (*ui_drop_over_fn)(struct widget *w, struct ui_drop *d, void *user);
+typedef void (*ui_drop_fn)(struct widget *w, struct ui_drop *d, int action, void *user);
+// The target is outlined while a drag is over it, unless it has
+// dropoutline="false" (it shows the drop point itself).
+void ui_set_drop_target(struct widget *w, ui_drop_over_fn over, ui_drop_fn drop, void *user);
+// Makes w (usually the window's root) open files dropped on it: open is
+// called for each path until it returns false.
+void ui_accept_files(struct widget *w, bool (*open)(const char *path, void *user), void *user);
+// Starts dragging from w, while a pointer button is held (from a "drag"
+// event or a pointer handler). done, if given, hears the action the target
+// took (0: none) once the drag is over.
+bool ui_drag_start(struct widget *w, const char *type, const char *data, size_t len, const char *label,
+                   uint32_t actions, void (*done)(struct widget *w, int action, void *user), void *user);
+// The usual choice for files: Ctrl copies, Shift moves, Alt links; otherwise
+// fallback, if the source allows it.
+int ui_drop_action(struct ui_drop *d, int fallback);
+// True if a drag started in this program is in progress.
+bool ui_dragging(void);
 
 // ---- Clipboard ----
 

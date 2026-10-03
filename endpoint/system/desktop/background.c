@@ -17,6 +17,9 @@ static struct ui_window *win;
 static struct widget *canvas;
 static struct item *items;
 static int nitems, selected = -1;
+static int drop_item = -1;          // the icon a drag would land on
+static bool armed;                  // an icon was pressed: moving away drags it
+static int press_x, press_y;
 static char wallpaper[256];
 static struct surface *cache;
 static int64_t desktop_mtime;
@@ -228,8 +231,10 @@ static void paint(struct widget *w, struct gfx *g, struct rect r, void *u)
         const char *label = items[i].label;
         int cut = strlen(label);
 
-        if (i == selected)
-            gfx_fill_rounded(g, c, 8, ALPHA(0xFFFFFF, 0x38));
+        if (i == selected || i == drop_item)
+            gfx_fill_rounded(g, c, 8, ALPHA(0xFFFFFF, i == drop_item ? 0x50 : 0x38));
+        if (i == drop_item)
+            gfx_outline_rounded(g, c, 8, 2, ALPHA(0xFFFFFF, 0xC0));
         icon_draw(g, items[i].icon, (struct rect){ c.x + (c.w - ICON) / 2, c.y + 4, ICON, ICON });
         // Up to two lines of label, with a shadow for contrast.
         while (cut > 0 && text_width(f, label, cut) > c.w - 4)
@@ -279,20 +284,187 @@ static int item_at(struct widget *w, int x, int y)
     return -1;
 }
 
+static void rescan(void)
+{
+    struct aegis_stat st;
+
+    scan();
+    if (stat(desktop_dir, &st) == 0)
+        desktop_mtime = st.mtime;
+    ui_redraw(canvas);
+}
+
+static bool rescan_later(void *u)
+{
+    (void)u;
+    rescan();
+    return false;
+}
+
+static void drag_done(struct widget *w, int action, void *u)
+{
+    (void)w;
+    (void)u;
+    // The program it was dropped on moves it away: look again once it has.
+    if (action == WM_DND_MOVE) {
+        ui_timer(400, rescan_later, NULL);
+        ui_timer(1500, rescan_later, NULL);
+    }
+}
+
 static void input(struct widget *w, struct wm_event *ev, void *u)
 {
     int i;
 
     (void)u;
-    if (ev->type != WM_EV_POINTER || ev->kind != WM_PTR_DOWN)
+    if (ev->type != WM_EV_POINTER)
+        return;
+    if (ev->kind == WM_PTR_MOVE && armed && (ev->buttons & 1)
+        && (abs(ev->x - press_x) > 6 || abs(ev->y - press_y) > 6)) {
+        char path[320];
+
+        // Icons are dragged out as files (a shortcut as its .shortcut file).
+        armed = false;
+        if (selected >= 0 && selected < nitems) {
+            snprintf(path, sizeof(path), "%s\n", items[selected].path);
+            ui_drag_start(w, "files", path, strlen(path), items[selected].label,
+                          WM_DND_COPY | WM_DND_MOVE | WM_DND_LINK, drag_done, NULL);
+        }
+        return;
+    }
+    if (ev->kind == WM_PTR_UP)
+        armed = false;
+    if (ev->kind != WM_PTR_DOWN)
         return;
     i = item_at(w, ev->x, ev->y);
     if (i != selected) {
         selected = i;
         ui_redraw(w);
     }
+    if (i >= 0 && ev->detail == BTN_LEFT) {
+        armed = true;
+        press_x = ev->x;
+        press_y = ev->y;
+    }
     if (i >= 0 && ev->detail == BTN_LEFT && ui_click_count(w) == 2)
         open_path(items[i].path);
+}
+
+// ---- Dropping files on the desktop ----
+
+// What a drop at x, y means: into a folder (dir), onto an app shortcut
+// (app, opening the files with it), or onto the desktop. Returns the icon
+// it lands on, or -1.
+static int drop_place(int x, int y, char *dir, size_t size, struct app_info *app, bool *with_app)
+{
+    struct rect r = ui_rect(canvas);
+    int i = item_at(canvas, x - r.x, y - r.y);
+    struct aegis_stat st;
+
+    *with_app = false;
+    strlcpy(dir, desktop_dir, size);
+    if (i < 0)
+        return -1;
+    if (has_suffix(items[i].name, ".shortcut")) {
+        char name[96] = "", id[32] = "", target[256] = "", icon[256] = "";
+
+        read_shortcut(items[i].path, name, sizeof(name), id, sizeof(id), target, sizeof(target), icon, sizeof(icon));
+        if (*id && app_find(id, app) == 0) {
+            *with_app = true;
+            return i;
+        }
+        if (*target && stat(target, &st) == 0 && S_ISDIR(st.mode)) {
+            strlcpy(dir, target, size);
+            return i;
+        }
+        return -1;
+    }
+    if (stat(items[i].path, &st) == 0 && S_ISDIR(st.mode)) {
+        strlcpy(dir, items[i].path, size);
+        return i;
+    }
+    return -1;
+}
+
+static void first_line(const char *s, char *out, size_t size)
+{
+    const char *nl = strchr(s, '\n');
+
+    snprintf(out, size, "%.*s", nl ? (int)(nl - s) : (int)strlen(s), s);
+}
+
+static void set_drop_item(int i)
+{
+    if (i != drop_item) {
+        drop_item = i;
+        ui_redraw(canvas);
+    }
+}
+
+static int drop_over(struct widget *w, struct ui_drop *d, void *u)
+{
+    char dir[300], src[512], parent[512];
+    struct app_info app;
+    bool with_app;
+    int i, action;
+
+    (void)w;
+    (void)u;
+    if (d->kind == WM_DRAG_LEAVE || strcmp(d->type, "files")) {
+        set_drop_item(-1);
+        return 0;
+    }
+    i = drop_place(d->x, d->y, dir, sizeof(dir), &app, &with_app);
+    first_line(d->data, src, sizeof(src));
+    // An icon dropped on itself.
+    if (i >= 0 && !strcmp(src, items[i].path)) {
+        set_drop_item(-1);
+        return 0;
+    }
+    set_drop_item(i);
+    if (with_app)
+        return d->actions & WM_DND_LINK ? WM_DND_LINK : 0;
+    action = ui_drop_action(d, same_disk(src, dir) ? WM_DND_MOVE : WM_DND_COPY);
+    snprintf(parent, sizeof(parent), "%s", src);
+    if (strrchr(parent, '/'))
+        *strrchr(parent, '/') = 0;
+    // Already here.
+    if (action == WM_DND_MOVE && !strcmp(parent, dir))
+        return 0;
+    return action;
+}
+
+static void drop(struct widget *w, struct ui_drop *d, int action, void *u)
+{
+    char dir[300], failed[256] = "", msg[600];
+    struct app_info app;
+    bool with_app;
+    int bad;
+
+    (void)w;
+    (void)u;
+    set_drop_item(-1);
+    drop_place(d->x, d->y, dir, sizeof(dir), &app, &with_app);
+    if (with_app) {
+        // Each file opens in the app.
+        for (const char *p = d->data; *p;) {
+            const char *nl = strchr(p, '\n');
+            char one[512];
+
+            snprintf(one, sizeof(one), "%.*s", nl ? (int)(nl - p) : (int)strlen(p), p);
+            p = nl ? nl + 1 : p + strlen(p);
+            if (*one == '/')
+                app_launch(&app, one);
+        }
+        return;
+    }
+    if ((bad = drop_files(d->data, dir, action, failed, sizeof(failed)))) {
+        snprintf(msg, sizeof(msg), "%s \"%s\"%s failed: %s.",
+                 action == WM_DND_MOVE ? "Moving" : action == WM_DND_LINK ? "Making a shortcut to" : "Copying", failed,
+                 bad > 1 ? " and others" : "", strerror(errno));
+        ui_message(NULL, "Desktop", msg, "OK");
+    }
+    rescan();
 }
 
 // ---- Keeping up with changes ----
@@ -336,6 +508,8 @@ void background_start(void)
     canvas = ui_create(win, "canvas");
     ui_add(ui_root(win), canvas);
     ui_canvas_set(canvas, paint, input, NULL);
+    ui_set_attr(canvas, "dropoutline", "false");
+    ui_set_drop_target(canvas, drop_over, drop, NULL);
     background_reload();
     scan();
     if (stat(desktop_dir, &st) == 0)

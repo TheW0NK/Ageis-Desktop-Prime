@@ -289,6 +289,68 @@ bool wm_clipboard_set(const char *text)
     return true;
 }
 
+// ---- Drag and drop ----
+
+// Shared memory holding len bytes of data; -1 on failure.
+static int shm_with(const void *data, size_t len)
+{
+    int fd = shm_create(len ? len : 1, O_CLOEXEC);
+    char *map;
+
+    if (fd < 0 || !len)
+        return fd;
+    if ((map = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED) {
+        close(fd);
+        return -1;
+    }
+    memcpy(map, data, len);
+    munmap(map, len);
+    return fd;
+}
+
+bool wm_drag_start(struct wm_window *w, const char *type, const void *data, size_t len, const char *label,
+                   uint32_t actions)
+{
+    struct wm_msg m = { WM_DRAG_START, w->id, (int32_t)len, (int32_t)actions, 0, 0, 0, 0, { 0 } };
+    int fd;
+
+    if (!connected || len > (16 << 20) || (fd = shm_with(data, len)) < 0)
+        return false;
+    snprintf(m.text, sizeof(m.text), "%s\n%s", type, label ? label : "");
+    send_fds(sock, &m, sizeof(m), &fd, 1);
+    close(fd);
+    return true;
+}
+
+void wm_drag_status(struct wm_window *w, int action)
+{
+    send_simple(WM_DRAG_STATUS, w, action, 0, 0, 0);
+}
+
+// The data of the drag over a window (kept from its WM_DRAG_ENTER).
+static char *drag_data;
+static size_t drag_len;
+
+static void take_drag_data(int fd, int len)
+{
+    char *map, *copy;
+
+    if (len < 0 || len > (16 << 20) || !(copy = malloc(len + 1)))
+        return;
+    if (len) {
+        if ((map = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED) {
+            free(copy);
+            return;
+        }
+        memcpy(copy, map, len);
+        munmap(map, len);
+    }
+    copy[len] = 0;
+    free(drag_data);
+    drag_data = copy;
+    drag_len = len;
+}
+
 bool wm_next_event(struct wm_event *ev, int timeout_ms)
 {
     struct pollfd p = { sock, POLLIN, 0 };
@@ -307,6 +369,8 @@ bool wm_next_event(struct wm_event *ev, int timeout_ms)
         if (nfds && fd >= 0) {
             if (n == sizeof(m) && m.type == WM_CLIPBOARD)
                 take_clipboard(fd, m.a);
+            else if (n == sizeof(m) && (m.type == WM_DROP || m.type == WM_DRAG_OVER))
+                take_drag_data(fd, m.flags);
             close(fd);
         }
     }
@@ -372,6 +436,26 @@ bool wm_next_event(struct wm_event *ev, int timeout_ms)
     case WM_SETTING:
         ev->type = WM_EV_SETTING;
         ev->window = NULL;
+        break;
+    case WM_DRAG_OVER:
+    case WM_DROP:
+        ev->type = m.type == WM_DROP ? WM_EV_DROP : WM_EV_DRAG;
+        ev->x = m.a;
+        ev->y = m.b;
+        ev->mods = m.parent;
+        strlcpy(ev->drag_type, m.text, sizeof(ev->drag_type));
+        ev->data = drag_data ? drag_data : "";
+        ev->data_len = drag_data ? drag_len : 0;
+        if (m.type == WM_DROP) {
+            ev->action = m.c;
+        } else {
+            ev->actions = m.c;
+            ev->kind = m.d;
+        }
+        break;
+    case WM_DRAG_END:
+        ev->type = WM_EV_DRAG_END;
+        ev->action = m.a;
         break;
     case WM_SCREEN:
         ev->type = WM_EV_SCREEN;

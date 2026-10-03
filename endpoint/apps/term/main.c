@@ -196,6 +196,51 @@ static void paste(struct widget *w, void *u)
     ui_redraw(screen);
 }
 
+// Dropped files are typed in as their paths, quoted where needed; dropped
+// text as it is (like a paste).
+static int drop_over(struct widget *w, struct ui_drop *d, void *u)
+{
+    (void)w;
+    (void)u;
+    if (d->kind == WM_DRAG_LEAVE || (strcmp(d->type, "files") && strcmp(d->type, "text")))
+        return 0;
+    return d->actions & WM_DND_COPY ? WM_DND_COPY : d->actions & WM_DND_LINK ? WM_DND_LINK : 0;
+}
+
+static void drop(struct widget *w, struct ui_drop *d, int action, void *u)
+{
+    bool files = !strcmp(d->type, "files");
+
+    (void)w;
+    (void)action;
+    (void)u;
+    for (const char *p = d->data; *p;) {
+        const char *nl = strchr(p, '\n');
+        size_t n = nl ? (size_t)(nl - p) : strlen(p);
+
+        if (!files) {
+            for (size_t i = 0; i < d->len; i++)
+                to_shell(d->data[i] == '\n' ? "\r" : &d->data[i], 1);
+            break;
+        }
+        if (n) {
+            bool plain = true;
+
+            for (size_t i = 0; i < n; i++)
+                plain = plain && (isalnum((unsigned char)p[i]) || strchr("/._-+,:@%", p[i]));
+            if (!plain)
+                to_shell("'", 1);
+            for (size_t i = 0; i < n; i++)
+                to_shell(p[i] == '\'' ? "'\\''" : &p[i], p[i] == '\'' ? 4 : 1);
+            to_shell(plain ? " " : "' ", plain ? 1 : 2);
+        }
+        p += n + (nl != NULL);
+    }
+    scroll = 0;
+    ui_focus(screen);
+    ui_redraw(screen);
+}
+
 static void select_all(struct widget *w, void *u)
 {
     (void)w;
@@ -458,6 +503,7 @@ int main(int argc, char **argv)
     if (!vt_init(&vt, 80, 24))
         return 1;
     ui_canvas_set(screen, paint, input, NULL);
+    ui_set_drop_target(screen, drop_over, drop, NULL);
     if (start_shell(argc > 2 && !strcmp(argv[1], "-c") ? argv[2] : NULL) < 0) {
         ui_message(NULL, "Terminal", "The shell could not be started.", "OK");
         return 1;

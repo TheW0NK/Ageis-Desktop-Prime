@@ -310,6 +310,15 @@ static void on_background(struct widget *w, void *u)
     wm_setting_changed("background", path);
 }
 
+// A picture dropped on the window opens in it.
+static bool open_dropped(const char *p, void *u)
+{
+    (void)u;
+    if (load(p))
+        scan_dir();
+    return false;
+}
+
 int main(int argc, char **argv)
 {
     static const struct ui_handler_entry handlers[] = {
@@ -323,6 +332,7 @@ int main(int argc, char **argv)
         return 1;
     view = ui_get(win, "view");
     ui_canvas_set(view, paint, input, NULL);
+    ui_accept_files(ui_root(win), open_dropped, NULL);
     if (argc > 1 && load(argv[1]))
         scan_dir();
     update_info();

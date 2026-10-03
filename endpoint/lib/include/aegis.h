@@ -453,6 +453,15 @@ int copy_path(const char *src, const char *dst);
 int remove_path(const char *path);
 int move_path(const char *src, const char *dst);
 void unique_name(const char *dir, const char *name, char *out, size_t size);
+// True if both paths are on the same disk (moving between them is a rename).
+bool same_disk(const char *a, const char *b);
+// Puts dropped paths (one per line) into dir by copying, moving or making
+// shortcuts to them. Returns how many failed; the first one's name goes
+// in failed.
+enum { DROP_COPY = 1, DROP_MOVE = 2, DROP_LINK = 4 };       // the WM_DND_* values
+int drop_files(const char *paths, const char *dir, int action, char *failed, size_t fsize);
+// Writes "name.shortcut" in dir, opening target when started.
+int make_shortcut(const char *dir, const char *target);
 
 // Disks (lib/disk.c), as root: listing, partitioning and formatting.
 struct disk_info {

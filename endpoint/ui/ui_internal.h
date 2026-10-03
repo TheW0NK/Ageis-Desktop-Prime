@@ -42,6 +42,10 @@ struct widget {
     bool enabled, visible, hover, pressed, focusable;
     double value, min, max, step;
     void *data;                     // per-class state
+    // Drop target (ui_set_drop_target).
+    ui_drop_over_fn drop_over;
+    ui_drop_fn drop;
+    void *drop_user;
 };
 
 struct wclass {
@@ -64,6 +68,10 @@ struct wclass {
     void (*free)(struct widget *w);
     // Children painted by the class itself (scroll views).
     bool paints_children;
+    // Built-in drop target (text fields), used when the app sets none; such
+    // widgets show the drop point themselves.
+    int (*drop_over)(struct widget *w, struct ui_drop *d);
+    void (*drop)(struct widget *w, struct ui_drop *d, int action);
 };
 
 struct ui_window {
@@ -77,6 +85,8 @@ struct ui_window {
     struct rect dirty;
     bool has_dirty;
     struct widget *focus, *hover, *capture;
+    struct widget *drop_target;     // under a drag, and accepting it
+    bool drop_by_class;             // ... through its built-in handler (text fields)
     bool focus_visible;             // focus moved by keyboard: draw the ring
     // Double clicks.
     struct widget *last_click;
@@ -156,6 +166,9 @@ int ui_scrollbar_offset(struct rect track, int total, int visible, int y, int gr
 int ui_scrollbar_thumb(struct rect track, int total, int visible, int offset, int *thumb_h);
 void ui_clip(struct gfx *g, struct rect r);
 color_t ui_mix(color_t a, color_t b, int t);   // t of 255 toward b
+
+// Drag and drop (core.c).
+void ui_drag_forget(struct widget *w);
 
 // text.c: shared helpers for input fields.
 int ui_text_width_tabs(struct font *f, const char *s, int len, int tab_w);

@@ -53,7 +53,28 @@ struct screen {
     struct rect work;               // the area not covered by panels
 };
 
+// A drag and drop in progress: the data waits in a shared memory object
+// until it is dropped on a window that accepts it.
+struct dnd {
+    bool active;
+    struct window *source, *target;
+    int fd, len;
+    uint32_t actions;               // WM_DND_* the source allows
+    int action;                     // what the target under the pointer would do (0: refuses)
+    int unanswered;                 // drag messages the target has not answered yet
+    uint64_t released_ms;           // buttons released while an answer was due: drop when it comes
+    char type[32];
+    char label[96];
+};
+
+// Cursor shapes of the compositor's own, after the WM_CURSOR_* ones.
+#define CURSOR_DND_NONE     100     // nothing would happen here
+#define CURSOR_DND_COPY     101
+#define CURSOR_DND_MOVE     102
+#define CURSOR_DND_LINK     103
+
 extern struct screen screen;
+extern struct dnd dnd;
 extern struct window *windows;
 extern struct window *focused;
 extern int pointer_x, pointer_y;
@@ -76,6 +97,12 @@ void set_frame_theme(const char *name);
 int input_open_device(void);
 void input_handle(int fd);
 void key_text(uint16_t code, uint32_t mods, char *out);
+bool dnd_start(struct window *w, int fd, int len, uint32_t actions, const char *text);
+void dnd_status(struct window *w, int action);
+void input_forget(struct window *w);
+// Called from the main loop: drops a released drag whose target is slow to answer.
+// Returns how long the loop may wait (-1: no drag waiting).
+int dnd_tick(void);
 
 // main.c
 void send_msg(struct client *c, struct wm_msg *m);

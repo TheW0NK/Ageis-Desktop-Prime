@@ -33,6 +33,9 @@ enum wm_type {
     WM_SCREENSHOT,          // text = path to save a PNG of the screen
     WM_SETTING_CHANGED,     // text = "key=value": tell the session's programs (theme, background, ...)
     WM_CLIPBOARD_SET,       // a = length; carries a shm descriptor holding the UTF-8 text
+    WM_DRAG_START,          // window (holding the pointer), a = length, b = WM_DND_* allowed,
+                            // text = "type\nlabel"; carries a shm descriptor with the data
+    WM_DRAG_STATUS,         // window (under a drag), a = WM_DND_* it would take, 0 to refuse
 
     // Compositor to client.
     WM_WELCOME = 64,        // a = screen width, b = screen height, c = work area height
@@ -53,6 +56,12 @@ enum wm_type {
     WM_SCREEN,              // a = width, b = height after a mode change
     WM_SETTING,             // text = "key=value" from WM_SETTING_CHANGED
     WM_CLIPBOARD,           // a = length; carries a shm descriptor with the session's clipboard
+    WM_DRAG_OVER,           // window, a = x, b = y (content), c = WM_DND_* allowed, d = WM_DRAG_*,
+                            // parent = keyboard modifiers, text = type; answer with WM_DRAG_STATUS.
+                            // WM_DRAG_ENTER carries the data too, flags = its length
+    WM_DROP,                // window, a = x, b = y, c = WM_DND_* chosen, d = length,
+                            // parent = keyboard modifiers, text = type; carries the data
+    WM_DRAG_END,            // window (the source), a = WM_DND_* taken by the target, 0 if none
 };
 
 // Window roles (in flags).
@@ -82,6 +91,16 @@ enum wm_type {
 #define WM_PTR_ENTER        4
 #define WM_PTR_LEAVE        5
 #define WM_PTR_HWHEEL       6
+
+// Drag and drop: what happens to the data (WM_DRAG_START, WM_DRAG_STATUS, WM_DROP).
+#define WM_DND_COPY         0x1
+#define WM_DND_MOVE         0x2
+#define WM_DND_LINK         0x4     // open it, or make a shortcut to it
+
+// WM_DRAG_OVER kinds.
+#define WM_DRAG_ENTER       0
+#define WM_DRAG_MOVE        1
+#define WM_DRAG_LEAVE       2
 
 // Cursors.
 #define WM_CURSOR_ARROW     0

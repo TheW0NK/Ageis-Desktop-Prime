@@ -552,6 +552,24 @@ static bool on_close(struct ui_window *w, void *u)
     return true;
 }
 
+// Music dropped on the window joins the playlist (a folder adds what is in
+// it); if nothing was playing, the first new track starts.
+static bool add_dropped(const char *p, void *u)
+{
+    struct aegis_stat st;
+    int before = ntracks;
+
+    (void)u;
+    if (stat(p, &st) == 0 && S_ISDIR(st.mode))
+        add_folder(p);
+    else
+        add_track(p);
+    status_count();
+    if (current < 0 && ntracks > before)
+        play_index(before);
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     static const struct ui_handler_entry handlers[] = {
@@ -566,6 +584,7 @@ int main(int argc, char **argv)
         return 1;
     ui_canvas_set(ui_get(win, "art"), paint_art, NULL, NULL);
     ui_on_close(win, on_close, NULL);
+    ui_accept_files(ui_root(win), add_dropped, NULL);
     if ((v = audio_get_volume(NULL)) >= 0)
         ui_set_value(ui_get(win, "volume"), v);
     if (argc > 1) {

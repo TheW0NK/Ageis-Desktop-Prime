@@ -133,7 +133,7 @@ A window lays out its children top to bottom, like `<vbox>`.
 | `password` | `onchange`, `onactivate` | An `input` that shows bullets and cannot be copied from. |
 | `spin` | `onchange` | A number with up and down arrows. Takes `min`, `max`, `step`. Arrow keys and the wheel change it. |
 | `textarea` | `onchange` | Multi-line text. `wrap`, `mono`, `readonly`, `autoindent`, `tabfocus` (Tab moves focus instead of typing a tab), `placeholder`. |
-| `list` | `onselect`, `onactivate`, `oncontext` | Rows of text. Children are `<item>` elements, which take `icon` and `selected`. Typing a letter jumps to the matching row. `singleclick` activates a row on one click. |
+| `list` | `onselect`, `onactivate`, `oncontext`, `ondrag` | Rows of text. Children are `<item>` elements, which take `icon` and `selected`. Typing a letter jumps to the matching row. `singleclick` activates a row on one click. `ondrag` fires when a row is pulled away with the pointer; call `ui_drag_start` from it. |
 | `table` | as `list`, plus `onsort` | A list with column headers: `columns="Name\|Size:80:right\|Date:140"`. Each column is a title, an optional width and an optional alignment. Rows hold tab-separated values. Clicking a header sets `sortcolumn` and `sortdescending`, then fires `onsort`. |
 | `dropdown` | `onchange` | Choose one of its `<option>` children. |
 | `canvas` | | Custom drawing and input through `ui_canvas_set()`. Pointer positions are relative to the canvas. |
@@ -184,6 +184,32 @@ These keys work in `input`, `password`, `spin` and `textarea`:
 | `ui_file_dialog(parent, title, start_dir, save, suggested_name)` | A path you must free, or NULL. Shows the user's folders (Home, Desktop, Documents, Downloads, Images, Music) and the whole computer. Asks before replacing a file. `ui_file_dialog_filtered` also takes `"*.txt;*.md"`. |
 
 These functions run their own event loop and return when the user answers.
+
+## Drag and drop
+
+Dragged data has a type: `files` (paths, one per line) or `text` (UTF-8).
+
+- **Dragging out.** `ui_drag_start(widget, type, data, len, label, actions, done, user)`
+  starts a drag while a pointer button is held: from a list's `ondrag`
+  handler, or from a canvas's input function. `label` is shown beside the
+  cursor. `actions` are the `WM_DND_COPY`, `WM_DND_MOVE` and `WM_DND_LINK`
+  the target may choose. `done(widget, action, user)` hears what the target
+  did (0: nothing). After a move, the target has done the moving.
+- **Dropping in.** `ui_set_drop_target(widget, over, drop, user)`. `over` is
+  called as a drag enters and moves over the widget. It returns the action a
+  drop there would take, or 0 to refuse, and the widget's parent is asked
+  next. It is called once more with `kind == WM_DRAG_LEAVE`. `over` can read
+  the data already, for example to pick move or copy by disk.
+  `ui_drop_action(d, fallback)` gives the usual choice: Ctrl copies, Shift
+  moves, Alt links. The widget is outlined while it is the target, unless it
+  has `dropoutline="false"`. Lists can mark a row with
+  `ui_list_set_drop_row`, and `ui_list_row_at(list, x, y)` finds it.
+- `ui_accept_files(widget, open, user)` makes a widget open dropped files:
+  `open(path, user)` is called for each one until it returns false.
+- Text fields take dropped text and paths, showing where they will go.
+  Selected text can be dragged out of them: it moves within a field and is
+  copied to another, unless Ctrl or Shift says otherwise. An app's own drop
+  target, on the field or around it, is asked first.
 
 ## Event loop
 

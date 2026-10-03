@@ -234,8 +234,22 @@ void set_cursor_shape(int shape)
     damage((struct rect){ pointer_x - CURSOR_SIZE / 2, pointer_y - CURSOR_SIZE / 2, CURSOR_SIZE * 2, CURSOR_SIZE * 2 });
 }
 
+// What is being dragged, in a tag beside the cursor.
+static struct rect dnd_badge(void)
+{
+    struct font *f = font_get(FONT_SANS, 13);
+    int w = *dnd.label ? MIN(text_width(f, dnd.label, -1), 220) + 16 : 0;
+
+    return (struct rect){ pointer_x + 22, pointer_y + 20, w, font_line_height(f) + 8 };
+}
+
 static struct rect cursor_rect(void)
 {
+    if (cursor_shape >= CURSOR_DND_NONE) {
+        struct rect b = dnd_badge();
+
+        return rect_union((struct rect){ pointer_x, pointer_y, 30, 32 }, b.w ? b : (struct rect){ pointer_x, pointer_y, 1, 1 });
+    }
     switch (cursor_shape) {
     case WM_CURSOR_ARROW:
     case WM_CURSOR_HAND:
@@ -294,6 +308,35 @@ static void draw_cursor(struct gfx *g)
     }
     if (cursor_shape == WM_CURSOR_WAIT)
         gfx_ring(g, x + 14, y + 16, 4, 2, RGB(0x3D8BFF));
+    if (cursor_shape >= CURSOR_DND_NONE) {
+        struct rect b = dnd_badge();
+        float cx = x + 20, cy = y + 22;
+
+        // A sign for what dropping here would do; moving needs none.
+        if (cursor_shape == CURSOR_DND_NONE) {
+            gfx_circle(g, cx, cy, 7, paper);
+            gfx_ring(g, cx, cy, 6, 2, RGB(0xD93A3A));
+            gfx_line(g, cx - 4, cy + 4, cx + 4, cy - 4, 2, RGB(0xD93A3A));
+        } else if (cursor_shape == CURSOR_DND_COPY) {
+            gfx_circle(g, cx, cy, 7, RGB(0x2E9E4F));
+            gfx_line(g, cx - 4, cy, cx + 4, cy, 2, paper);
+            gfx_line(g, cx, cy - 4, cx, cy + 4, 2, paper);
+        } else if (cursor_shape == CURSOR_DND_LINK) {
+            gfx_circle(g, cx, cy, 7, RGB(0x3D7BE0));
+            gfx_line(g, cx - 3, cy + 3, cx + 3, cy - 3, 2, paper);
+            gfx_line(g, cx, cy - 3, cx + 3, cy - 3, 2, paper);
+            gfx_line(g, cx + 3, cy - 3, cx + 3, cy, 2, paper);
+        }
+        if (b.w) {
+            struct font *f = font_get(FONT_SANS, 13);
+            struct gfx clip = *g;
+            struct rect t = { b.x + 8, b.y + 4, b.w - 16, b.h - 8 };
+
+            gfx_fill_rounded(g, b, 6, ALPHA(0x1D2633, 0xE0));
+            if (rect_intersect(g->clip, t, &clip.clip))
+                text_draw(&clip, f, t.x, t.y, dnd.label, -1, RGB(0xFFFFFF));
+        }
+    }
 }
 
 // ---- Composition ----

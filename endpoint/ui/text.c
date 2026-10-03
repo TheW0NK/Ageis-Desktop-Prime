@@ -33,6 +33,11 @@ struct edit {
     int nundo, nredo;
     uint64_t last_edit_ms;
     int last_kind;                  // 1 typing, 2 deleting, 0 other
+    // Drag and drop: a press inside the selection may drag it away.
+    bool drag_armed, drag_handled;
+    int press_x, press_y, press_pos;
+    int drag_start, drag_end;       // the text being dragged out
+    int drop_pos;                   // where a drag would insert (-1: none)
 };
 
 static const char bullet[] = "\xE2\x80\xA2";
@@ -735,6 +740,122 @@ static void scroll_y(struct widget *w, int sy)
     }
 }
 
+// ---- Drag and drop ----
+
+static void text_drag_done(struct widget *w, int action, void *user)
+{
+    struct edit *e = E(w);
+    int s = e->drag_start, t = e->drag_end;
+
+    (void)user;
+    // Moved elsewhere: the text leaves this field (unless it was dropped
+    // back into it, which already moved it).
+    if (action == WM_DND_MOVE && !e->drag_handled && !e->readonly && s >= 0 && t <= e->len && s < t)
+        replace(w, s, t, "", 0, 0);
+    e->drag_handled = false;
+    e->drag_start = e->drag_end = -1;
+}
+
+static void start_text_drag(struct widget *w)
+{
+    struct edit *e = E(w);
+    int s = sel_start(e), t = sel_end(e);
+    char label[64];
+    int n = 0;
+
+    // The label is the start of the text, on one line.
+    for (int i = s; i < t && n < 40; i++)
+        label[n++] = w->text[i] == '\n' || w->text[i] == '\t' ? ' ' : w->text[i];
+    while (n > 0 && (label[n - 1] & 0xC0) == 0x80)
+        n--;
+    if (n && (label[n - 1] & 0x80))
+        n--;    // a lead byte whose character was cut
+    label[n] = 0;
+    if (t - s > 40)
+        strlcat(label, "\xE2\x80\xA6", sizeof(label));
+    e->drag_start = s;
+    e->drag_end = t;
+    e->drag_handled = false;
+    e->dragging = false;
+    if (!ui_drag_start(w, "text", w->text + s, t - s, label, e->readonly ? WM_DND_COPY : WM_DND_COPY | WM_DND_MOVE,
+                       text_drag_done, NULL))
+        e->drag_start = e->drag_end = -1;
+}
+
+static int edit_drop_over(struct widget *w, struct ui_drop *d)
+{
+    struct edit *e = E(w);
+    int p, action;
+    bool own = e->drag_start >= 0 && ui_dragging();
+
+    if (d->kind == WM_DRAG_LEAVE || e->readonly || e->spin || !w->enabled
+        || (strcmp(d->type, "text") && (strcmp(d->type, "files") || e->password))) {
+        if (e->drop_pos >= 0) {
+            e->drop_pos = -1;
+            ui_redraw(w);
+        }
+        return 0;
+    }
+    p = hit_pos(w, d->x, d->y);
+    // Dropping a selection onto itself does nothing.
+    if (own && p >= e->drag_start && p <= e->drag_end) {
+        if (e->drop_pos >= 0) {
+            e->drop_pos = -1;
+            ui_redraw(w);
+        }
+        return 0;
+    }
+    // Paths are copied in as text; text moves within a field and is copied
+    // between them, unless Ctrl or Shift says otherwise.
+    action = !strcmp(d->type, "files") ? (d->actions & WM_DND_COPY ? WM_DND_COPY : WM_DND_LINK)
+           : (d->mods & MOD_CTRL) ? WM_DND_COPY : (d->mods & MOD_SHIFT) ? WM_DND_MOVE
+           : own ? WM_DND_MOVE : WM_DND_COPY;
+    if (!(action & d->actions))
+        action = d->actions & WM_DND_COPY ? WM_DND_COPY : d->actions & WM_DND_MOVE ? WM_DND_MOVE : 0;
+    if (p != e->drop_pos) {
+        e->drop_pos = p;
+        ui_redraw(w);
+    }
+    return action;
+}
+
+static void edit_drop(struct widget *w, struct ui_drop *d, int action)
+{
+    struct edit *e = E(w);
+    int p = hit_pos(w, d->x, d->y), n = d->len;
+    char *text;
+
+    e->drop_pos = -1;
+    if (!(text = malloc(n + 1)))
+        return;
+    memcpy(text, d->data, n);
+    // Paths, one per line, become a space-separated list in one-line fields
+    // (replace() joins the lines); no trailing newline.
+    while (n > 0 && (text[n - 1] == '\n' || text[n - 1] == '\r'))
+        n--;
+    text[n] = 0;
+    if (e->drag_start >= 0 && ui_dragging() && action == WM_DND_MOVE) {
+        int s = e->drag_start, t = e->drag_end;
+
+        // Moving text within this field: take it out, then put it in at the
+        // drop point (which shifts if it came after the text).
+        if (s >= 0 && t <= e->len && s < t) {
+            replace(w, s, t, "", 0, 0);
+            if (p >= t)
+                p -= t - s;
+            e->drag_handled = true;
+        }
+    }
+    p = MIN(MAX(p, 0), e->len);
+    replace(w, p, p, text, n, 0);
+    // Select what was dropped.
+    e->anchor = p;
+    ensure_visible(w);
+    ui_redraw(w);
+    ui_focus(w);
+    free(text);
+}
+
 static bool edit_pointer(struct widget *w, struct wm_event *ev)
 {
     struct edit *e = E(w);
@@ -777,11 +898,28 @@ static bool edit_pointer(struct widget *w, struct wm_event *ev)
             e->anchor = s;
             move_to(w, t, true);
         } else {
-            move_to(w, hit_pos(w, ev->x, ev->y), ev->mods & MOD_SHIFT);
+            int p = hit_pos(w, ev->x, ev->y);
+
+            // A press inside the selection may be the start of dragging it.
+            if (has_selection(e) && !e->password && !(ev->mods & MOD_SHIFT) && p >= sel_start(e) && p < sel_end(e)) {
+                e->drag_armed = true;
+                e->press_x = ev->x;
+                e->press_y = ev->y;
+                e->press_pos = p;
+                return true;
+            }
+            move_to(w, p, ev->mods & MOD_SHIFT);
         }
         e->dragging = true;
         return true;
     case WM_PTR_MOVE:
+        if (e->drag_armed) {
+            if ((ev->buttons & 1) && (abs(ev->x - e->press_x) > 6 || abs(ev->y - e->press_y) > 6)) {
+                e->drag_armed = false;
+                start_text_drag(w);
+            }
+            return true;
+        }
         if (e->bar_drag) {
             scroll_y(w, ui_scrollbar_offset(bar, content_h(w), text_area(w).h, ev->y, e->bar_grab));
             return true;
@@ -792,6 +930,11 @@ static bool edit_pointer(struct widget *w, struct wm_event *ev)
         }
         return false;
     case WM_PTR_UP:
+        if (e->drag_armed) {
+            // Clicked in the selection without dragging: put the cursor there.
+            e->drag_armed = false;
+            move_to(w, e->press_pos, false);
+        }
         e->dragging = e->bar_drag = false;
         return true;
     case WM_PTR_WHEEL:
@@ -821,7 +964,7 @@ static void edit_paint(struct widget *w, struct gfx *g)
     int lh = font_line_height(f), ss = sel_start(e), se = sel_end(e), first, last;
     bool focused = ui_is_focused(w);
     struct gfx saved = *g;
-    color_t border = focused ? ui_theme.accent : w->hover ? ui_mix(ui_theme.border, ui_theme.text, 60) : ui_theme.border;
+    color_t border = focused || e->drop_pos >= 0 ? ui_theme.accent : w->hover ? ui_mix(ui_theme.border, ui_theme.text, 60) : ui_theme.border;
     const char *placeholder = ui_attr(w, "placeholder");
 
     gfx_fill_rounded(g, w->r, ui_theme.radius, e->readonly || !w->enabled ? ui_theme.surface_alt : ui_theme.input);
@@ -860,9 +1003,12 @@ static void edit_paint(struct widget *w, struct gfx *g)
         }
         draw_line(w, g, x, y, w->text + v->start, v->len, w->enabled ? ui_theme.text : ui_theme.text_dim);
         if (focused && !e->readonly && e->cursor >= v->start && e->cursor <= v->start + v->len
-            && (l == line_of(w, e->cursor)))
+            && (l == line_of(w, e->cursor)) && e->drop_pos < 0)
             gfx_fill(g, (struct rect){ x + line_x(w, w->text + v->start, e->cursor - v->start), y, 2, lh },
                      ui_theme.text);
+        if (e->drop_pos >= v->start && e->drop_pos <= v->start + v->len && l == line_of(w, e->drop_pos))
+            gfx_fill(g, (struct rect){ x + line_x(w, w->text + v->start, e->drop_pos - v->start) - 1, y, 3, lh },
+                     ui_theme.accent);
     }
     *g = saved;
     if (e->multiline)
@@ -895,6 +1041,7 @@ static void edit_init(struct widget *w)
         return;
     e->cap = 1;
     e->lines_dirty = true;
+    e->drop_pos = e->drag_start = e->drag_end = -1;
     e->multiline = !strcmp(w->tag, "textarea");
     e->password = !strcmp(w->tag, "password");
     e->spin = !strcmp(w->tag, "spin");
@@ -1067,11 +1214,13 @@ void ui_textarea_set_modified(struct widget *w, bool modified)
 const struct wclass ui_input_class = { "input", true, WM_CURSOR_TEXT, .init = edit_init, .measure = edit_measure,
                                        .paint = edit_paint, .pointer = edit_pointer, .key = edit_key,
                                        .attr = edit_attr, .text_changed = edit_text_changed,
-                                       .value_changed = edit_value_changed, .focus = edit_focus, .free = edit_free };
+                                       .value_changed = edit_value_changed, .focus = edit_focus, .free = edit_free,
+                                       .drop_over = edit_drop_over, .drop = edit_drop };
 const struct wclass ui_password_class = { "password", true, WM_CURSOR_TEXT, .init = edit_init,
                                           .measure = edit_measure, .paint = edit_paint, .pointer = edit_pointer,
                                           .key = edit_key, .attr = edit_attr, .text_changed = edit_text_changed,
-                                          .focus = edit_focus, .free = edit_free };
+                                          .focus = edit_focus, .free = edit_free,
+                                       .drop_over = edit_drop_over, .drop = edit_drop };
 const struct wclass ui_spin_class = { "spin", true, WM_CURSOR_TEXT, .init = edit_init, .measure = edit_measure,
                                       .paint = edit_paint, .pointer = edit_pointer, .key = edit_key,
                                       .attr = edit_attr, .text_changed = edit_text_changed,
@@ -1079,4 +1228,5 @@ const struct wclass ui_spin_class = { "spin", true, WM_CURSOR_TEXT, .init = edit
 const struct wclass ui_textarea_class = { "textarea", true, WM_CURSOR_TEXT, .init = edit_init,
                                           .measure = edit_measure, .paint = edit_paint, .pointer = edit_pointer,
                                           .key = edit_key, .attr = edit_attr, .text_changed = edit_text_changed,
-                                          .focus = edit_focus, .free = edit_free };
+                                          .focus = edit_focus, .free = edit_free,
+                                       .drop_over = edit_drop_over, .drop = edit_drop };

@@ -269,6 +269,15 @@ static void on_open(struct widget *w, void *u)
     free(p);
 }
 
+// A file dropped on the window opens in it.
+static bool open_dropped(const char *p, void *u)
+{
+    (void)u;
+    if (settle())
+        load_file(p);
+    return false;
+}
+
 static void on_save(struct widget *w, void *u)
 {
     (void)w;
@@ -532,6 +541,8 @@ int main(int argc, char **argv)
     if (!(win = ui_load_string_named(page, handlers, NULL, "notepad")))
         return 1;
     text = ui_get(win, "text");
+    // On the text itself, so that dropped text still goes into it.
+    ui_accept_files(text, open_dropped, NULL);
     if (argc > 1) {
         struct aegis_stat st;
 

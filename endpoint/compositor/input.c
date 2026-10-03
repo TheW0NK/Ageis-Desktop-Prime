@@ -17,6 +17,7 @@ static uint32_t buttons;
 static uint64_t last_resize_ms;
 static bool meta_combo;             // another key went with Meta: its release is not "Meta alone"
 int pointer_x, pointer_y;
+struct dnd dnd = { .fd = -1 };
 struct window *snap_window;
 struct rect snap_preview;
 
@@ -153,9 +154,188 @@ static void update_hover(struct window *w)
     }
 }
 
+// ---- Drag and drop ----
+
+static void dnd_send(struct window *w, uint32_t type, int a, int b, int c, int d)
+{
+    struct rect cr;
+
+    if (!w || !w->owner)
+        return;
+    struct wm_msg m = { 0 };
+
+    cr = window_content(w);
+    m.type = type;
+    m.window = w->cid;
+    m.a = a == INT32_MIN ? pointer_x - cr.x : a;
+    m.b = b == INT32_MIN ? pointer_y - cr.y : b;
+    m.c = c;
+    m.d = d;
+    m.parent = mods;
+    strlcpy(m.text, dnd.type, sizeof(m.text));
+    // Drops, and windows a drag enters, get the data itself.
+    if (type == WM_DROP || d == WM_DRAG_ENTER) {
+        int fd = dnd.fd;
+
+        m.flags = dnd.len;
+        send_fds(w->owner->fd, &m, sizeof(m), &fd, 1);
+        return;
+    }
+    send_msg(w->owner, &m);
+}
+
+static void dnd_cursor(void)
+{
+    static const int shapes[] = { CURSOR_DND_NONE, CURSOR_DND_COPY, CURSOR_DND_MOVE, 0, CURSOR_DND_LINK };
+
+    set_cursor_shape(dnd.action > 0 && dnd.action <= WM_DND_LINK ? shapes[dnd.action] : CURSOR_DND_NONE);
+}
+
+// The window under the pointer hears about the drag; its answer
+// (WM_DRAG_STATUS) decides the cursor.
+static void dnd_motion(void)
+{
+    struct window *w = window_at(pointer_x, pointer_y);
+
+    if (w && (!w->owner || !rect_contains(window_content(w), pointer_x, pointer_y)))
+        w = NULL;
+    if (dnd.released_ms)
+        return;
+    if (w != dnd.target) {
+        dnd_send(dnd.target, WM_DRAG_OVER, INT32_MIN, INT32_MIN, dnd.actions, WM_DRAG_LEAVE);
+        dnd.target = w;
+        dnd.action = 0;
+        dnd.unanswered = 0;
+        dnd_send(w, WM_DRAG_OVER, INT32_MIN, INT32_MIN, dnd.actions, WM_DRAG_ENTER);
+    } else {
+        dnd_send(w, WM_DRAG_OVER, INT32_MIN, INT32_MIN, dnd.actions, WM_DRAG_MOVE);
+    }
+    if (w && w->owner)
+        dnd.unanswered++;
+    dnd_cursor();
+}
+
+// Starts a drag for the program holding the pointer. text is "type\nlabel".
+bool dnd_start(struct window *w, int fd, int len, uint32_t actions, const char *text)
+{
+    const char *nl = strchr(text, '\n');
+
+    if (dnd.active || !buttons || !grab || grab->owner != w->owner || drag != DRAG_NONE
+        || !(actions & (WM_DND_COPY | WM_DND_MOVE | WM_DND_LINK)))
+        return false;
+    dnd = (struct dnd){ .active = true, .source = w, .fd = fd, .len = len, .actions = actions };
+    snprintf(dnd.type, sizeof(dnd.type), "%.*s", nl ? (int)(nl - text) : (int)strlen(text), text);
+    strlcpy(dnd.label, nl ? nl + 1 : "", sizeof(dnd.label));
+    // The source no longer holds the pointer; windows under it get drag
+    // messages instead of pointer events until the button is released.
+    if (pointer_window)
+        pointer_event(pointer_window, WM_PTR_LEAVE, 0);
+    pointer_window = NULL;
+    grab = NULL;
+    update_hover(NULL);
+    dnd_motion();
+    return true;
+}
+
+static void dnd_finish(bool drop);
+
+void dnd_status(struct window *w, int action)
+{
+    if (!dnd.active || w != dnd.target)
+        return;
+    // One action, and only one the source allows.
+    dnd.action = (action == WM_DND_COPY || action == WM_DND_MOVE || action == WM_DND_LINK)
+                 && (action & dnd.actions) ? action : 0;
+    if (dnd.unanswered > 0)
+        dnd.unanswered--;
+    // Released before this answer came: it decides the drop.
+    if (dnd.released_ms && !dnd.unanswered)
+        dnd_finish(true);
+    else
+        dnd_cursor();
+}
+
+int dnd_tick(void)
+{
+    uint64_t waited;
+
+    if (!dnd.active || !dnd.released_ms)
+        return -1;
+    // A target that does not answer within half a second gets nothing.
+    if ((waited = uptime_ms() - dnd.released_ms) >= 500) {
+        dnd.action = 0;
+        dnd_finish(true);
+        return -1;
+    }
+    return 500 - (int)waited;
+}
+
+// A window that goes away (already out of the window list) leaves no
+// references behind: the pointer grab, a move or resize, a title button
+// being pressed, or a drag.
+void input_forget(struct window *w)
+{
+    if (grab == w)
+        grab = NULL;
+    if (pointer_window == w)
+        pointer_window = NULL;
+    if (press_window == w)
+        press_window = NULL;
+    if (drag_window == w) {
+        drag_window = NULL;
+        drag = DRAG_NONE;
+        if (snap_window == w) {
+            damage(snap_preview);
+            snap_window = NULL;
+            snap_preview = (struct rect){ 0, 0, 0, 0 };
+        }
+    }
+    if (hover_window == w) {
+        hover_window = NULL;
+        hover_button = 0;
+    }
+    if (dnd.source == w)
+        dnd.source = NULL;
+    if (dnd.target == w) {
+        dnd.target = NULL;
+        dnd.action = dnd.unanswered = 0;
+        if (dnd.active && dnd.released_ms)
+            dnd_finish(true);
+        else if (dnd.active)
+            dnd_cursor();
+    }
+}
+
+static void pointer_moved(void);
+
+static void dnd_finish(bool drop)
+{
+    int action = drop && dnd.target ? dnd.action : 0;
+
+    if (action)
+        dnd_send(dnd.target, WM_DROP, INT32_MIN, INT32_MIN, action, dnd.len);
+    else
+        dnd_send(dnd.target, WM_DRAG_OVER, INT32_MIN, INT32_MIN, dnd.actions, WM_DRAG_LEAVE);
+    if (dnd.source && dnd.source->owner) {
+        struct wm_msg m = { WM_DRAG_END, dnd.source->cid, action, 0, 0, 0, 0, 0, { 0 } };
+
+        send_msg(dnd.source->owner, &m);
+    }
+    if (dnd.fd >= 0)
+        close(dnd.fd);
+    set_cursor_shape(WM_CURSOR_ARROW);
+    dnd = (struct dnd){ .fd = -1 };
+    pointer_moved();
+}
+
 static void pointer_moved(void)
 {
     struct window *w;
+
+    if (dnd.active) {
+        dnd_motion();
+        return;
+    }
 
     if (drag == DRAG_MOVE) {
         struct window *d = drag_window;
@@ -219,6 +399,17 @@ static void button(uint16_t code, bool down)
     else
         buttons &= ~bit;
 
+    if (dnd.active) {
+        // Releasing the buttons drops (once the target has answered for
+        // where the pointer is); another button cancels.
+        if (!down && !buttons && dnd.unanswered && dnd.target)
+            dnd.released_ms = MAX(uptime_ms(), 1);
+        else if (!down && !buttons)
+            dnd_finish(true);
+        else if (down)
+            dnd_finish(false);
+        return;
+    }
     if (!down) {
         if (drag != DRAG_NONE && code == BTN_LEFT) {
             if (drag == DRAG_RESIZE)
@@ -402,6 +593,15 @@ static void key(uint16_t code, int value)
 
     if (mods & MOD_META && value && code != KEY_LEFTMETA && code != KEY_RIGHTMETA)
         meta_combo = true;
+    if (dnd.active) {
+        // Esc cancels a drag; Ctrl and Shift change what it does, so the
+        // window under the pointer is asked again.
+        if (code == KEY_ESC && value == 1)
+            dnd_finish(false);
+        else if (code == KEY_LEFTCTRL || code == KEY_RIGHTCTRL || code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT)
+            dnd_motion();
+        return;
+    }
     if (shortcut(code, value))
         return;
     // Meta released after a combination is not "Meta on its own" (the launcher).

@@ -335,6 +335,7 @@ static void destroy_window(struct window *w)
     damage_window(w);
     announce(w, WM_LIST_REMOVE);
     unlink_window(w);
+    input_forget(w);
     for (struct window *o = windows; o; o = o->next) {
         if (o->parent == w)
             o->parent = NULL;
@@ -424,6 +425,17 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         for (struct client *k = clients; k; k = k->next)
             if (k != c)
                 send_clipboard(k);
+        break;
+    case WM_DRAG_START:
+        if (w && fd >= 0 && m->a >= 0 && m->a <= (16 << 20) && ioctl(fd, IOCTL_SHM_SIZE, 0) >= m->a
+            && dnd_start(w, fd, m->a, m->b, m->text))
+            fd = -1;
+        else if (w)
+            send_window(w, WM_DRAG_END, 0, 0, 0, 0, 0);
+        break;
+    case WM_DRAG_STATUS:
+        if (w)
+            dnd_status(w, m->a);
         break;
     case WM_CREATE:
         if (find(c, m->window) || m->a <= 0 || m->b <= 0 || m->a > 8192 || m->b > 8192
@@ -738,8 +750,12 @@ int main(int argc, char **argv)
             order[n - 2] = c;
             fds[n++] = (struct pollfd){ c->fd, POLLIN, 0 };
         }
-        if (poll(fds, n, 1000) < 0)
-            continue;
+        {
+            int wait = dnd_tick();
+
+            if (poll(fds, n, wait >= 0 ? wait : 1000) < 0)
+                continue;
+        }
         {
             int pid;
 
@@ -749,6 +765,7 @@ int main(int argc, char **argv)
                 if (pid == session_pid)
                     return 0;
         }
+        dnd_tick();
         if (fds[0].revents & POLLIN)
             input_handle(input);
         if (fds[1].revents & POLLIN)

@@ -116,6 +116,12 @@ static void forget(struct ui_window *win, struct widget *w)
             ui_popup_close(win);
             break;
         }
+    for (struct widget *x = win->drop_target; x; x = x->parent)
+        if (x == w) {
+            win->drop_target = NULL;
+            break;
+        }
+    ui_drag_forget(w);
 }
 
 void widget_free(struct widget *w)
@@ -692,6 +698,10 @@ static void repaint(struct ui_window *win)
     else
         gfx_fill(&g, g.clip, win->is_popup ? ui_theme.surface : ui_theme.window);
     ui_paint_widget(win->root, &g);
+    // Where a drag would land, unless the widget shows that itself.
+    if (win->drop_target && !win->drop_by_class
+        && (!ui_attr(win->drop_target, "dropoutline") || ui_attr_true(ui_attr(win->drop_target, "dropoutline"))))
+        gfx_outline_rounded(&g, win->drop_target->r, ui_theme.radius, 2, ui_theme.accent);
     if (win->overlay)
         win->overlay(win, &g, win->overlay_user);
     if (win->is_popup)
@@ -1338,9 +1348,214 @@ void ui_on_system_event(void (*fn)(struct wm_event *, void *), void *user)
     system_event_user = user;
 }
 
+// ---- Drag and drop ----
+
+static struct {
+    struct widget *source;
+    void (*done)(struct widget *, int, void *);
+    void *user;
+    bool active;
+} drag;
+
+bool ui_drag_start(struct widget *w, const char *type, const char *data, size_t len, const char *label,
+                   uint32_t actions, void (*done)(struct widget *w, int action, void *user), void *user)
+{
+    struct ui_window *win = w ? w->win : NULL;
+
+    if (!win || !win->wm || drag.active || !wm_drag_start(win->wm, type, data, len, label, actions))
+        return false;
+    drag.source = w;
+    drag.done = done;
+    drag.user = user;
+    drag.active = true;
+    // The pointer now belongs to the drag.
+    win->capture = NULL;
+    for (struct widget *p = w; p; p = p->parent)
+        if (p->pressed) {
+            p->pressed = false;
+            ui_redraw(p);
+        }
+    return true;
+}
+
+bool ui_dragging(void)
+{
+    return drag.active;
+}
+
+void ui_drag_forget(struct widget *w)
+{
+    for (struct widget *x = drag.source; x; x = x->parent)
+        if (x == w) {
+            drag.source = NULL;
+            break;
+        }
+}
+
+int ui_drop_action(struct ui_drop *d, int fallback)
+{
+    int want = (d->mods & MOD_CTRL) ? WM_DND_COPY : (d->mods & MOD_SHIFT) ? WM_DND_MOVE
+             : (d->mods & MOD_ALT) ? WM_DND_LINK : fallback;
+
+    if (want & d->actions)
+        return want;
+    // Otherwise whatever the source allows, preferring a copy.
+    return (d->actions & WM_DND_COPY) ? WM_DND_COPY : (d->actions & WM_DND_MOVE) ? WM_DND_MOVE
+         : (d->actions & WM_DND_LINK) ? WM_DND_LINK : 0;
+}
+
+void ui_set_drop_target(struct widget *w, ui_drop_over_fn over, ui_drop_fn drop, void *user)
+{
+    w->drop_over = over;
+    w->drop = drop;
+    w->drop_user = user;
+}
+
+// ui_accept_files: one opener per program is plenty.
+static bool (*file_opener)(const char *path, void *user);
+static void *file_opener_user;
+
+static int files_over(struct widget *w, struct ui_drop *d, void *user)
+{
+    (void)w;
+    (void)user;
+    if (d->kind == WM_DRAG_LEAVE || strcmp(d->type, "files"))
+        return 0;
+    return d->actions & WM_DND_LINK ? WM_DND_LINK : d->actions & WM_DND_COPY ? WM_DND_COPY : 0;
+}
+
+static void files_drop(struct widget *w, struct ui_drop *d, int action, void *user)
+{
+    (void)w;
+    (void)action;
+    (void)user;
+    for (const char *p = d->data; *p && file_opener;) {
+        const char *nl = strchr(p, '\n');
+        char path[1024];
+
+        snprintf(path, sizeof(path), "%.*s", nl ? (int)(nl - p) : (int)strlen(p), p);
+        p = nl ? nl + 1 : p + strlen(p);
+        if (*path == '/' && !file_opener(path, file_opener_user))
+            break;
+    }
+}
+
+void ui_accept_files(struct widget *w, bool (*open)(const char *path, void *user), void *user)
+{
+    file_opener = open;
+    file_opener_user = user;
+    ui_set_drop_target(w, files_over, files_drop, NULL);
+}
+
+static void tell_leave(struct widget *w, struct ui_drop *d)
+{
+    struct ui_drop leave = *d;
+
+    leave.kind = WM_DRAG_LEAVE;
+    if (w->drop_over)
+        w->drop_over(w, &leave, w->drop_user);
+    if (w->cls->drop_over)
+        w->cls->drop_over(w, &leave);
+}
+
+static void set_drop_target(struct ui_window *win, struct widget *w, struct ui_drop *d)
+{
+    struct widget *old = win->drop_target;
+
+    if (old == w)
+        return;
+    win->drop_target = w;
+    if (old) {
+        tell_leave(old, d);
+        ui_redraw(old);
+        ui_damage(win, (struct rect){ old->r.x - 3, old->r.y - 3, old->r.w + 6, old->r.h + 6 });
+    }
+    if (w)
+        ui_redraw(w);
+}
+
+// Finds the widget that takes a drag at d->x, d->y and what it would do.
+// The app's handlers, from the widget under the pointer outwards, come
+// first; then the widgets' own (text fields).
+static struct widget *find_target(struct ui_window *win, struct ui_drop *d, int *action)
+{
+    struct widget *hit;
+
+    *action = 0;
+    if (blocked_by_modal(win) || !win->root || !(hit = ui_hit(win->root, d->x, d->y)))
+        return NULL;
+    for (int by_class = 0; by_class < 2; by_class++) {
+        for (struct widget *w = hit; w; w = w->parent) {
+            if (!w->enabled || !(by_class ? (void *)w->cls->drop_over : (void *)w->drop_over))
+                continue;
+            // Already the target: it hears a move, not a fresh enter.
+            d->kind = w == win->drop_target && win->drop_by_class == by_class ? WM_DRAG_MOVE : WM_DRAG_ENTER;
+            *action = by_class ? w->cls->drop_over(w, d) : w->drop_over(w, d, w->drop_user);
+            if (*action) {
+                win->drop_by_class = by_class;
+                return w;
+            }
+            if (w == win->drop_target && win->drop_by_class == by_class)
+                set_drop_target(win, NULL, d);
+        }
+    }
+    return NULL;
+}
+
+static void drag_event(struct ui_window *win, struct wm_event *ev)
+{
+    struct ui_drop d = { ev->drag_type, ev->type == WM_EV_DROP ? WM_DRAG_MOVE : ev->kind, ev->x, ev->y,
+                         ev->type == WM_EV_DROP ? (uint32_t)ev->action : ev->actions, ev->mods, ev->data,
+                         ev->data_len };
+    struct widget *t;
+    int action = 0;
+
+    if (ev->type == WM_EV_DRAG && ev->kind == WM_DRAG_LEAVE) {
+        set_drop_target(win, NULL, &d);
+        return;
+    }
+    if (ev->type == WM_EV_DROP) {
+        t = win->drop_target;
+        if (t) {
+            // The target already said what it would do.
+            win->drop_target = NULL;
+            tell_leave(t, &d);
+            ui_redraw(t);
+            ui_damage(win, (struct rect){ t->r.x - 3, t->r.y - 3, t->r.w + 6, t->r.h + 6 });
+            if (!win->drop_by_class && t->drop)
+                t->drop(t, &d, ev->action, t->drop_user);
+            else if (win->drop_by_class && t->cls->drop)
+                t->cls->drop(t, &d, ev->action);
+        }
+        return;
+    }
+    t = find_target(win, &d, &action);
+    set_drop_target(win, t, &d);
+    wm_drag_status(win->wm, action);
+}
+
+static void drag_ended(int action)
+{
+    struct widget *src = drag.source;
+    void (*done)(struct widget *, int, void *) = drag.done;
+    void *user = drag.user;
+
+    drag.active = false;
+    drag.source = NULL;
+    drag.done = NULL;
+    if (src && done)
+        done(src, action, user);
+}
+
 static void dispatch(struct wm_event *ev)
 {
     struct ui_window *win = ev->window ? window_for(ev->window) : NULL;
+
+    // Even if the window that started it has gone.
+    if (ev->type == WM_EV_DRAG_END) {
+        drag_ended(ev->action);
+        return;
+    }
 
     if (ev->type == WM_EV_SETTING) {
         // Every app follows theme changes unless it chose its own theme.
@@ -1362,6 +1577,10 @@ static void dispatch(struct wm_event *ev)
         break;
     case WM_EV_POINTER:
         pointer_event(win, ev);
+        break;
+    case WM_EV_DRAG:
+    case WM_EV_DROP:
+        drag_event(win, ev);
         break;
     case WM_EV_RESIZE:
         ui_window_layout(win);

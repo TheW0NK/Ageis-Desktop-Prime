@@ -172,3 +172,74 @@ void unique_name(const char *dir, const char *name, char *out, size_t size)
     for (int i = 2; stat(out, &st) == 0 && i < 1000; i++)
         snprintf(out, size, "%s/%.*s (%d)%s", dir, base, name, i, name + base);
 }
+
+// ---- Dropped files ----
+
+bool same_disk(const char *a, const char *b)
+{
+    struct aegis_stat sa, sb;
+
+    return stat(a, &sa) == 0 && stat(b, &sb) == 0 && sa.dev == sb.dev;
+}
+
+// True if path is dir or inside it.
+static bool within(const char *path, const char *dir)
+{
+    size_t n = strlen(dir);
+
+    return !strncmp(path, dir, n) && (path[n] == 0 || path[n] == '/');
+}
+
+int drop_files(const char *paths, const char *dir, int action, char *failed, size_t fsize)
+{
+    const char *p = paths;
+    int bad = 0;
+
+    if (failed && fsize)
+        *failed = 0;
+    while (*p) {
+        const char *nl = strchr(p, '\n'), *base;
+        size_t n = nl ? (size_t)(nl - p) : strlen(p);
+        char src[512], dst[800], parent[512];
+        int r;
+
+        snprintf(src, sizeof(src), "%.*s", (int)MIN(n, sizeof(src) - 1), p);
+        p += n + (nl != NULL);
+        if (src[0] != '/')
+            continue;
+        base = strrchr(src, '/') + 1;
+        snprintf(parent, sizeof(parent), "%.*s", (int)(base - 1 - src), src);
+        if (!*parent)
+            strcpy(parent, "/");
+        // Already there, or a folder into itself.
+        if ((action == DROP_MOVE && !strcmp(parent, dir)) || within(dir, src))
+            continue;
+        if (action == DROP_LINK) {
+            r = make_shortcut(dir, src);
+        } else {
+            unique_name(dir, base, dst, sizeof(dst));
+            r = action == DROP_MOVE ? move_path(src, dst) : copy_path(src, dst);
+        }
+        if (r < 0) {
+            if (!bad && failed)
+                strlcpy(failed, base, fsize);
+            bad++;
+        }
+    }
+    return bad;
+}
+
+int make_shortcut(const char *dir, const char *target)
+{
+    const char *base = strrchr(target, '/') ? strrchr(target, '/') + 1 : target;
+    char name[300], path[800];
+    int fd;
+
+    snprintf(name, sizeof(name), "%s.shortcut", *base ? base : "Computer");
+    unique_name(dir, name, path, sizeof(path));
+    if ((fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644)) < 0)
+        return -1;
+    dprintf(fd, "name=%s\ntarget=%s\n", *base ? base : "Computer", target);
+    close(fd);
+    return 0;
+}

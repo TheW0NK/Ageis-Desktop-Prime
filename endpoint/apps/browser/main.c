@@ -1356,6 +1356,32 @@ static int check(const char *where)
     return 0;
 }
 
+// A file or a link dropped on the page opens it.
+static int drop_over(struct widget *w, struct ui_drop *d, void *u)
+{
+    (void)w;
+    (void)u;
+    if (d->kind == WM_DRAG_LEAVE || (strcmp(d->type, "files") && strcmp(d->type, "text"))
+        || (!strcmp(d->type, "text") && (memchr(d->data, '\n', d->len) || !d->len || d->len > 2000)))
+        return 0;
+    return d->actions & WM_DND_LINK ? WM_DND_LINK : d->actions & WM_DND_COPY ? WM_DND_COPY : 0;
+}
+
+static void drop(struct widget *w, struct ui_drop *d, int action, void *u)
+{
+    const char *nl = strchr(d->data, '\n');
+    char first[2048], *url;
+
+    (void)w;
+    (void)action;
+    (void)u;
+    snprintf(first, sizeof(first), "%.*s", nl ? (int)(nl - d->data) : (int)strlen(d->data), d->data);
+    if ((url = url_from_input(first))) {
+        navigate(url, NULL, true);
+        free(url);
+    }
+}
+
 int main(int argc, char **argv)
 {
     static const struct ui_handler_entry handlers[] = {
@@ -1372,6 +1398,7 @@ int main(int argc, char **argv)
     address = ui_get(win, "address");
     status_label = ui_get(win, "status");
     ui_canvas_set(view, paint, input, NULL);
+    ui_set_drop_target(view, drop_over, drop, NULL);
     ui_on_key(win, on_key, NULL);
     ui_watch_fd(pipe_fds[0], job_done, NULL);
     ui_window_show(win);
