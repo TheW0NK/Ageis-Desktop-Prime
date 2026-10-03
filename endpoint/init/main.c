@@ -34,53 +34,36 @@ static void start(struct service *s)
     }
 }
 
-// The installer leaves the new owner's account in /msc/firstboot; it is
-// made here, once, on the installed system's first start.
+// The installer leaves the new owner's account in /msc/firstboot.aset; it
+// is made here, once, on the installed system's first start.
 static void first_boot(void)
 {
-    char buf[1024], user[64] = "", display[128] = "", hash[200] = "", language[16] = "en";
-    bool admin = false;
-    int fd = open("/msc/firstboot", O_RDONLY);
-    ssize_t n;
+    struct records r;
+    struct rec_block *t;
+    const char *user, *display, *hash, *admin, *language;
 
-    if (fd < 0)
+    if (records_load("/msc/firstboot.aset", "settings", &r) < 0) {
+        records_free(&r);
         return;
-    n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-    if (n <= 0)
-        return;
-    buf[n] = 0;
-    for (char *line = buf, *next; line && *line; line = next) {
-        char *eq;
-
-        if ((next = strchr(line, '\n')))
-            *next++ = 0;
-        if (!(eq = strchr(line, '=')))
-            continue;
-        *eq++ = 0;
-        if (!strcmp(line, "user"))
-            strlcpy(user, eq, sizeof(user));
-        else if (!strcmp(line, "display"))
-            strlcpy(display, eq, sizeof(display));
-        else if (!strcmp(line, "hash"))
-            strlcpy(hash, eq, sizeof(hash));
-        else if (!strcmp(line, "admin"))
-            admin = atoi(eq) != 0;
-        else if (!strcmp(line, "language"))
-            strlcpy(language, eq, sizeof(language));
     }
-    memset(buf, 0, sizeof(buf));
-    if (!*user || !*hash || account_add_hashed(user, display, hash, admin) < 0) {
-        dprintf(STDERR_FILENO, "init: first boot: cannot create the account \"%s\": %s\n", user, strerror(errno));
+    t = records_top(&r);
+    user = rec_get(t, "account");
+    display = rec_get(t, "display");
+    hash = rec_get(t, "password");
+    admin = rec_get(t, "administrator");
+    language = rec_get(t, "language");
+    if (!user || !hash || account_add_hashed(user, display, hash, admin && !strcmp(admin, "yes")) < 0) {
+        dprintf(STDERR_FILENO, "init: first boot: cannot create the account \"%s\": %s\n", user ? user : "",
+                strerror(errno));
     } else {
         struct user_info u;
 
         if (user_by_name(user, &u) == 0)
-            user_setting_set(&u, "language", language);
+            user_setting_set(&u, "language", language ? language : "en");
         dprintf(STDERR_FILENO, "init: first boot: created the account %s\n", user);
     }
-    memset(hash, 0, sizeof(hash));
-    unlink("/msc/firstboot");
+    records_free(&r);
+    unlink("/msc/firstboot.aset");
     sync();
 }
 

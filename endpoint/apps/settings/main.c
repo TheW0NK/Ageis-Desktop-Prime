@@ -315,7 +315,6 @@ static void on_zone(struct widget *w, void *u)
 {
     int i = ui_list_selected(w);
     char line[96];
-    int fd;
 
     (void)u;
     if (i < 0 || !strcmp(timezone_name(), zones[i].name))
@@ -327,11 +326,9 @@ static void on_zone(struct widget *w, void *u)
                 ui_list_select(w, k);
         return;
     }
-    snprintf(line, sizeof(line), "%s %d\n", zones[i].name, zones[i].minutes);
-    if ((fd = open("/msc/timezone", O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
-        write(fd, line, strlen(line));
-        close(fd);
-    }
+    snprintf(line, sizeof(line), "%d", zones[i].minutes);
+    aset_set(COMPUTER_FILE, "timezone", zones[i].name, 0644);
+    aset_set(COMPUTER_FILE, "timezone-offset", line, 0644);
     setenv("TZ_OFFSET", "");
     wm_setting_changed("timezone", zones[i].name);
     msleep(10);
@@ -399,7 +396,6 @@ static void show_about(void)
     struct aegis_sysinfo si;
     struct aegis_statfs fs;
     char buf[160], a[32], b[32];
-    int fd;
 
     if (uname(&un) == 0) {
         snprintf(buf, sizeof(buf), "%s %s (%s)", un.sysname, un.release, un.machine);
@@ -423,17 +419,13 @@ static void show_about(void)
         snprintf(buf, sizeof(buf), "%s, %s free (%s)", a, b, fs.fstype);
         ui_set_text(ui_get(win, "disk"), buf);
     }
-    if ((fd = open("/msc/hostname", O_RDONLY)) >= 0) {
-        if (read_line(fd, buf, sizeof(buf)) > 0)
-            ui_set_text(ui_get(win, "hostname"), buf);
-        close(fd);
-    }
+    if (aset_get(COMPUTER_FILE, "name", buf, sizeof(buf)) > 0)
+        ui_set_text(ui_get(win, "hostname"), buf);
 }
 
 static void on_hostname(struct widget *w, void *u)
 {
     const char *name = ui_text(ui_get(win, "hostname"));
-    int fd;
 
     (void)w;
     (void)u;
@@ -444,11 +436,8 @@ static void on_hostname(struct widget *w, void *u)
         }
     if (!*name || !ui_elevate(win, "The computer's name is shared by everyone on it."))
         return;
-    if ((fd = open("/msc/hostname", O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
-        dprintf(fd, "%s\n", name);
-        close(fd);
+    if (aset_set(COMPUTER_FILE, "name", name, 0644) == 0)
         ui_message(win, "Settings", "The computer has a new name.", "OK");
-    }
 }
 
 static void on_page(struct widget *w, void *u)

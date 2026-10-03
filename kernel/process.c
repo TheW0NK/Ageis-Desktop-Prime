@@ -84,15 +84,39 @@ static uint32_t elf_prot(uint32_t flags)
          | ((flags & PF_X) ? PROT_EXEC : 0);
 }
 
+// Aegis executables (.aex): an ELF program inside a small header.
+//
+//   "AEGISAEX"  u32 version (1)  u32 header size  u64 program offset
+//   u64 program size  char name[32]
+struct aex_header {
+    char magic[8];
+    uint32_t version, header_size;
+    uint64_t offset, size;
+    char name[32];
+} __attribute__((packed));
+
+// Where the ELF program starts in the file: 0, or after an .aex header.
+static int64_t program_base(struct vnode *v)
+{
+    struct aex_header h;
+
+    if (vfs_read(v, &h, sizeof(h), 0) != sizeof(h) || memcmp(h.magic, "AEGISAEX", 8))
+        return 0;
+    if (h.version != 1 || h.offset < sizeof(h) || h.offset > v->size || h.size > v->size - h.offset)
+        return -ENOEXEC;
+    return h.offset;
+}
+
 static int load_elf(struct vnode *v, struct mm *mm, uint64_t *entry, uint64_t *brk)
 {
+    int64_t base = program_base(v);
     elf_header eh;
     elf_phdr *ph;
     uint64_t top = USER_REGION_BASE, mapped_end = 0, addr;
     uint8_t *buf;
     int ret = -ENOEXEC;
 
-    if (vfs_read(v, &eh, sizeof(eh), 0) != sizeof(eh))
+    if (base < 0 || vfs_read(v, &eh, sizeof(eh), base) != sizeof(eh))
         return -ENOEXEC;
     if (memcmp(eh.ident, "\x7f" "ELF", 4) || eh.ident[4] != 2 || eh.type != ET_EXEC
         || eh.machine != EM_X86_64 || eh.phentsize != sizeof(elf_phdr) || eh.phnum > 32)
@@ -104,7 +128,7 @@ static int load_elf(struct vnode *v, struct mm *mm, uint64_t *entry, uint64_t *b
         ret = -ENOMEM;
         goto out;
     }
-    if (vfs_read(v, ph, eh.phnum * sizeof(*ph), eh.phoff) != (int64_t)(eh.phnum * sizeof(*ph)))
+    if (vfs_read(v, ph, eh.phnum * sizeof(*ph), base + eh.phoff) != (int64_t)(eh.phnum * sizeof(*ph)))
         goto out;
 
     // Map writable while loading; final protections are applied afterwards.
@@ -126,7 +150,7 @@ static int load_elf(struct vnode *v, struct mm *mm, uint64_t *entry, uint64_t *b
         for (uint64_t off = 0; off < ph[i].filesz; off += PAGE_SIZE) {
             size_t n = MIN(PAGE_SIZE, ph[i].filesz - off);
 
-            if (vfs_read(v, buf, n, ph[i].offset + off) != (int64_t)n) {
+            if (vfs_read(v, buf, n, base + ph[i].offset + off) != (int64_t)n) {
                 ret = -EIO;
                 goto out;
             }
@@ -229,44 +253,46 @@ static struct thread *new_user_thread(struct process *p, uint64_t rip, uint64_t 
 static int spawn(const char *path, char *const argv[], char *const envp[], struct process *parent, int *pid_out,
                  int depth);
 
-// "#!INTERPRETER [ARG]" on the first line: runs the interpreter with the
-// script's path (and the script's own arguments after it). Returns 1 if
-// the file is not a script.
+// Scripts name what runs them on their first line, "<kind> script <version>":
+// "terminal script 1" (.tscr) runs in the terminal. The interpreter gets the
+// script's path, then the script's own arguments. Returns 1 if the file is
+// not a script.
+static const struct {
+    const char *kind, *interpreter;
+} script_kinds[] = {
+    { "terminal", "/sysapps/terminal" },
+};
+
 static int spawn_script(struct vnode *v, const char *path, char *const argv[], char *const envp[],
                         struct process *parent, int *pid_out, int depth)
 {
-    char head[128], *interp, *arg = NULL, *e;
+    char head[64], *e;
+    const char *interp = NULL;
     char **nargv;
     int64_t n;
     int argc = 0, k = 0, ret;
 
     n = vfs_read(v, head, sizeof(head) - 1, 0);
-    if (n < 3 || head[0] != '#' || head[1] != '!')
+    if (n < 10)
         return 1;
     head[n] = 0;
-    if (!(e = strchr(head, '\n')))
-        return -ENOEXEC;
-    *e = 0;
-    for (interp = head + 2; *interp == ' '; interp++)
-        ;
-    for (e = interp; *e && *e != ' '; e++)
-        ;
-    if (*e) {
-        *e++ = 0;
-        while (*e == ' ')
-            e++;
-        if (*e)
-            arg = e;
+    if ((e = strchr(head, '\n')))
+        *e = 0;
+    for (size_t i = 0; i < sizeof(script_kinds) / sizeof(script_kinds[0]); i++) {
+        size_t kl = strlen(script_kinds[i].kind);
+
+        if (!strncmp(head, script_kinds[i].kind, kl) && !strncmp(head + kl, " script ", 8))
+            interp = script_kinds[i].interpreter;
     }
-    if (*interp != '/' || depth > 0)
+    if (!interp)
+        return 1;
+    if (depth > 0)
         return -ENOEXEC;
     while (argv && argv[argc])
         argc++;
-    if (!(nargv = kmalloc(sizeof(char *) * (argc + 4))))
+    if (!(nargv = kmalloc(sizeof(char *) * (argc + 3))))
         return -ENOMEM;
-    nargv[k++] = interp;
-    if (arg)
-        nargv[k++] = arg;
+    nargv[k++] = (char *)interp;
     nargv[k++] = (char *)path;
     for (int i = 1; i < argc; i++)
         nargv[k++] = argv[i];

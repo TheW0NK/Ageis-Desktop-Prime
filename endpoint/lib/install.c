@@ -37,11 +37,11 @@ static bool keeping;                // see struct ctx.keep
 
 static bool skipped(const char *rel)
 {
-    static const char *const skip[] = { "/osystem/devices", "/osystem/temp", "/osystem/volumes", "/osystem/boot", "/userfiles", "/msc/live", "/msc/firstboot",
+    static const char *const skip[] = { "/osystem/devices", "/osystem/temp", "/osystem/volumes", "/osystem/boot", "/userfiles", "/msc/live", "/msc/firstboot.aset",
                                         "/osystem/installer", "/osystem/logs/shift.log", NULL };
     // A reinstall leaves the computer's own settings and data alone.
-    static const char *const keep[] = { "/msc/passwd", "/msc/group", "/msc/shadow", "/msc/hostname",
-                                        "/msc/timezone", "/msc/features.conf", "/msc/routines", "/osystem/logs",
+    static const char *const keep[] = { ACCOUNTS_FILE, SECRETS_FILE, COMPUTER_FILE, "/msc/features.aset",
+                                        "/msc/routines", "/osystem/logs",
                                         "/osystem/data", "/osystem/backups", "/userApps",
                                         "/userfiles/superuser", NULL };
 
@@ -192,34 +192,38 @@ static void format_progress(int percent, void *u)
     step(u, 8 + percent * 17 / 100, "Formatting the system partition");
 }
 
-// The accounts the new system starts with: root and the system groups. The
-// person's own account is made on first boot from /msc/firstboot.
+// The accounts the new system starts with: the superuser and the system groups. The
+// person's own account is made on first boot from /msc/firstboot.aset.
 static int write_accounts(struct ctx *c)
 {
     const struct install_options *o = c->o;
-    char text[1024], hash[160];
+    char text[64], hash[160];
+    struct records fb;
+    int ret;
 
-    if (write_text(TARGET "/msc/passwd", "superuser:x:0:0:Superuser:/userfiles/superuser:/sysapps/terminal\n", 0644) < 0
-        || write_text(TARGET "/msc/group", "superuser:x:0:superuser\nlogs:x:4:\nadmins:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n",
-                      0644) < 0
-        || write_text(TARGET "/msc/shadow", "superuser:!:\n", 0600) < 0)
+    if (write_text(TARGET ACCOUNTS_FILE, ACCOUNTS_START, 0644) < 0
+        || write_text(TARGET SECRETS_FILE, "aegis secrets 1\nsuperuser: !\n", 0600) < 0)
         return fail(c, "Writing the account files");
     if (password_hash(o->password, hash, sizeof(hash)) < 0)
         return fail(c, "Protecting the password");
-    // name, display name, password hash, administrator: read once by init.
-    snprintf(text, sizeof(text), "user=%s\ndisplay=%s\nhash=%s\nadmin=%d\nlanguage=%s\n", o->user,
-             o->display && *o->display ? o->display : o->user, hash, o->admin ? 1 : 0,
-             o->language && *o->language ? o->language : "en");
-    if (write_text(TARGET "/msc/firstboot", text, 0600) < 0)
-        return fail(c, "Writing the first-boot settings");
+    // Read once by init, which makes the account.
+    records_init(&fb, "settings");
+    rec_set(records_top(&fb), "account", o->user);
+    rec_set(records_top(&fb), "display", o->display && *o->display ? o->display : o->user);
+    rec_set(records_top(&fb), "password", hash);
+    rec_set(records_top(&fb), "administrator", o->admin ? "yes" : "no");
+    rec_set(records_top(&fb), "language", o->language && *o->language ? o->language : "en");
+    ret = records_save(&fb, TARGET "/msc/firstboot.aset", 0600);
+    records_free(&fb);
     memset(hash, 0, sizeof(hash));
-    if (o->hostname && *o->hostname) {
-        snprintf(text, sizeof(text), "%s\n", o->hostname);
-        write_text(TARGET "/msc/hostname", text, 0644);
-    }
+    if (ret < 0)
+        return fail(c, "Writing the first-boot settings");
+    if (o->hostname && *o->hostname)
+        aset_set(TARGET COMPUTER_FILE, "name", o->hostname, 0644);
     if (o->timezone && *o->timezone) {
-        snprintf(text, sizeof(text), "%s %d\n", o->timezone, o->tz_offset_min);
-        write_text(TARGET "/msc/timezone", text, 0644);
+        snprintf(text, sizeof(text), "%d", o->tz_offset_min);
+        aset_set(TARGET COMPUTER_FILE, "timezone", o->timezone, 0644);
+        aset_set(TARGET COMPUTER_FILE, "timezone-offset", text, 0644);
     }
     return 0;
 }

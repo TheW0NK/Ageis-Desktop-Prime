@@ -395,7 +395,7 @@ int aip_install(const struct aip *p, bool everyone, const char *granted, char *e
         mkdirs("/userApps/commands", 0755);
         expand_exec(p->exec, dir, exec, sizeof(exec));
         snprintf(path, sizeof(path), "/userApps/commands/%s", p->command);
-        snprintf(script, sizeof(script), "#!/sysapps/terminal\n%s $@\n", exec);
+        snprintf(script, sizeof(script), "terminal script 1\n%s $@\n", exec);
         unlink(path);
         if (*p->exec != '/' && !strchr(p->exec, ' ')) {
             symlink(exec, path);

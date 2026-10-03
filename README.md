@@ -76,6 +76,17 @@ all-powerful account is the **superuser**, and administrators `elevate` to it.
 Disks are `dA`, `dB`, ... and their partitions `dA1`, `dA2`, ...; the kernel
 log is `klog`.
 
+Aegis's own file formats:
+
+| Format | What | Looks like |
+|---|---|---|
+| `.aacc` | Accounts and groups (`/msc/accounts.aacc`, readable by everyone) and password hashes (`/msc/secrets.aacc`, superuser only) | `aegis accounts 1`, then blocks such as `account alex` with indented `id: 1000`, `display: Alex`, ... |
+| `.aset` | Settings: the computer's (`/msc/computer.aset`), features (`/msc/features.aset`) and each person's (`/userfiles/<name>/system/settings.aset`) | `aegis settings 1`, then `key: value` lines |
+| `.tscr` | Terminal scripts | `terminal script 1`, then one command per line (`$@` is the arguments) |
+| `.aex` | Aegis executables: an x86-64 program inside an Aegis header (`tools/mkaex.py` makes one) | `AEGISAEX`, version, program offset and size, name |
+| `.aip` | App packages (see `docs/PACKAGES.md`) | |
+| `.aui` / `.as` | Window layouts and AegisScript (see `docs/AUI.md`, `docs/SCRIPT.md`) | |
+
 The terminal prompt is `user@computer@folder - :`. Its commands:
 
 | Command | Does |

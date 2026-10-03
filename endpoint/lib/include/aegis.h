@@ -278,10 +278,56 @@ int timezone_offset(void);          // seconds east of UTC
 const char *timezone_name(void);
 
 // Users (lib/user.c). Each user has /userfiles/<name>/home and /userfiles/<name>/system.
+// Aegis record files (lib/records.c): accounts (.aacc) and settings (.aset).
+struct rec_field {
+    char *key, *value;
+};
+struct rec_block {
+    char kind[16];                  // "account", "group", ...; "" for block 0
+    char name[64];
+    int n, cap;
+    struct rec_field *f;
+};
+struct records {
+    char type[16];                  // the file's type: "accounts", "settings", ...
+    int n, cap;
+    struct rec_block *b;            // b[0] holds the settings outside any block
+};
+void records_init(struct records *r, const char *type);
+// Fails (leaving r empty) if the file is missing or not of this type.
+int records_load(const char *path, const char *type, struct records *r);
+int records_save(const struct records *r, const char *path, uint32_t mode);
+void records_free(struct records *r);
+struct rec_block *records_top(struct records *r);
+struct rec_block *records_find(struct records *r, const char *kind, const char *name);
+struct rec_block *records_add(struct records *r, const char *kind, const char *name);
+void records_remove(struct records *r, const char *kind, const char *name);
+const char *rec_get(const struct rec_block *b, const char *key);
+int rec_set(struct rec_block *b, const char *key, const char *value);
+void rec_unset(struct rec_block *b, const char *key);
+bool rec_list_has(const char *list, const char *item);
+// One setting outside any block of a settings file: get returns its length
+// or -1; set creates the file (with mode) if needed.
+int aset_get(const char *path, const char *key, char *buf, size_t size);
+int aset_set(const char *path, const char *key, const char *value, uint32_t mode);
+void rec_list_edit(struct rec_block *b, const char *key, const char *item, bool present);
+
+// Accounts and groups (readable by everyone) and password hashes (superuser).
+#define ACCOUNTS_FILE "/msc/accounts.aacc"
+#define SECRETS_FILE  "/msc/secrets.aacc"
+// A new system's accounts: the superuser and the system groups.
+#define ACCOUNTS_START "aegis accounts 1\n\naccount superuser\n    id: 0\n    group: 0\n    display: Superuser\n" \
+    "    home: /userfiles/superuser\n    terminal: /sysapps/terminal\n\ngroup superuser\n    id: 0\n" \
+    "    members: superuser\n\ngroup logs\n    id: 4\n    members:\n\ngroup admins\n    id: 27\n    members:\n\n" \
+    "group video\n    id: 44\n    members:\n\ngroup audio\n    id: 63\n    members:\n\ngroup input\n    id: 50\n" \
+    "    members:\n"
+// The computer's own settings: name, timezone, timezone-offset (minutes east of UTC).
+#define COMPUTER_FILE "/msc/computer.aset"
+
 struct user_info {
     char name[32];
     uint32_t uid, gid;
-    char display[64];               // from settings/name, else the passwd comment
+    char display[64];               // from their settings, else the accounts file
     char home[128];                 // /userfiles/<name>/home
     char shell[128];
     char dir[128];                  // /userfiles/<name>
@@ -289,7 +335,7 @@ struct user_info {
 int user_by_name(const char *name, struct user_info *out);
 int user_by_uid(uint32_t uid, struct user_info *out);
 int user_current(struct user_info *out);
-// People (uid 1000 and up), in /msc/passwd order.
+// People (id 1000 and up), in accounts file order.
 int user_list(struct user_info *out, int max);
 bool user_in_group(const char *name, const char *group);
 // rel is relative to /userfiles/<name>, e.g. "system/appdata".
@@ -392,7 +438,7 @@ int64_t cron_next(const char *schedule, int64_t after);
 // /userfiles/<name>/system/appdata/routines/<file> ("routines", "log").
 void cron_user_path(const struct user_info *u, const char *file, char *out, size_t size);
 
-// Optional features (lib/features.c), in /msc/features.conf.
+// Optional features (lib/features.c), in /msc/features.aset.
 struct feature {
     const char *id, *name, *description;
     bool default_on;

@@ -68,20 +68,18 @@ static void fill_computer(struct widget *t)
     struct aegis_utsname un;
     struct aegis_sysinfo si;
     char row[256], a[32], b[32];
-    int fd;
 
     if (uname(&un) == 0) {
         snprintf(row, sizeof(row), "Operating system\t%s %s (%s)", un.sysname, un.release, un.machine);
         ui_list_add(t, row);
     }
-    if ((fd = open("/msc/hostname", O_RDONLY)) >= 0) {
+    {
         char h[64];
 
-        if (read_line(fd, h, sizeof(h)) > 0) {
+        if (aset_get(COMPUTER_FILE, "name", h, sizeof(h)) > 0) {
             snprintf(row, sizeof(row), "Computer name\t%s", h);
             ui_list_add(t, row);
         }
-        close(fd);
     }
     if (sysinfo(&si) == 0) {
         snprintf(row, sizeof(row), "Processors\t%u", si.cpus);
@@ -123,26 +121,19 @@ static void act_users(void) { open_app("users", NULL); }
 
 static void fill_groups(struct widget *t)
 {
-    int fd = open("/msc/group", O_RDONLY);
-    char line[512];
+    struct records r;
 
-    if (fd < 0)
-        return;
-    while (read_line(fd, line, sizeof(line)) >= 0) {
-        char *f[4] = { line, NULL, NULL, NULL }, row[600];
-        int k = 1;
+    records_load(ACCOUNTS_FILE, "accounts", &r);
+    for (int i = 1; i < r.n; i++) {
+        const char *id = rec_get(&r.b[i], "id"), *m = rec_get(&r.b[i], "members");
+        char row[600];
 
-        for (char *p = line; *p && k < 4; p++)
-            if (*p == ':') {
-                *p = 0;
-                f[k++] = p + 1;
-            }
-        if (k < 4)
+        if (strcmp(r.b[i].kind, "group"))
             continue;
-        snprintf(row, sizeof(row), "%s\t%s\t%s", f[0], f[2], *f[3] ? f[3] : "-");
+        snprintf(row, sizeof(row), "%s\t%s\t%s", r.b[i].name, id ? id : "?", m && *m ? m : "-");
         ui_list_add(t, row);
     }
-    close(fd);
+    records_free(&r);
 }
 
 // ---- Sentries ----

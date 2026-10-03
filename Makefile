@@ -101,7 +101,10 @@ test: image
 		'list /osystem/devices' @expect:input 'system' @expect:Aegis 'echo piped | show' @expect:piped \
 		'apprun /osystem/resources/apprun/selftest.as' @expect:'selftest: ok' \
 		'browser --check /osystem/resources/browser/welcome.html' @expect:'browser: ok' \
-		'cred set test-secret s3cr3t-value' 'cred get test-secret' @expect:'s3cr3t-value'
+		'cred set test-secret s3cr3t-value' 'cred get test-secret' @expect:'s3cr3t-value' \
+		'hello aex' @expect:'argv[1] = aex' \
+		"echo 'terminal script 1' > /osystem/temp/t.tscr" "echo 'echo script ran with \$$@' >> /osystem/temp/t.tscr" \
+		'access 755 /osystem/temp/t.tscr' '/osystem/temp/t.tscr ok' @expect:'script ran with ok'
 	tools/qemu-test.py --cpus 4 --timeout 180 @reject:FAIL @reject:PANIC \
 		@login:$(AEGIS_USER):$(AEGIS_PASSWORD) 'ktest' @expect:'ktest: all passed'
 	tools/qemu-test.py --usb --tablet @reject:PANIC @login:$(AEGIS_USER):$(AEGIS_PASSWORD) \

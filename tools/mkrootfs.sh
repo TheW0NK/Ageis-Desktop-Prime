@@ -40,10 +40,8 @@ ud="$root"/userfiles/"$user"
 [ "$live" = 1 ] && ud="$root"/osystem/temp/no-user
 mkdir -p "$ud"/home/Desktop "$ud"/home/Documents "$ud"/home/Downloads "$ud"/home/Images "$ud"/home/Music \
          "$ud"/system/settings "$ud"/system/credentials "$ud"/system/appdata
-echo "$user" > "$ud"/system/settings/name
-echo light > "$ud"/system/settings/theme
-echo en > "$ud"/system/settings/language
-echo default > "$ud"/system/settings/background
+printf 'aegis settings 1\nname: %s\ntheme: light\nlanguage: en\nbackground: default\n' "$user" \
+    > "$ud"/system/settings.aset
 # Sample pictures, also offered as backgrounds.
 "$here"/mksamples.py "$root"/osystem/resources/backgrounds
 cp "$root"/osystem/resources/backgrounds/*.png "$ud"/home/Images/
@@ -56,6 +54,8 @@ mkdir -p "$root"/osystem/resources/samples "$root"/osystem/data/aip
 cp "$root"/osystem/resources/samples/Dice.aip "$ud"/home/Downloads/
 cp "$endpoint"/sbin/* "$root"/osystem/core/
 cp "$endpoint"/bin/* "$root"/sysapps/
+# hello is an Aegis executable (.aex): its ELF program inside an Aegis header.
+"$here"/mkaex.py "$root"/sysapps/hello hello
 cp -r "$here"/../endpoint/rootfs/. "$root"/
 # Graphical programs: registry entries and their data files.
 for dir in "$here"/../endpoint/apps/*/ "$here"/../endpoint/system/*/; do
@@ -82,28 +82,33 @@ if [ "$live" = 1 ]; then
     echo "This is the live system on the Aegis install media." > "$root"/msc/live
     mkdir -p "$root"/osystem/installer
     cp -r "$esp" "$root"/osystem/installer/esp
-    printf 'superuser:x:0:0:Superuser:/userfiles/superuser:/sysapps/terminal\n' > "$root"/msc/passwd
-    printf 'superuser:x:0:superuser\nlogs:x:4:\nadmins:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n' > "$root"/msc/group
-    printf 'superuser:!:\n' > "$root"/msc/shadow
-else
-cat > "$root"/msc/passwd <<PASSWD
-superuser:x:0:0:Superuser:/userfiles/superuser:/sysapps/terminal
-$user:x:1000:1000:$user:/userfiles/$user/home:/sysapps/terminal
-PASSWD
-cat > "$root"/msc/group <<GROUP
-superuser:x:0:superuser
-logs:x:4:$user
-admins:x:27:$user
-video:x:44:$user
-audio:x:63:$user
-input:x:50:
-$user:x:1000:$user
-GROUP
-{
-    echo "superuser:!:"
-    echo "$user:$("$here"/mkpasswd.py "$password"):"
-} > "$root"/msc/shadow
 fi
+# Accounts and groups (/msc/accounts.aacc) and password hashes
+# (/msc/secrets.aacc). The live system has only the superuser.
+members=$user
+[ "$live" = 1 ] && members=
+{
+    echo "aegis accounts 1"
+    echo
+    printf 'account superuser\n    id: 0\n    group: 0\n    display: Superuser\n'
+    printf '    home: /userfiles/superuser\n    terminal: /sysapps/terminal\n\n'
+    if [ "$live" != 1 ]; then
+        printf 'account %s\n    id: 1000\n    group: 1000\n    display: %s\n' "$user" "$user"
+        printf '    home: /userfiles/%s/home\n    terminal: /sysapps/terminal\n\n' "$user"
+    fi
+    printf 'group superuser\n    id: 0\n    members: superuser\n\n'
+    printf 'group logs\n    id: 4\n    members: %s\n\n' "$members"
+    printf 'group admins\n    id: 27\n    members: %s\n\n' "$members"
+    printf 'group video\n    id: 44\n    members: %s\n\n' "$members"
+    printf 'group audio\n    id: 63\n    members: %s\n\n' "$members"
+    printf 'group input\n    id: 50\n    members:\n'
+    [ "$live" = 1 ] || printf '\ngroup %s\n    id: 1000\n    members: %s\n' "$user" "$user"
+} > "$root"/msc/accounts.aacc
+{
+    echo "aegis secrets 1"
+    echo "superuser: !"
+    [ "$live" = 1 ] || echo "$user: $("$here"/mkpasswd.py "$password")"
+} > "$root"/msc/secrets.aacc
 
 fakeroot sh -c "
     chown -R 0:0 '$root'
@@ -113,16 +118,16 @@ fakeroot sh -c "
     if [ '$live' != 1 ]; then
         chmod 0711 '$ud'
         chmod 0700 '$ud'/home '$ud'/system '$ud'/system/settings '$ud'/system/credentials '$ud'/system/appdata
-        chmod 0600 '$ud'/system/settings/*
+        chmod 0600 '$ud'/system/settings.aset
     else
         chmod 0755 '$ud'
     fi
     chmod 0700 '$root'/userfiles/superuser '$root'/osystem/backups
     chmod 1777 '$root'/osystem/temp
     chmod 0755 '$root'/sysapps/* '$root'/osystem/core/*
-    chmod 0644 '$root'/sysapps/registry/* '$root'/msc/passwd '$root'/msc/group '$root'/msc/motd '$root'/msc/hostname \\
+    chmod 0644 '$root'/sysapps/registry/* '$root'/msc/accounts.aacc '$root'/msc/motd '$root'/msc/computer.aset \\
           '$root'/msc/hosts '$root'/osystem/resources/certificates/ca-bundle.pem '$root'/msc/routines
-    chmod 0600 '$root'/msc/shadow
+    chmod 0600 '$root'/msc/secrets.aacc
     chmod 0755 '$root'/osystem/logs '$root'/osystem/data '$root'/osystem/data/aip
     if [ '$live' = 1 ]; then
         '$here'/mkiso.sh '$out' '$esp' '$root'

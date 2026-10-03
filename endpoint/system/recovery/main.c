@@ -203,7 +203,7 @@ static void find_system(void)
             if (!strcmp(guid, DISK_TYPE_DATA) && mount("ext4", de->name, SYS, 0) < 0)
                 dprintf(STDERR_FILENO, "recovery: cannot mount %s: %s\n", de->name, strerror(errno));
             else if (!strcmp(guid, DISK_TYPE_DATA)) {
-                if (stat(SYS "/msc/passwd", &st) == 0) {
+                if (stat(SYS ACCOUNTS_FILE, &st) == 0) {
                     have_system = true;
                     strlcpy(sys_dev, de->name, sizeof(sys_dev));
                     strlcpy(parent, bi.parent, sizeof(parent));
@@ -241,42 +241,21 @@ static void find_system(void)
     }
 }
 
-// ---- features.conf on the installed system ----
+// ---- features.aset on the installed system ----
 
-static bool feature_on(const char *text, const char *name, bool def)
+#define SYS_FEATURES SYS "/msc/features.aset"
+
+static bool feature_on(const char *name, bool def)
 {
-    size_t n = strlen(name);
+    char v[8];
 
-    for (const char *l = text; l && *l; l = strchr(l, '\n') ? strchr(l, '\n') + 1 : NULL)
-        if (!strncmp(l, name, n) && l[n] == '=')
-            return !strncmp(l + n + 1, "on", 2);
-    return def;
+    return aset_get(SYS_FEATURES, name, v, sizeof(v)) > 0 ? !strcmp(v, "on") : def;
 }
 
 static void features_set(const char *const *names, const bool *values, int count)
 {
-    char *old = slurp(SYS "/msc/features.conf"), out[2048] = "";
-
-    // Keep other lines; replace the ones being set.
-    for (const char *l = old ? old : ""; *l;) {
-        const char *e = strchr(l, '\n');
-        size_t len = e ? (size_t)(e - l) : strlen(l);
-        bool replaced = false;
-
-        for (int i = 0; i < count; i++) {
-            size_t n = strlen(names[i]);
-
-            if (len > n && !strncmp(l, names[i], n) && l[n] == '=')
-                replaced = true;
-        }
-        if (!replaced && len)
-            snprintf(out + strlen(out), sizeof(out) - strlen(out), "%.*s\n", (int)len, l);
-        l += len + (e ? 1 : 0);
-    }
     for (int i = 0; i < count; i++)
-        snprintf(out + strlen(out), sizeof(out) - strlen(out), "%s=%s\n", names[i], values[i] ? "on" : "off");
-    spill(SYS "/msc/features.conf", out, 0644);
-    free(old);
+        aset_set(SYS_FEATURES, names[i], values[i] ? "on" : "off", 0644);
 }
 
 // ---- BCD ----
@@ -359,13 +338,13 @@ static char *bcd_update(const char *bcd, const char *timeout, const char *resolu
 
 static void load_startup(void)
 {
-    char *features = slurp(SYS "/msc/features.conf"), *bcd = have_esp ? slurp(BCD) : NULL;
+    char *bcd = have_esp ? slurp(BCD) : NULL;
     char v[64], root[96], extra[300];
 
-    ui_set_value(ui_get(win, "svc_console"), feature_on(features ? features : "", "console", true));
-    ui_set_value(ui_get(win, "svc_cron"), feature_on(features ? features : "", "routines", true));
-    ui_set_value(ui_get(win, "svc_audio"), feature_on(features ? features : "", "audio", true));
-    ui_set_value(ui_get(win, "verbose"), feature_on(features ? features : "", "bootlog", false));
+    ui_set_value(ui_get(win, "svc_console"), feature_on("console", true));
+    ui_set_value(ui_get(win, "svc_cron"), feature_on("routines", true));
+    ui_set_value(ui_get(win, "svc_audio"), feature_on("audio", true));
+    ui_set_value(ui_get(win, "verbose"), feature_on("bootlog", false));
     if (bcd) {
         bcd_global(bcd, "timeout", v, sizeof(v));
         ui_set_value(ui_get(win, "timeout"), atoi(v));
@@ -374,7 +353,6 @@ static void load_startup(void)
         bcd_extra(bcd, root, sizeof(root), extra, sizeof(extra));
         ui_set_text(ui_get(win, "extra"), extra);
     }
-    free(features);
     free(bcd);
 }
 
@@ -435,29 +413,24 @@ static void on_save_bcd(struct widget *w, void *u)
 
 static void load_users(void)
 {
-    char *passwd = slurp(SYS "/msc/passwd");
+    struct records r;
     struct widget *dd = ui_get(win, "users");
 
     ui_list_clear(dd);
-    for (char *l = passwd; l && *l;) {
-        char *e = strchr(l, '\n'), name[64];
-        char *c1 = strchr(l, ':'), *c2 = c1 ? strchr(c1 + 1, ':') : NULL;
+    records_load(SYS ACCOUNTS_FILE, "accounts", &r);
+    for (int i = 1; i < r.n; i++) {
+        const char *id = rec_get(&r.b[i], "id");
 
-        if (e)
-            *e = 0;
-        if (c1 && c2 && atoi(c2 + 1) >= 1000) {
-            snprintf(name, sizeof(name), "%.*s", (int)(c1 - l), l);
-            ui_list_add(dd, name);
-        }
-        l = e ? e + 1 : NULL;
+        if (!strcmp(r.b[i].kind, "account") && id && atoi(id) >= 1000)
+            ui_list_add(dd, r.b[i].name);
     }
+    records_free(&r);
     ui_list_select(dd, 0);
-    free(passwd);
     {
         struct aegis_stat st;
 
         ui_set_text(ui_get(win, "pwmsg"), ui_list_count(dd) ? ""
-                    : stat(SYS "/msc/firstboot", &st) == 0 ? "The account is made on the system's first start: start it once first."
+                    : stat(SYS "/msc/firstboot.aset", &st) == 0 ? "The account is made on the system's first start: start it once first."
                     : "This system has no accounts.");
     }
 }
@@ -466,8 +439,9 @@ static void on_reset_pw(struct widget *w, void *u)
 {
     struct widget *dd = ui_get(win, "users");
     const char *user = ui_list_item(dd, ui_list_selected(dd)), *p1 = ui_text(ui_get(win, "pw1"));
-    char hash[160], *shadow, out[4096] = "", cred[300], old[320];
-    size_t n;
+    char hash[160], cred[300], old[320];
+    struct records sec;
+    int saved;
 
     (void)w;
     (void)u;
@@ -477,28 +451,16 @@ static void on_reset_pw(struct widget *w, void *u)
         ui_set_text(ui_get(win, "pwmsg"), strlen(p1) < 4 ? "Use at least 4 characters." : "The passwords differ.");
         return;
     }
-    if (password_hash(p1, hash, sizeof(hash)) < 0 || !(shadow = slurp(SYS "/msc/shadow"))) {
+    if (password_hash(p1, hash, sizeof(hash)) < 0 || records_load(SYS SECRETS_FILE, "secrets", &sec) < 0) {
+        records_free(&sec);
         ui_set_text(ui_get(win, "pwmsg"), "The password file could not be read.");
         return;
     }
-    n = strlen(user);
-    for (char *l = shadow; *l;) {
-        char *e = strchr(l, '\n');
-        size_t len = e ? (size_t)(e - l) : strlen(l);
-
-        if (len > n && !strncmp(l, user, n) && l[n] == ':') {
-            const char *rest = strchr(l + n + 1, ':');
-
-            snprintf(out + strlen(out), sizeof(out) - strlen(out), "%s:%s%.*s\n", user, hash,
-                     rest ? (int)(len - (rest - l)) : 1, rest ? rest : ":");
-        } else if (len) {
-            snprintf(out + strlen(out), sizeof(out) - strlen(out), "%.*s\n", (int)len, l);
-        }
-        l += len + (e ? 1 : 0);
-    }
-    free(shadow);
+    rec_set(records_top(&sec), user, hash);
     memset(hash, 0, sizeof(hash));
-    if (spill(SYS "/msc/shadow", out, 0600) < 0) {
+    saved = records_save(&sec, SYS SECRETS_FILE, 0600);
+    records_free(&sec);
+    if (saved < 0) {
         ui_set_text(ui_get(win, "pwmsg"), "The password could not be saved.");
         return;
     }

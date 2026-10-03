@@ -640,42 +640,17 @@ static void prompt_string(char *buf, size_t size)
 
 static void load_identity(void)
 {
-    char line[512];
-    int hfd = open("/msc/hostname", O_RDONLY);
+    aset_get(COMPUTER_FILE, "name", computer_name, sizeof(computer_name));
+    if (!*computer_name)
+        strcpy(computer_name, "aegis");
+    struct user_info u;
 
-    if (hfd >= 0) {
-        if (read_line(hfd, line, sizeof(line)) > 0 && line[0])
-            strlcpy(computer_name, line, sizeof(computer_name));
-        close(hfd);
-    }
-    int fd = open("/msc/passwd", O_RDONLY);
-    uint32_t uid = getuid();
-
-    snprintf(user_name, sizeof(user_name), "%u", uid);
+    snprintf(user_name, sizeof(user_name), "%u", getuid());
     strcpy(home_dir, "/");
-    if (fd < 0)
-        return;
-    for (;;) {
-        ssize_t n = read_line(fd, line, sizeof(line));
-        char *f[7];
-        int k = 0;
-
-        if (n < 0)
-            break;
-        f[k++] = line;
-        for (char *p = line; *p && k < 7; p++) {
-            if (*p == ':') {
-                *p = '\0';
-                f[k++] = p + 1;
-            }
-        }
-        if (k == 7 && (uint32_t)atoi(f[2]) == uid) {
-            strlcpy(user_name, f[0], sizeof(user_name));
-            strlcpy(home_dir, f[5], sizeof(home_dir));
-            break;
-        }
+    if (user_by_uid(getuid(), &u) == 0) {
+        strlcpy(user_name, u.name, sizeof(user_name));
+        strlcpy(home_dir, u.home, sizeof(home_dir));
     }
-    close(fd);
 }
 
 static void show_file(const char *path)
@@ -749,8 +724,8 @@ int main(int argc, char **argv)
             return code;
         return last_status;
     }
-    // terminal SCRIPT [ARGS...]: run each line of a script ("#!/sysapps/terminal");
-    // $@ in a line stands for the arguments.
+    // terminal SCRIPT [ARGS...]: run each line of a terminal script (.tscr,
+    // first line "terminal script 1"); $@ in a line stands for the arguments.
     if (argc > 1 && argv[1][0] != '-') {
         struct aegis_stat st;
         int fd, code = 0;
@@ -769,11 +744,16 @@ int main(int argc, char **argv)
             setenv("HOME", home_dir);
         if (!getenv("PATH"))
             setenv("PATH", "/sysapps:/osystem/core:/userApps/commands");
-        for (char *l = text, *next; l && *l; l = next) {
+        if (strncmp(text, "terminal script ", 16)) {
+            dprintf(STDERR_FILENO, "terminal: %s: not a terminal script (the first line is \"terminal script 1\")\n",
+                    argv[1]);
+            return 126;
+        }
+        for (char *l = strchr(text, '\n'), *next; l && *++l; l = next) {
             char expanded[LINE_MAX], *at;
 
             if ((next = strchr(l, '\n')))
-                *next++ = 0;
+                *next = 0;
             if (*l == '#' || !*l)
                 continue;
             strlcpy(expanded, l, sizeof(expanded));

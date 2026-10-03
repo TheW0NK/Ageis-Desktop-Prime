@@ -1,8 +1,9 @@
 #include "aegis.h"
 #include "bearssl.h"
 
-// Account administration: password hashes, /msc/passwd, /msc/shadow and
-// /msc/group. Changing these needs root.
+// Account administration: password hashes and the account files,
+// ACCOUNTS_FILE (accounts and groups) and SECRETS_FILE (password hashes).
+// Changing these needs the superuser.
 //
 // Hash format (checked by the kernel): $aegis-sha256$ITER$SALT_HEX$HASH_HEX,
 // H1 = SHA256(salt || password), Hn = SHA256(Hn-1 || salt || password).
@@ -101,190 +102,86 @@ bool password_matches(const char *hash, const char *password)
     return diff == 0;
 }
 
-// ---- Rewriting the account files ----
+// ---- The account files ----
 
-// Rewrites path line by line: edit() returns the new line (or NULL to drop
-// it); extra, if set, is appended. The file keeps its mode.
-static int rewrite(const char *path, const char *(*edit)(const char *line, void *ctx), void *ctx,
-                   const char *extra)
+static int load_accounts(struct records *r)
 {
-    char tmp[64], line[1024];
-    struct aegis_stat st;
-    int in, out;
-
-    if (stat(path, &st) < 0 || (in = open(path, O_RDONLY)) < 0)
-        return -1;
-    snprintf(tmp, sizeof(tmp), "%s.new", path);
-    if ((out = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, st.mode & 0777)) < 0) {
-        close(in);
-        return -1;
-    }
-    while (read_line(in, line, sizeof(line)) >= 0) {
-        const char *r = edit ? edit(line, ctx) : line;
-
-        if (r)
-            dprintf(out, "%s\n", r);
-    }
-    if (extra)
-        dprintf(out, "%s\n", extra);
-    close(in);
-    chmod(tmp, st.mode & 0777);
-    chown(tmp, st.uid, st.gid);
-    close(out);
-    sync();
-    return rename(tmp, path);
-}
-
-struct field_edit {
-    const char *name;
-    int field;                      // which field to replace
-    const char *value;
-    char buf[1024];
-    bool drop, found;
-};
-
-static const char *edit_field(const char *line, void *ctx)
-{
-    struct field_edit *e = ctx;
-    size_t n = strlen(e->name);
-    const char *p = line;
-    int f = 0;
-
-    if (strncmp(line, e->name, n) || line[n] != ':')
-        return line;
-    e->found = true;
-    if (e->drop)
-        return NULL;
-    // Copy fields, swapping the chosen one.
-    e->buf[0] = 0;
-    while (true) {
-        const char *colon = strchr(p, ':');
-        size_t len = colon ? (size_t)(colon - p) : strlen(p);
-
-        if (f)
-            strlcat(e->buf, ":", sizeof(e->buf));
-        if (f == e->field)
-            strlcat(e->buf, e->value, sizeof(e->buf));
-        else {
-            char part[512];
-
-            snprintf(part, sizeof(part), "%.*s", (int)len, p);
-            strlcat(e->buf, part, sizeof(e->buf));
-        }
-        if (!colon)
-            break;
-        p = colon + 1;
-        f++;
-    }
-    return e->buf;
-}
-
-static int set_field(const char *path, const char *name, int field, const char *value)
-{
-    struct field_edit e = { name, field, value, { 0 }, false, false };
-
-    if (rewrite(path, edit_field, &e, NULL) < 0)
-        return -1;
-    if (!e.found) {
-        errno = ENOENT;
+    if (records_load(ACCOUNTS_FILE, "accounts", r) < 0) {
+        records_free(r);
         return -1;
     }
     return 0;
 }
 
+static int save_and_free(struct records *r, const char *path, uint32_t mode)
+{
+    int ret = records_save(r, path, mode);
+
+    records_free(r);
+    return ret;
+}
+
 int account_set_password(const char *name, const char *password)
 {
     char hash[160];
+    struct records r;
 
     if (password_hash(password, hash, sizeof(hash)) < 0)
         return -1;
-    return set_field("/msc/shadow", name, 1, hash);
+    if (records_load(SECRETS_FILE, "secrets", &r) < 0 || !rec_get(records_top(&r), name)) {
+        records_free(&r);
+        errno = ENOENT;
+        return -1;
+    }
+    rec_set(records_top(&r), name, hash);
+    return save_and_free(&r, SECRETS_FILE, 0600);
 }
 
 int account_check_password(const char *name, const char *password)
 {
-    int fd = open("/msc/shadow", O_RDONLY);
-    char line[512];
-    size_t n = strlen(name);
-    bool ok = false;
+    struct records r;
+    const char *hash;
+    bool ok;
 
-    if (fd < 0)
+    if (records_load(SECRETS_FILE, "secrets", &r) < 0) {
+        records_free(&r);
         return -1;
-    while (read_line(fd, line, sizeof(line)) >= 0) {
-        if (!strncmp(line, name, n) && line[n] == ':') {
-            char *end = strchr(line + n + 1, ':');
-
-            if (end)
-                *end = 0;
-            ok = password_matches(line + n + 1, password);
-            break;
-        }
     }
-    close(fd);
+    ok = (hash = rec_get(records_top(&r), name)) && password_matches(hash, password);
+    records_free(&r);
     return ok ? 0 : -1;
 }
 
 int account_set_display_name(const char *name, const char *display)
 {
-    return set_field("/msc/passwd", name, 4, display);
-}
+    struct records r;
+    struct rec_block *b;
 
-// Adds or removes name from a group's member list.
-struct member_edit {
-    const char *group, *user;
-    bool add;
-    char buf[1024];
-};
-
-static const char *edit_member(const char *line, void *ctx)
-{
-    struct member_edit *m = ctx;
-    size_t gl = strlen(m->group);
-    const char *members;
-    char out[1024] = "";
-    bool present = false;
-
-    if (strncmp(line, m->group, gl) || line[gl] != ':')
-        return line;
-    // members are the fourth field
-    members = line;
-    for (int i = 0; i < 3 && members; i++) {
-        members = strchr(members, ':');
-        if (members)
-            members++;
+    if (load_accounts(&r) < 0)
+        return -1;
+    if (!(b = records_find(&r, "account", name))) {
+        records_free(&r);
+        errno = ENOENT;
+        return -1;
     }
-    if (!members)
-        return line;
-    snprintf(m->buf, sizeof(m->buf), "%.*s", (int)(members - line), line);
-    for (const char *p = members; *p;) {
-        const char *comma = strchr(p, ',');
-        size_t len = comma ? (size_t)(comma - p) : strlen(p);
-        bool me = len == strlen(m->user) && !strncmp(p, m->user, len);
-
-        present |= me;
-        if (len && !(me && !m->add)) {
-            if (*out)
-                strlcat(out, ",", sizeof(out));
-            strncat(out, p, len);
-        }
-        if (!comma)
-            break;
-        p = comma + 1;
-    }
-    if (m->add && !present) {
-        if (*out)
-            strlcat(out, ",", sizeof(out));
-        strlcat(out, m->user, sizeof(out));
-    }
-    strlcat(m->buf, out, sizeof(m->buf));
-    return m->buf;
+    rec_set(b, "display", display);
+    return save_and_free(&r, ACCOUNTS_FILE, 0644);
 }
 
 int group_set_member(const char *group, const char *user, bool member)
 {
-    struct member_edit m = { group, user, member, { 0 } };
+    struct records r;
+    struct rec_block *b;
 
-    return rewrite("/msc/group", edit_member, &m, NULL);
+    if (load_accounts(&r) < 0)
+        return -1;
+    if (!(b = records_find(&r, "group", group))) {
+        records_free(&r);
+        errno = ENOENT;
+        return -1;
+    }
+    rec_list_edit(b, "members", user, member);
+    return save_and_free(&r, ACCOUNTS_FILE, 0644);
 }
 
 static bool valid_name(const char *name)
@@ -323,7 +220,6 @@ int account_add(const char *name, const char *display, const char *password, boo
 int account_add_hashed(const char *name, const char *display, const char *hash, bool admin)
 {
     struct user_info u;
-    char line[512];
     uint32_t uid;
 
     if (!valid_name(name)) {
@@ -335,21 +231,34 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
         return -1;
     }
     uid = next_uid();
-    snprintf(line, sizeof(line), "%s:x:%u:%u:%s:/userfiles/%s/home:/sysapps/terminal", name, uid, uid,
-             display && *display ? display : name, name);
-    if (rewrite("/msc/passwd", NULL, NULL, line) < 0)
-        return -1;
-    snprintf(line, sizeof(line), "%s:x:%u:%s", name, uid, name);
-    if (rewrite("/msc/group", NULL, NULL, line) < 0)
-        return -1;
-    snprintf(line, sizeof(line), "%s:%s:", name, hash);
-    if (rewrite("/msc/shadow", NULL, NULL, line) < 0)
-        return -1;
-    group_set_member("audio", name, true);
-    group_set_member("video", name, true);
-    if (admin) {
-        group_set_member("admins", name, true);
-        group_set_member("logs", name, true);
+    {
+        struct records r, sec;
+        struct rec_block *acc, *grp;
+        char num[16], home[128];
+        static const char *const groups[] = { "audio", "video", "admins", "logs" };
+
+        if (load_accounts(&r) < 0)
+            return -1;
+        snprintf(num, sizeof(num), "%u", uid);
+        snprintf(home, sizeof(home), "/userfiles/%s/home", name);
+        acc = records_add(&r, "account", name);
+        rec_set(acc, "id", num);
+        rec_set(acc, "group", num);
+        rec_set(acc, "display", display && *display ? display : name);
+        rec_set(acc, "home", home);
+        rec_set(acc, "terminal", "/sysapps/terminal");
+        grp = records_add(&r, "group", name);
+        rec_set(grp, "id", num);
+        rec_set(grp, "members", name);
+        for (int i = 0; i < (admin ? 4 : 2); i++)
+            if ((grp = records_find(&r, "group", groups[i])))
+                rec_list_edit(grp, "members", name, true);
+        if (save_and_free(&r, ACCOUNTS_FILE, 0644) < 0)
+            return -1;
+        records_load(SECRETS_FILE, "secrets", &sec);
+        rec_set(records_top(&sec), name, hash);
+        if (save_and_free(&sec, SECRETS_FILE, 0600) < 0)
+            return -1;
     }
     if (user_by_name(name, &u) == 0) {
         user_setup_dirs(&u);
@@ -357,46 +266,36 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
         user_setting_set(&u, "theme", "light");
         user_setting_set(&u, "language", "en");
         user_setting_set(&u, "background", "default");
-        // Settings files belong to the user.
-        {
-            static const char *const keys[] = { "name", "theme", "language", "background" };
-
-            for (int i = 0; i < 4; i++) {
-                char p[256];
-
-                snprintf(p, sizeof(p), "%s/system/settings/%s", u.dir, keys[i]);
-                chown(p, u.uid, u.gid);
-            }
-        }
     }
     return 0;
-}
-
-static const char *drop_line(const char *line, void *ctx)
-{
-    const char *name = ctx;
-    size_t n = strlen(name);
-
-    return !strncmp(line, name, n) && line[n] == ':' ? NULL : line;
 }
 
 int account_remove(const char *name, bool remove_files)
 {
     struct user_info u;
+    struct records r, sec;
     bool have = user_by_name(name, &u) == 0;
 
     if (!have || u.uid < 1000) {
         errno = have ? EPERM : ENOENT;
         return -1;
     }
-    group_set_member("admins", name, false);
-    group_set_member("logs", name, false);
-    group_set_member("audio", name, false);
-    group_set_member("video", name, false);
-    if (rewrite("/msc/passwd", drop_line, (void *)name, NULL) < 0
-        || rewrite("/msc/shadow", drop_line, (void *)name, NULL) < 0
-        || rewrite("/msc/group", drop_line, (void *)name, NULL) < 0)
+    if (load_accounts(&r) < 0)
         return -1;
+    records_remove(&r, "account", name);
+    records_remove(&r, "group", name);
+    for (int i = 1; i < r.n; i++)
+        if (!strcmp(r.b[i].kind, "group"))
+            rec_list_edit(&r.b[i], "members", name, false);
+    if (save_and_free(&r, ACCOUNTS_FILE, 0644) < 0)
+        return -1;
+    if (records_load(SECRETS_FILE, "secrets", &sec) == 0) {
+        rec_unset(records_top(&sec), name);
+        if (save_and_free(&sec, SECRETS_FILE, 0600) < 0)
+            return -1;
+    } else {
+        records_free(&sec);
+    }
     if (remove_files)
         remove_path(u.dir);
     return 0;

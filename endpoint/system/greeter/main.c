@@ -295,12 +295,9 @@ int main(void)
     load_users();
     {
         char host[64];
-        int fd = open("/msc/hostname", O_RDONLY);
 
-        if (fd >= 0 && read_line(fd, host, sizeof(host)) > 0)
+        if (aset_get(COMPUTER_FILE, "name", host, sizeof(host)) > 0)
             ui_set_text(ui_get(win, "host"), host);
-        if (fd >= 0)
-            close(fd);
     }
     ui_canvas_set(ui_get(win, "avatar"), paint_avatar, NULL, NULL);
     tick(NULL);

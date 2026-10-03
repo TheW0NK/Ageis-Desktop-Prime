@@ -1,7 +1,8 @@
 #include "aegis.h"
 
 // Calendar time. Local time is UTC plus a fixed offset read from
-// /msc/timezone ("<name> <minutes east of UTC>"), or TZ_OFFSET (minutes).
+// COMPUTER_FILE (timezone, timezone-offset in minutes east of UTC), or
+// TZ_OFFSET (minutes).
 
 static const char *const day_names[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
                                          "Saturday" };
@@ -76,8 +77,6 @@ static void load_zone(void)
     uint64_t now = uptime_ms();
     const char *env = getenv("TZ_OFFSET");
     char buf[96];
-    int fd;
-    ssize_t n;
 
     // Re-read now and then so a changed setting reaches running programs.
     if (zone_checked && now - zone_checked < 10000)
@@ -87,22 +86,11 @@ static void load_zone(void)
         zone_offset = atoi(env) * 60;
         return;
     }
-    if ((fd = open("/msc/timezone", O_RDONLY)) < 0)
+    if (aset_get(COMPUTER_FILE, "timezone-offset", buf, sizeof(buf)) < 0)
         return;
-    n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-    if (n <= 0)
-        return;
-    buf[n] = 0;
-    {
-        char *sp = strchr(buf, ' ');
-
-        if (!sp)
-            return;
-        *sp = 0;
+    zone_offset = atoi(buf) * 60;
+    if (aset_get(COMPUTER_FILE, "timezone", buf, sizeof(buf)) > 0)
         strlcpy(zone_name, buf, sizeof(zone_name));
-        zone_offset = atoi(sp + 1) * 60;
-    }
 }
 
 int timezone_offset(void)

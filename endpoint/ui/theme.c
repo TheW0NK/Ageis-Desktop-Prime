@@ -58,10 +58,9 @@ void ui_load_user_theme(void)
 {
     follow_theme = true;
     const char *env = getenv("AEGIS_THEME");
-    char path[256], buf[64];
-    const char *home = getenv("HOME");
-    int fd;
-    ssize_t n;
+    char path[256];
+    const char *home = getenv("HOME"), *v;
+    struct records r;
 
     if (env) {
         ui_set_theme(env);
@@ -69,19 +68,11 @@ void ui_load_user_theme(void)
     }
     if (!home)
         return;
-    // /userfiles/<name>/home -> /userfiles/<name>/system/settings/theme
-    snprintf(path, sizeof(path), "%s/../system/settings/theme", home);
-    if ((fd = open(path, O_RDONLY)) < 0)
-        return;
-    n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-    if (n <= 0)
-        return;
-    buf[n] = 0;
-    for (char *p = buf; *p; p++)
-        if (*p == '\n' || *p == '\r' || *p == ' ')
-            *p = 0;
-    ui_set_theme(buf);
+    // /userfiles/<name>/home -> /userfiles/<name>/system/settings.aset
+    snprintf(path, sizeof(path), "%s/../system/settings.aset", home);
+    if (records_load(path, "settings", &r) == 0 && (v = rec_get(records_top(&r), "theme")))
+        ui_set_theme(v);
+    records_free(&r);
 }
 
 struct font *ui_font_sized(const char *name, int px)

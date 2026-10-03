@@ -1,32 +1,27 @@
 #include "commands.h"
 
-// Finds the line in an /msc file whose field `key` equals `value`, and copies
-// field `want` of that line into out.
-static bool lookup(const char *path, int key, const char *value, int want, char *out, size_t size)
+// Finds an account or group ("account" or "group") by name or by id
+// (exactly one of name and id is set): its id or name goes into out.
+static bool lookup(const char *kind, const char *name, const char *id, char *out, size_t size)
 {
-    char line[512];
-    int fd = open(path, O_RDONLY);
+    struct records r;
     bool found = false;
 
-    if (fd < 0)
-        return false;
-    while (!found && read_line(fd, line, sizeof(line)) >= 0) {
-        char *f[7];
-        int k = 0;
+    records_load(ACCOUNTS_FILE, "accounts", &r);
+    for (int i = 1; i < r.n && !found; i++) {
+        const char *v = rec_get(&r.b[i], "id");
 
-        f[k++] = line;
-        for (char *p = line; *p && k < 7; p++) {
-            if (*p == ':') {
-                *p = '\0';
-                f[k++] = p + 1;
-            }
-        }
-        if (k > key && k > want && !strcmp(f[key], value)) {
-            strlcpy(out, f[want], size);
+        if (strcmp(r.b[i].kind, kind) || !v)
+            continue;
+        if (name && !strcmp(r.b[i].name, name)) {
+            strlcpy(out, v, size);
+            found = true;
+        } else if (id && !strcmp(v, id)) {
+            strlcpy(out, r.b[i].name, size);
             found = true;
         }
     }
-    close(fd);
+    records_free(&r);
     return found;
 }
 
@@ -38,7 +33,7 @@ int name_to_uid(const char *name, uint32_t *uid)
         *uid = atoi(name);
         return 0;
     }
-    if (!lookup("/msc/passwd", 0, name, 2, buf, sizeof(buf)))
+    if (!lookup("account", name, NULL, buf, sizeof(buf)))
         return -1;
     *uid = atoi(buf);
     return 0;
@@ -52,7 +47,7 @@ int name_to_gid(const char *name, uint32_t *gid)
         *gid = atoi(name);
         return 0;
     }
-    if (!lookup("/msc/group", 0, name, 2, buf, sizeof(buf)))
+    if (!lookup("group", name, NULL, buf, sizeof(buf)))
         return -1;
     *gid = atoi(buf);
     return 0;
@@ -63,7 +58,7 @@ const char *uid_to_name(uint32_t uid, char *buf, size_t size)
     char id[16];
 
     snprintf(id, sizeof(id), "%u", uid);
-    if (!lookup("/msc/passwd", 2, id, 0, buf, size))
+    if (!lookup("account", NULL, id, buf, size))
         strlcpy(buf, id, size);
     return buf;
 }
@@ -73,7 +68,7 @@ const char *gid_to_name(uint32_t gid, char *buf, size_t size)
     char id[16];
 
     snprintf(id, sizeof(id), "%u", gid);
-    if (!lookup("/msc/group", 2, id, 0, buf, size))
+    if (!lookup("group", NULL, id, buf, size))
         strlcpy(buf, id, size);
     return buf;
 }

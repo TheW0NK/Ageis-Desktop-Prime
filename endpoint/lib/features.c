@@ -1,9 +1,9 @@
 #include "aegis.h"
 
-// Optional parts of the system, switched in /msc/features.conf
-// ("name=on" or "name=off"). Unlisted features use their default.
+// Optional parts of the system, switched in /msc/features.aset
+// ("name: on" or "name: off"). Unlisted features use their default.
 
-#define FEATURES "/msc/features.conf"
+#define FEATURES "/msc/features.aset"
 #define BCD_PATH "/osystem/boot/EFI/Aegis/bcd"
 
 static const struct feature features[] = {
@@ -27,23 +27,14 @@ int feature_list(const struct feature **out)
 
 bool feature_enabled(const char *name)
 {
-    int fd = open(FEATURES, O_RDONLY);
-    char line[128];
-    size_t n = strlen(name);
-    bool on = false, found = false;
+    char v[8];
+    bool on = false;
 
     for (size_t i = 0; i < sizeof(features) / sizeof(features[0]); i++)
         if (!strcmp(features[i].id, name))
             on = features[i].default_on;
-    if (fd < 0)
-        return on;
-    while (!found && read_line(fd, line, sizeof(line)) >= 0) {
-        if (!strncmp(line, name, n) && line[n] == '=') {
-            on = !strcmp(line + n + 1, "on");
-            found = true;
-        }
-    }
-    close(fd);
+    if (aset_get(FEATURES, name, v, sizeof(v)) > 0)
+        on = !strcmp(v, "on");
     return on;
 }
 
@@ -84,20 +75,7 @@ static int set_boot_default(bool verbose)
 
 int feature_set(const char *name, bool on)
 {
-    const struct feature *list;
-    int n = feature_list(&list), fd;
-    char tmp[] = FEATURES ".new";
-
-    if ((fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0)
-        return -1;
-    dprintf(fd, "# Optional features. Change them with the Feature Manager.\n");
-    for (int i = 0; i < n; i++) {
-        bool v = !strcmp(list[i].id, name) ? on : feature_enabled(list[i].id);
-
-        dprintf(fd, "%s=%s\n", list[i].id, v ? "on" : "off");
-    }
-    close(fd);
-    if (rename(tmp, FEATURES) < 0)
+    if (aset_set(FEATURES, name, on ? "on" : "off", 0644) < 0)
         return -1;
     if (!strcmp(name, "bootlog"))
         return set_boot_default(on);
