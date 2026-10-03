@@ -403,6 +403,23 @@ int remove_path(const char *path);
 int move_path(const char *src, const char *dst);
 void unique_name(const char *dir, const char *name, char *out, size_t size);
 
+// The recycle bin (lib/trash.c), in /users/<name>/system/trash.
+struct trash_item {
+    char name[256];         // its name in the bin
+    char path[512];         // where it is now
+    char origin[512];       // where it was deleted from
+    int64_t deleted;
+    uint64_t size;
+    bool dir;
+};
+int trash_put(const char *path);
+int trash_list(struct trash_item **out);     // free() the array
+int trash_restore(const struct trash_item *t);
+int trash_delete(const struct trash_item *t);
+int trash_empty(void);
+int trash_count(void);
+void trash_dir(char *out, size_t size);
+
 // Directory reading.
 struct dir_stream {
     int fd;

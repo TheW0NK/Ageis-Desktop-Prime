@@ -16,6 +16,9 @@ static const char page[] =
     "      <separator/>"
     "      <item text='Rename...' shortcut='F2' onclick='rename'/>"
     "      <item text='Delete' shortcut='Delete' onclick='delete'/>"
+    "      <item text='Delete permanently' shortcut='Shift+Delete' onclick='destroy'/>"
+    "      <item id='restore' text='Restore' enabled='false' onclick='restore'/>"
+    "      <item id='emptytrash' text='Empty Trash' onclick='emptytrash'/>"
     "      <item text='Properties' shortcut='Alt+Enter' onclick='properties'/>"
     "      <separator/>"
     "      <item text='Close' shortcut='Ctrl+W' onclick='close'/>"
@@ -66,6 +69,7 @@ static const char page[] =
     "    <separator/>"
     "    <item text='Rename...' onclick='rename'/>"
     "    <item text='Delete' onclick='delete'/>"
+    "    <item id='ctxrestore' text='Restore' onclick='restore'/>"
     "    <separator/>"
     "    <item text='New folder' onclick='newfolder'/>"
     "    <item text='Properties' onclick='properties'/>"
@@ -96,11 +100,20 @@ static bool clip_cut;
 static struct user_info me;
 
 static const char *const place_names[] = { "Home", "Desktop", "Documents", "Downloads", "Images", "Music",
-                                           "Computer" };
+                                           "Computer", "Trash" };
 static const char *const place_icons[] = { "glyph:home", "glyph:desktop", "glyph:documents", "glyph:downloads",
-                                           "glyph:image", "glyph:audio", "glyph:disk" };
+                                           "glyph:image", "glyph:audio", "glyph:disk",
+                                           "glyph:trash" };
+#define NPLACES 8
+
+static char trash_files[512];
 
 static void load(const char *dir, bool record);
+
+static bool in_trash(void)
+{
+    return *trash_files && !strcmp(cwd, trash_files);
+}
 
 static void join(char *out, size_t size, const char *dir, const char *name)
 {
@@ -149,7 +162,22 @@ static void status(void)
 
     for (int i = 0; i < nshown; i++)
         dirs += entries[shown[i]].dir;
-    if (sel >= 0 && sel < nshown && !entries[shown[sel]].dir) {
+    if (in_trash() && sel >= 0 && sel < nshown) {
+        struct trash_item *items;
+        int n = trash_list(&items);
+
+        snprintf(buf, sizeof(buf), "\"%s\" selected", entries[shown[sel]].name);
+        for (int i = 0; i < n; i++) {
+            if (!strcmp(items[i].name, entries[shown[sel]].name) && *items[i].origin)
+                snprintf(buf, sizeof(buf), "\"%s\" was deleted from %.80s", items[i].name, items[i].origin);
+        }
+        free(items);
+    } else if (in_trash()) {
+        if (nshown)
+            snprintf(buf, sizeof(buf), "%d item%s in the Trash", nshown, nshown == 1 ? "" : "s");
+        else
+            strlcpy(buf, "The Trash is empty", sizeof(buf));
+    } else if (sel >= 0 && sel < nshown && !entries[shown[sel]].dir) {
         char size[32];
 
         ui_format_size(entries[shown[sel]].size, size, sizeof(size));
@@ -255,7 +283,10 @@ static void update_title(void)
     char title[600];
     const char *base = strrchr(cwd, '/');
 
-    snprintf(title, sizeof(title), "%s - Files", !strcmp(cwd, "/") ? "Computer" : base ? base + 1 : cwd);
+    snprintf(title, sizeof(title), "%s - Files",
+             in_trash() ? "Trash" : !strcmp(cwd, "/") ? "Computer" : base ? base + 1 : cwd);
+    ui_set_enabled(ui_get(win, "restore"), in_trash());
+    ui_set_attr(ui_get(win, "ctxrestore"), "hidden", in_trash() ? "false" : "true");
     ui_window_set_title(win, title);
     ui_set_enabled(ui_get(win, "backbtn"), hpos > 0);
     ui_set_enabled(ui_get(win, "fwdbtn"), hpos + 1 < hlen);
@@ -396,6 +427,8 @@ static void place(struct widget *w, void *u)
         return;
     if (i == 6)
         strlcpy(path, "/", sizeof(path));
+    else if (i == 7)
+        strlcpy(path, trash_files, sizeof(path));
     else if (i == 0)
         strlcpy(path, me.home, sizeof(path));
     else
@@ -510,7 +543,7 @@ static void rename_entry(struct widget *w, void *u)
     refresh(NULL, NULL);
 }
 
-static void delete_entry(struct widget *w, void *u)
+static void destroy_entry(struct widget *w, void *u)
 {
     struct entry *e = current();
     char path[800], msg[600];
@@ -519,14 +552,88 @@ static void delete_entry(struct widget *w, void *u)
     (void)u;
     if (!e)
         return;
-    snprintf(msg, sizeof(msg), "Delete \"%s\"%s? This cannot be undone.", e->name,
+    snprintf(msg, sizeof(msg), "Delete \"%s\"%s permanently? This cannot be undone.", e->name,
              e->dir ? " and everything in it" : "");
     if (ui_message(win, "Delete", msg, "Delete|Cancel") != 0)
         return;
     join(path, sizeof(path), cwd, e->name);
-    if (remove_path(path) < 0)
+    if (in_trash()) {
+        struct trash_item *items;
+        int n = trash_list(&items);
+
+        for (int i = 0; i < n; i++) {
+            if (!strcmp(items[i].name, e->name) && trash_delete(&items[i]) < 0)
+                fail("Deleting", e->name);
+        }
+        free(items);
+    } else if (remove_path(path) < 0) {
         fail("Deleting", e->name);
+    }
     refresh(NULL, NULL);
+}
+
+// Delete moves things to the Trash; in the Trash it deletes them for good.
+static void delete_entry(struct widget *w, void *u)
+{
+    struct entry *e = current();
+    char path[800], msg[600];
+
+    if (!e)
+        return;
+    if (in_trash()) {
+        destroy_entry(w, u);
+        return;
+    }
+    join(path, sizeof(path), cwd, e->name);
+    if (trash_put(path) < 0) {
+        snprintf(msg, sizeof(msg), "\"%s\" cannot be moved to the Trash (%s). Delete it permanently?", e->name,
+                 strerror(errno));
+        if (ui_message(win, "Delete", msg, "Delete|Cancel") != 0)
+            return;
+        if (remove_path(path) < 0)
+            fail("Deleting", e->name);
+    }
+    refresh(NULL, NULL);
+}
+
+static void restore_entry(struct widget *w, void *u)
+{
+    struct entry *e = current();
+    struct trash_item *items;
+    int n;
+
+    (void)w;
+    (void)u;
+    if (!e || !in_trash())
+        return;
+    n = trash_list(&items);
+    for (int i = 0; i < n; i++) {
+        if (!strcmp(items[i].name, e->name) && trash_restore(&items[i]) < 0)
+            fail("Restoring", e->name);
+    }
+    free(items);
+    refresh(NULL, NULL);
+}
+
+static void empty_trash(struct widget *w, void *u)
+{
+    int n = trash_count();
+    char msg[200];
+
+    (void)w;
+    (void)u;
+    if (!n) {
+        ui_message(win, "Empty Trash", "The Trash is already empty.", "OK");
+        return;
+    }
+    snprintf(msg, sizeof(msg), "Delete the %d item%s in the Trash permanently? This cannot be undone.", n,
+             n == 1 ? "" : "s");
+    if (ui_message(win, "Empty Trash", msg, "Empty Trash|Cancel") != 0)
+        return;
+    if (trash_empty() < 0)
+        ui_message(win, "Empty Trash", "Some items could not be deleted.", "OK");
+    if (in_trash())
+        refresh(NULL, NULL);
 }
 
 static void set_clip(bool cut)
@@ -660,6 +767,7 @@ int main(int argc, char **argv)
         { "home", home }, { "place", place }, { "refresh", refresh }, { "filter", filter }, { "sort", sort },
         { "selected", selected }, { "togglehidden", toggle_hidden }, { "newfolder", new_folder },
         { "newfile", new_file }, { "rename", rename_entry }, { "delete", delete_entry }, { "cut", cut },
+        { "destroy", destroy_entry }, { "restore", restore_entry }, { "emptytrash", empty_trash },
         { "copy", copy }, { "paste", paste }, { "copypath", copy_path_text }, { "properties", properties },
         { "terminal", terminal }, { "newwin", new_window }, { "close", close_window }, { "context", context },
         { NULL, NULL },
@@ -672,7 +780,8 @@ int main(int argc, char **argv)
         return 1;
     table = ui_get(win, "files");
     places = ui_get(win, "places");
-    for (int i = 0; i < 7; i++) {
+    trash_dir(trash_files, sizeof(trash_files));
+    for (int i = 0; i < NPLACES; i++) {
         ui_list_add(places, place_names[i]);
         ui_list_set_icon_shared(places, i, icon_get(place_icons[i], 20));
     }
