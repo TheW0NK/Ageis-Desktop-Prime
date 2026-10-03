@@ -15,9 +15,11 @@ trap 'rm -rf "$work"' EXIT
 
 command -v xorriso >/dev/null || { echo "mkiso.sh: xorriso is needed (apt install xorriso)" >&2; exit 1; }
 
-# The live system: its files plus room to write while it runs (it is kept
-# in memory, so the room is kept small).
-root_mb=$(( $(du -sm "$root_dir" | cut -f1) + 48 ))
+# The live system: its files plus a little room to write while it runs.
+# It is kept small: the whole EFI image must stay under 32 MiB, the most an
+# El Torito boot entry can describe (some firmware, VirtualBox's among it,
+# will not boot an entry without its size).
+root_mb=$(( $(du -sm "$root_dir" | cut -f1) + 6 ))
 mkfs.ext4 -q -F -L aegis-live -b 4096 -O ^has_journal -d "$root_dir" "$work/live.img" "${root_mb}M"
 
 cp -r "$esp_dir" "$work/esp"
@@ -56,9 +58,12 @@ ramdisk=\EFI\Aegis\live.img
 cmdline=root=ram0 recovery
 BCD
 
-esp_kb=$(( $(du -sk --apparent-size "$work/esp" | cut -f1) * 105 / 100 + 8192 ))
-[ "$esp_kb" -lt 36864 ] && esp_kb=36864
-mkfs.fat -F 32 -n AEGIS-BOOT -C "$work/efi.img" "$esp_kb" >/dev/null
+esp_kb=$(( $(du -sk --apparent-size "$work/esp" | cut -f1) * 105 / 100 + 1024 ))
+if [ "$esp_kb" -ge 32768 ]; then
+    echo "mkiso.sh: the EFI image would be $esp_kb KiB; it must be under 32 MiB" >&2
+    exit 1
+fi
+mkfs.fat -n AEGIS-BOOT -C "$work/efi.img" "$esp_kb" >/dev/null
 mcopy -s -i "$work/efi.img" "$work/esp/"* ::/
 
 mkdir -p "$work/iso"
