@@ -3,7 +3,12 @@
 # files are owned by root and the user's home by the user.
 #
 #   mkrootfs.sh OUTPUT_IMAGE ESP_DIR ENDPOINT_BUILD USER PASSWORD [SIZE_MB]
+#
+# With LIVE=1 it builds the install media instead: OUTPUT_IMAGE is an ISO
+# whose system has no accounts and starts the installer (USER and PASSWORD
+# are ignored).
 set -eu
+live=${LIVE:-0}
 
 out=$1
 esp=$2
@@ -13,6 +18,7 @@ password=$5
 size=${6:-512}
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(dirname "$out")/rootfs
+[ "$live" = 1 ] && root=$(dirname "$out")/liveroot
 
 rm -rf "$root"
 mkdir -p "$root"/bin "$root"/sbin "$root"/etc "$root"/boot "$root"/root "$root"/tmp \
@@ -20,6 +26,7 @@ mkdir -p "$root"/bin "$root"/sbin "$root"/etc "$root"/boot "$root"/root "$root"/
 # Each user has /users/<name>/home (their files) and /users/<name>/system
 # (settings, encrypted credentials, app data).
 ud="$root"/users/"$user"
+[ "$live" = 1 ] && ud="$root"/tmp/no-user
 mkdir -p "$ud"/home/Desktop "$ud"/home/Documents "$ud"/home/Downloads "$ud"/home/Images "$ud"/home/Music \
          "$ud"/system/settings "$ud"/system/credentials "$ud"/system/appdata
 echo "$user" > "$ud"/system/settings/name
@@ -55,6 +62,17 @@ cat > "$root"/etc/crontab <<CRONTAB
 # System jobs: schedule, account, command. Edit with the Cron Jobs app.
 #   minute hour day month weekday  user  command
 CRONTAB
+if [ "$live" = 1 ]; then
+    rm -rf "$root"/tmp/no-user "$root"/users
+    mkdir -p "$root"/users
+    echo "This is the live system on the Aegis install media." > "$root"/etc/live
+    mkdir -p "$root"/usr/share/installer
+    cp -r "$esp" "$root"/usr/share/installer/esp
+    printf 'root:x:0:0:root:/root:/bin/terminal\n' > "$root"/etc/passwd
+    printf 'root:x:0:root\nadm:x:4:\nsudo:x:27:\nvideo:x:44:\naudio:x:63:\ninput:x:50:\n' > "$root"/etc/group
+    printf 'root:!:\n' > "$root"/etc/shadow
+    ud="$root"/users
+else
 cat > "$root"/etc/passwd <<PASSWD
 root:x:0:0:root:/root:/bin/terminal
 $user:x:1000:1000:$user:/users/$user/home:/bin/terminal
@@ -72,15 +90,20 @@ GROUP
     echo "root:!:"
     echo "$user:$("$here"/mkpasswd.py "$password"):"
 } > "$root"/etc/shadow
+fi
 
 fakeroot sh -c "
     chown -R 0:0 '$root'
-    chown -R 1000:1000 '$ud'
+    [ '$live' = 1 ] || chown -R 1000:1000 '$ud'
     chmod 0755 '$root' '$root'/bin '$root'/sbin '$root'/etc '$root'/users '$root'/usr '$root'/usr/share
-    chmod 0711 '$ud'
-    chmod 0700 '$root'/root '$ud'/home '$ud'/system '$ud'/system/settings '$ud'/system/credentials \
-          '$ud'/system/appdata
-    chmod 0600 '$ud'/system/settings/*
+    if [ '$live' != 1 ]; then
+        chmod 0711 '$ud'
+        chmod 0700 '$ud'/home '$ud'/system '$ud'/system/settings '$ud'/system/credentials '$ud'/system/appdata
+        chmod 0600 '$ud'/system/settings/*
+    else
+        chmod 0755 '$ud'
+    fi
+    chmod 0700 '$root'/root
     chmod 1777 '$root'/tmp
     chmod 0755 '$root'/bin/* '$root'/sbin/*
     chmod 0644 '$root'/etc/passwd '$root'/etc/group '$root'/etc/motd '$root'/etc/hostname '$root'/etc/hosts \\
@@ -88,5 +111,9 @@ fakeroot sh -c "
     chmod 0600 '$root'/etc/shadow
     chmod 0644 '$root'/etc/crontab
     chmod 0755 '$root'/var '$root'/var/log
-    '$here'/mkimage.sh '$out' '$esp' '$root' $size
+    if [ '$live' = 1 ]; then
+        '$here'/mkiso.sh '$out' '$esp' '$root'
+    else
+        '$here'/mkimage.sh '$out' '$esp' '$root' $size
+    fi
 "

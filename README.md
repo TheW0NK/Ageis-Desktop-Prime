@@ -7,10 +7,11 @@ a user endpoint. See [docs/ROADMAP.md](docs/ROADMAP.md) for where it is going.
 ## Building
 
 Needs `gcc`, `nasm`, `gnu-efi`, `mtools`, `gdisk`, `dosfstools`, `e2fsprogs`,
-`fakeroot` and `python3`; QEMU and OVMF to run it. On Debian or Ubuntu:
+`fakeroot` and `python3`, plus `xorriso` for the install media; QEMU and OVMF
+to run it. On Debian or Ubuntu:
 
     sudo apt install build-essential nasm gnu-efi mtools gdisk dosfstools e2fsprogs \
-        fakeroot python3 qemu-system-x86 ovmf
+        fakeroot python3 xorriso qemu-system-x86 ovmf
 
 Then:
 
@@ -20,6 +21,21 @@ Then:
 
 The default account is `user` with password `aegis`
 (`make image AEGIS_USER=name AEGIS_PASSWORD=secret` to change them).
+
+## Installing
+
+    make iso            # build/aegis-install.iso, the install media
+
+The ISO starts on UEFI computers and virtual machines from a CD/DVD drive, or
+written to a USB stick (`dd if=build/aegis-install.iso of=/dev/sdX bs=4M`).
+It loads a live copy of the system into memory and opens the installer,
+which asks for a disk, your name, a password and a computer name, then
+**erases that disk** and installs Aegis on it: a 256 MiB EFI system partition
+and an ext4 system partition on the rest. Your account is made on the first
+start. In VMware, use UEFI firmware and a SATA or NVMe disk of at least 2 GB.
+
+From a running system, `sudo disk install DISK USER PASSWORD` does the same
+from the terminal (`disk list` shows the disks).
 
 ## Testing
 

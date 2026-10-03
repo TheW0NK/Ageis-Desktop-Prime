@@ -25,7 +25,7 @@ IMAGE    := build/aegis.img
 OVMF_CODE := /usr/share/OVMF/OVMF_CODE_4M.fd
 OVMF_VARS := /usr/share/OVMF/OVMF_VARS_4M.fd
 
-.PHONY: all boot kernel endpoint image run run-serial test clean
+.PHONY: iso all boot kernel endpoint image run run-serial test clean
 
 all: boot kernel endpoint
 
@@ -36,6 +36,14 @@ image: all
 	$(MAKE) -C boot esp KERNEL=$(abspath kernel/build/kernel.elf)
 	mkdir -p build
 	tools/mkrootfs.sh $(IMAGE) boot/build/esp endpoint/build $(AEGIS_USER) $(AEGIS_PASSWORD)
+
+# The install media: boots the live system, which starts the installer.
+ISO ?= build/aegis-install.iso
+
+iso: all
+	$(MAKE) -C boot esp KERNEL=$(abspath kernel/build/kernel.elf)
+	mkdir -p build
+	LIVE=1 tools/mkrootfs.sh $(ISO) boot/build/esp endpoint/build - -
 
 build/ovmf_vars.fd:
 	mkdir -p build
