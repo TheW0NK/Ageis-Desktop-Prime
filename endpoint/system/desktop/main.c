@@ -14,9 +14,15 @@ int main(void)
     }
     // The shell is always dark; apps follow the user's theme.
     ui_set_theme("dark");
-    if (!wm_connect()) {
-        dprintf(STDERR_FILENO, "desktop: no display\n");
-        return 1;
+    // The display may not have learned yet that this user is signed in
+    // (the greeter tells it just before starting the session): try again
+    // for a moment.
+    for (int tries = 0; !wm_connect(); tries++) {
+        if (tries == 30) {
+            dprintf(STDERR_FILENO, "desktop: no display\n");
+            return 1;
+        }
+        msleep(100);
     }
     {
         char theme[32];

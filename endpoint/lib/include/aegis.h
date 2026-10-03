@@ -329,6 +329,8 @@ int group_set_member(const char *group, const char *user, bool member);
 // Any user: through /sbin/privd.
 #define PRIVD_SOCKET "@aegis/privd"
 int change_own_password(const char *old_password, const char *new_password, char *error, size_t size);
+// Checks the signed-in user's password (the lock screen). 0 if right.
+int verify_own_password(const char *password);
 
 // Sound: the audio server (lib/audio.c). audio_open returns a descriptor
 // to write 16-bit little-endian PCM to; closing it ends the stream.
@@ -351,6 +353,11 @@ struct camera_info {
 };
 int camera_open(int index, struct camera_info *info);          // a descriptor, or -1
 int camera_read(int fd, uint32_t *pixels, size_t bytes);       // one whole frame
+
+// Notifications (lib/notify.c): shown by the desktop and kept in its list.
+int notify(const char *app, const char *title, const char *body);
+// The same to another user's desktop (for system services).
+int notify_user(uint32_t uid, const char *app, const char *title, const char *body);
 
 // Base64.
 size_t base64_encode(const void *in, size_t len, char *out);    // out: 4 * ((len + 2) / 3) + 1 bytes

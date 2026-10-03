@@ -6,6 +6,8 @@ int title_button_at(struct window *w, int x, int y);
 
 enum drag { DRAG_NONE, DRAG_MOVE, DRAG_RESIZE };
 
+static void save_screenshot(void);
+
 static enum drag drag;
 static uint32_t mods;
 static struct window *drag_window, *grab, *pointer_window, *press_window;
@@ -260,13 +262,44 @@ static bool shortcut(uint16_t code, int value)
         return true;
     }
     if (code == KEY_SYSRQ && value == 1) {
-        char path[64];
-
-        snprintf(path, sizeof(path), "/tmp/screenshot-%lu.png", time(NULL));
-        screenshot(path);
+        save_screenshot();
         return true;
     }
     return false;
+}
+
+// Print Screen: a PNG in the signed-in user's Images/Screenshots, and a
+// notification on their desktop.
+static void save_screenshot(void)
+{
+    uint32_t uid = compositor_session_uid();
+    struct user_info u;
+    char dir[300], name[96], unique[128], path[512];
+    int64_t now = time(NULL);
+    struct tm tm;
+
+    if (uid == (uint32_t)-1 || user_by_uid(uid, &u) < 0) {
+        snprintf(path, sizeof(path), "/tmp/screenshot-%ld.png", (long)now);
+        screenshot(path);
+        return;
+    }
+    user_path(&u, "home/Images/Screenshots", dir, sizeof(dir));
+    if (mkdir(dir, 0755) == 0)
+        chown(dir, u.uid, u.gid);
+    localtime_r(&now, &tm);
+    strftime(name, sizeof(name), "Screenshot %Y-%m-%d %H.%M.%S.png", &tm);
+    // unique_name gives the whole path.
+    unique_name(dir, name, path, sizeof(path));
+    strlcpy(unique, strrchr(path, '/') + 1, sizeof(unique));
+    if (screenshot(path) < 0) {
+        char why[400];
+
+        snprintf(why, sizeof(why), "%s: %s", path, strerror(errno));
+        notify_user(uid, "Screenshots", "The screenshot could not be saved", why);
+        return;
+    }
+    chown(path, u.uid, u.gid);
+    notify_user(uid, "Screenshots", "Screenshot saved", unique);
 }
 
 static void key(uint16_t code, int value)
@@ -284,7 +317,8 @@ static void key(uint16_t code, int value)
     // and the volume control).
     if (!target || (target->role != WM_ROLE_POPUP
                     && (code == KEY_LEFTMETA || code == KEY_RIGHTMETA || code >= 0x100 || code == KEY_MUTE
-                        || code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN))) {
+                        || code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN
+                        || ((mods & MOD_META) && code == KEY_A + 'l' - 'a')))) {
         for (struct window *w = windows; w; w = w->next) {
             if (w->role == WM_ROLE_PANEL && w->owner) {
                 target = w;

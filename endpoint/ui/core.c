@@ -1511,9 +1511,15 @@ void ui_clipboard_set(const char *text)
 {
     free(clipboard);
     clipboard = text ? strdup(text) : NULL;
+    // Shared with the user's other programs.
+    wm_clipboard_set(text ? text : "");
 }
 
 const char *ui_clipboard_get(void)
 {
+    const char *shared = wm_clipboard_get();
+
+    if (shared)
+        return shared;
     return clipboard ? clipboard : "";
 }

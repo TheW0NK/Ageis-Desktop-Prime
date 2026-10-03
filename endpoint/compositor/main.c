@@ -13,6 +13,11 @@ static struct client *clients;
 static uint32_t next_id = 1;
 static uint32_t session_uid = (uint32_t)-1;
 
+uint32_t compositor_session_uid(void)
+{
+    return session_uid;
+}
+
 static void drop_client(struct client *c);
 static int cascade;
 
@@ -22,6 +27,19 @@ void send_msg(struct client *c, struct wm_msg *m)
 {
     if (c && c->fd >= 0)
         send(c->fd, m, sizeof(*m), MSG_DONTWAIT | MSG_NOSIGNAL);
+}
+
+// The session's clipboard: a shared memory object handed to each program.
+static int clip_fd = -1, clip_len;
+static uint32_t clip_uid;
+
+static void send_clipboard(struct client *c)
+{
+    struct wm_msg m = { WM_CLIPBOARD, 0, clip_len, 0, 0, 0, 0, 0, { 0 } };
+    int fd = clip_fd;
+
+    if (c && c->fd >= 0 && clip_fd >= 0 && c->uid == clip_uid)
+        send_fds(c->fd, &m, sizeof(m), &fd, 1);
 }
 
 void send_window(struct window *w, uint32_t type, int a, int b, int c, int d, uint32_t flags)
@@ -351,6 +369,20 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         r.b = screen.height;
         r.c = screen.work.h;
         send_msg(c, &r);
+        send_clipboard(c);
+        break;
+    case WM_CLIPBOARD_SET:
+        if (fd < 0 || m->a < 0 || m->a > (16 << 20))
+            break;
+        if (clip_fd >= 0)
+            close(clip_fd);
+        clip_fd = fd;
+        fd = -1;
+        clip_len = m->a;
+        clip_uid = c->uid;
+        for (struct client *k = clients; k; k = k->next)
+            if (k != c)
+                send_clipboard(k);
         break;
     case WM_CREATE:
         if (find(c, m->window) || m->a <= 0 || m->b <= 0 || m->a > 8192 || m->b > 8192

@@ -32,6 +32,7 @@ enum wm_type {
     WM_BEGIN_MOVE,          // window: start dragging the window with the pointer
     WM_SCREENSHOT,          // text = path to save a PNG of the screen
     WM_SETTING_CHANGED,     // text = "key=value": tell the session's programs (theme, background, ...)
+    WM_CLIPBOARD_SET,       // a = length; carries a shm descriptor holding the UTF-8 text
 
     // Compositor to client.
     WM_WELCOME = 64,        // a = screen width, b = screen height, c = work area height
@@ -51,6 +52,7 @@ enum wm_type {
     WM_ERROR,               // a = errno, text = message
     WM_SCREEN,              // a = width, b = height after a mode change
     WM_SETTING,             // text = "key=value" from WM_SETTING_CHANGED
+    WM_CLIPBOARD,           // a = length; carries a shm descriptor with the session's clipboard
 };
 
 // Window roles (in flags).

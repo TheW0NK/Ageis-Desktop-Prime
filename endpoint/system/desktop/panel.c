@@ -20,6 +20,7 @@ static const char page[] =
     "    <button id='start' flat='true' symbol='apps' iconsize='22' text='Apps' onclick='launcher'/>"
     "    <separator/>"
     "    <hbox id='tasks' expand='1' spacing='4'/>"
+    "    <button id='bell' flat='true' symbol='bell' iconsize='18'/>"
     "    <button id='volume' flat='true' symbol='volume' iconsize='20'/>"
     "    <button id='clock' flat='true' text='' onclick='clock'/>"
     "    <button id='session' flat='true' symbol='power' iconsize='20' menu='sessionmenu'/>"
@@ -28,6 +29,7 @@ static const char page[] =
     "    <item id='who' text='' disabled='true'/>"
     "    <separator/>"
     "    <item text='Settings' onclick='settings'/>"
+    "    <item text='Lock' shortcut='Super+L' onclick='lock'/>"
     "    <separator/>"
     "    <item text='Sign out' onclick='signout'/>"
     "    <item text='Restart' onclick='restart'/>"
@@ -203,10 +205,23 @@ static void on_poweroff(struct widget *w, void *u)
         end_session(EXIT_POWEROFF);
 }
 
+static void on_lock(struct widget *w, void *u)
+{
+    (void)w;
+    (void)u;
+    lock_screen();
+}
+
 static void panel_key(struct ui_window *w, struct wm_event *ev, void *u)
 {
     (void)w;
     (void)u;
+    if (lock_active())
+        return;
+    if (ev->value == 1 && (ev->mods & MOD_META) && ev->key == KEY_A + 'l' - 'a') {
+        lock_screen();
+        return;
+    }
     if (volume_key(ev))
         return;
     // The Meta key on its own opens the launcher.
@@ -218,7 +233,7 @@ void panel_start(void)
 {
     static const struct ui_handler_entry handlers[] = {
         { "launcher", on_launcher }, { "clock", on_clock }, { "settings", on_settings },
-        { "signout", on_signout }, { "restart", on_restart }, { "poweroff", on_poweroff }, { NULL, NULL },
+        { "signout", on_signout }, { "restart", on_restart }, { "poweroff", on_poweroff }, { "lock", on_lock }, { NULL, NULL },
     };
     char who[128];
 
@@ -233,6 +248,8 @@ void panel_start(void)
     ui_timer(1000, tick, NULL);
     launcher_init(panel);
     volume_init(panel, ui_get(panel, "volume"));
+    notify_init(panel, ui_get(panel, "bell"));
+    lock_init();
     ui_window_show(panel);
     wm_subscribe();
 }

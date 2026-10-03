@@ -5,6 +5,7 @@
 // asking (SO_PEERCRED):
 //
 //   "passwd\n<old>\n<new>"   change your own password
+//   "verify\n<password>"      check your own password (the lock screen)
 //
 // Each request is one SOCK_SEQPACKET message; the reply is "ok" or
 // "error <message>". Administrators use sudo for everything else.
@@ -51,6 +52,17 @@ static void handle(int fd)
             reply(fd, "error The password could not be saved.");
         } else {
             syslog("privd", "password changed for %s", u.name);
+            reply(fd, "ok");
+        }
+        memset(req, 0, sizeof(req));
+        return;
+    }
+    if (k >= 2 && !strcmp(fields[0], "verify")) {
+        if (account_check_password(u.name, fields[1]) < 0) {
+            syslog("privd", "wrong password for %s at the lock screen", u.name);
+            msleep(1000);
+            reply(fd, "error The password is not right.");
+        } else {
             reply(fd, "ok");
         }
         memset(req, 0, sizeof(req));

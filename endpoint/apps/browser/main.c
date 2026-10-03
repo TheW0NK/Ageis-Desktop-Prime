@@ -503,7 +503,7 @@ static void show_message_page(const char *url, const char *title, const char *te
 
 static void save_download(struct response *r)
 {
-    char *dir = downloads_dir(), path[700], name[256], unique[256];
+    char *dir = downloads_dir(), path[700], name[256];
     const char *slash = strrchr(r->url, '/'), *base = slash && slash[1] ? slash + 1 : "download";
     int fd;
 
@@ -511,8 +511,7 @@ static void save_download(struct response *r)
     name[strcspn(name, "?#")] = 0;
     if (!*name)
         strlcpy(name, "download", sizeof(name));
-    unique_name(dir, name, unique, sizeof(unique));
-    snprintf(path, sizeof(path), "%s/%s", dir, unique);
+    unique_name(dir, name, path, sizeof(path));
     if ((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644)) >= 0) {
         size_t done = 0;
 

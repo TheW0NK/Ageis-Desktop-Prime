@@ -92,8 +92,8 @@ static uint32_t apply(uint32_t c)
     return 0xFF000000U | r << 16 | g << 8 | b;
 }
 
-// The current frame with the effect and mirroring, as a new surface.
-static struct surface *processed(void)
+// The current frame with the effect (and mirrored if asked), as a new surface.
+static struct surface *processed_as(bool mirrored)
 {
     struct surface *s = surface_create(info.width, info.height);
 
@@ -105,10 +105,15 @@ static struct surface *processed(void)
         uint32_t *dst = s->pixels + (size_t)y * s->stride;
 
         for (int x = 0; x < info.width; x++)
-            dst[mirror ? info.width - 1 - x : x] = apply(src[x]);
+            dst[mirrored ? info.width - 1 - x : x] = apply(src[x]);
     }
     mutex_unlock(&lock);
     return s;
+}
+
+static struct surface *processed(void)
+{
+    return processed_as(mirror);
 }
 
 static void frame_ready(int fd, void *u)
@@ -221,7 +226,8 @@ static void add_to_strip(const char *path)
 
 static void take_photo(void)
 {
-    struct surface *s = processed();
+    // The preview is a mirror; the photo is the scene the right way round.
+    struct surface *s = processed_as(false);
     struct user_info me;
     char dir[300], name[96], unique[128], path[512], status[600];
     struct tm tm;
@@ -236,8 +242,9 @@ static void take_photo(void)
     user_path(&me, "home/Images", dir, sizeof(dir));
     localtime_r(&now, &tm);
     strftime(name, sizeof(name), "Photo %Y-%m-%d %H.%M.%S.png", &tm);
-    unique_name(dir, name, unique, sizeof(unique));
-    snprintf(path, sizeof(path), "%s/%s", dir, unique);
+    // unique_name gives the whole path.
+    unique_name(dir, name, path, sizeof(path));
+    strlcpy(unique, strrchr(path, '/') + 1, sizeof(unique));
     if (image_save_png(s, path) < 0) {
         snprintf(status, sizeof(status), "The photo could not be saved in %s.", dir);
     } else {

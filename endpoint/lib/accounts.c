@@ -424,3 +424,23 @@ int change_own_password(const char *old_password, const char *new_password, char
     snprintf(error, size, "%s", !strncmp(rep, "error ", 6) ? rep + 6 : rep);
     return -1;
 }
+
+int verify_own_password(const char *password)
+{
+    char req[400], rep[200];
+    int fd = unix_connect(PRIVD_SOCKET, SOCK_SEQPACKET);
+    ssize_t n;
+
+    if (fd < 0)
+        return -1;
+    snprintf(req, sizeof(req), "verify\n%s", password);
+    n = send(fd, req, strlen(req), MSG_NOSIGNAL);
+    memset(req, 0, sizeof(req));
+    if (n < 0 || (n = recv(fd, rep, sizeof(rep) - 1, 0)) <= 0) {
+        close(fd);
+        return -1;
+    }
+    close(fd);
+    rep[n] = 0;
+    return strcmp(rep, "ok") ? -1 : 0;
+}

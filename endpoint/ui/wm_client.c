@@ -233,6 +233,62 @@ static struct wm_window *lookup(uint32_t id)
     return NULL;
 }
 
+// ---- The shared clipboard ----
+
+static char *clipboard;
+
+static void take_clipboard(int fd, int len)
+{
+    char *map, *copy;
+
+    if (len < 0 || len > (16 << 20))
+        return;
+    if (!(copy = malloc(len + 1)))
+        return;
+    if (len) {
+        if ((map = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0)) == MAP_FAILED) {
+            free(copy);
+            return;
+        }
+        memcpy(copy, map, len);
+        munmap(map, len);
+    }
+    copy[len] = 0;
+    free(clipboard);
+    clipboard = copy;
+}
+
+const char *wm_clipboard_get(void)
+{
+    return clipboard;
+}
+
+bool wm_clipboard_set(const char *text)
+{
+    size_t len = strlen(text);
+    int fd;
+    char *map;
+    struct wm_msg m = { WM_CLIPBOARD_SET, 0, (int32_t)len, 0, 0, 0, 0, 0, { 0 } };
+
+    if (!connected || len > (16 << 20))
+        return false;
+    if ((fd = shm_create(len ? len : 1, O_CLOEXEC)) < 0)
+        return false;
+    if (len) {
+        if ((map = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED) {
+            close(fd);
+            return false;
+        }
+        memcpy(map, text, len);
+        munmap(map, len);
+    }
+    send_fds(sock, &m, sizeof(m), &fd, 1);
+    close(fd);
+    free(clipboard);
+    clipboard = strdup(text);
+    return true;
+}
+
 bool wm_next_event(struct wm_event *ev, int timeout_ms)
 {
     struct pollfd p = { sock, POLLIN, 0 };
@@ -244,7 +300,16 @@ bool wm_next_event(struct wm_event *ev, int timeout_ms)
         return false;
     if (timeout_ms >= 0 && poll(&p, 1, timeout_ms) != 1)
         return false;
-    n = recv(sock, &m, sizeof(m), 0);
+    {
+        int fd = -1, nfds = 1;
+
+        n = recv_fds(sock, &m, sizeof(m), &fd, &nfds);
+        if (nfds && fd >= 0) {
+            if (n == sizeof(m) && m.type == WM_CLIPBOARD)
+                take_clipboard(fd, m.a);
+            close(fd);
+        }
+    }
     if (n <= 0) {
         if (n == 0 || errno != EINTR)
             connected = false;

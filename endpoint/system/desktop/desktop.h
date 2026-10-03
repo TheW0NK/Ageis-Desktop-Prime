@@ -34,4 +34,12 @@ void volume_init(struct ui_window *panel, struct widget *button);
 // Handles the volume keys; false for other keys.
 bool volume_key(struct wm_event *ev);
 
+// notify.c: notifications from notify() and the list behind the bell.
+void notify_init(struct ui_window *panel, struct widget *button);
+
+// lock.c: the lock screen.
+void lock_init(void);
+void lock_screen(void);
+bool lock_active(void);
+
 #endif

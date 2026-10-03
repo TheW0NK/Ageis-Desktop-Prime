@@ -65,6 +65,8 @@ bool window_framed(struct window *w);
 int cursor_for_point(struct window *w, int x, int y);
 void set_cursor_shape(int shape);
 int screenshot(const char *path);
+// The signed-in user, or -1 at the sign-in screen.
+uint32_t compositor_session_uid(void);
 void set_frame_theme(const char *name);
 
 // input.c

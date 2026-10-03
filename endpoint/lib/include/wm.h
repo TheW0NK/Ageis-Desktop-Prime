@@ -76,5 +76,9 @@ void wm_subscribe(void);
 void wm_activate(uint32_t global_id, bool toggle);
 // Tells the session's programs (and the window frames) that a setting changed.
 void wm_setting_changed(const char *key, const char *value);
+// The session's clipboard, shared through the compositor. get returns NULL
+// before anything was copied.
+bool wm_clipboard_set(const char *text);
+const char *wm_clipboard_get(void);
 
 #endif
