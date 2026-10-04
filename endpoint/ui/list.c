@@ -81,7 +81,8 @@ static void show_row(struct widget *w, int i)
     struct list *l = L(w);
     struct rect rr = rows_rect(w);
 
-    if (i < 0 || strcmp(w->tag, "dropdown") == 0)
+    // Not laid out yet: nothing to scroll.
+    if (i < 0 || strcmp(w->tag, "dropdown") == 0 || rr.h <= 0)
         return;
     if (i * row_h() < l->sy)
         l->sy = i * row_h();

@@ -1565,7 +1565,8 @@ static void dispatch(struct wm_event *ev)
             system_event(ev, system_event_user);
         return;
     }
-    if ((ev->type == WM_EV_LIST || ev->type == WM_EV_SCREEN || ev->type == WM_EV_WORKSPACE) && system_event) {
+    if ((ev->type == WM_EV_LIST || ev->type == WM_EV_SCREEN || ev->type == WM_EV_WORKSPACE
+         || ev->type == WM_EV_COMMAND_ITEM) && system_event) {
         system_event(ev, system_event_user);
         return;
     }

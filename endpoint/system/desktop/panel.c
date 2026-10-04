@@ -35,6 +35,7 @@ static const char page[] =
     "    <item id='who' text='' disabled='true'/>"
     "    <separator/>"
     "    <item text='Settings' onclick='settings'/>"
+    "    <item text='Command palette' shortcut='Super+P' onclick='palette'/>"
     "    <item text='Lock' shortcut='Super+L' onclick='lock'/>"
     "    <separator/>"
     "    <item text='Sign out' onclick='signout'/>"
@@ -160,6 +161,10 @@ static void window_list(struct wm_event *ev, void *u)
         }
         return;
     }
+    if (ev->type == WM_EV_COMMAND_ITEM) {
+        palette_command_item(m);
+        return;
+    }
     if (ev->type == WM_EV_WORKSPACE) {
         nworkspaces = MIN(MAX(m->b, 1), WM_WORKSPACES);
         show_workspace(MIN(MAX(m->a, 0), nworkspaces - 1));
@@ -281,6 +286,53 @@ static void on_lock(struct widget *w, void *u)
     lock_screen();
 }
 
+int panel_windows(struct panel_window *out, int max)
+{
+    int n = 0;
+
+    for (int i = 0; i < ntasks && n < max; i++, n++) {
+        out[n].id = tasks[i].id;
+        strlcpy(out[n].title, tasks[i].title, sizeof(out[n].title));
+        out[n].workspace = tasks[i].workspace;
+        out[n].focused = (tasks[i].state & WM_STATE_FOCUSED) && !(tasks[i].state & WM_STATE_MINIMIZED);
+    }
+    return n;
+}
+
+int panel_workspace(void)
+{
+    return workspace;
+}
+
+int panel_top(void)
+{
+    struct wm_window *w = panel ? ui_wm_window(panel) : NULL;
+    int sh;
+
+    wm_screen_size(NULL, &sh, NULL);
+    return sh - (w ? w->height : 46);
+}
+
+void panel_action(const char *name)
+{
+    static const struct ui_handler_entry *table;
+    static const struct ui_handler_entry actions[] = {
+        { "lock", on_lock }, { "signout", on_signout }, { "restart", on_restart }, { "poweroff", on_poweroff },
+        { "settings", on_settings }, { NULL, NULL },
+    };
+
+    for (table = actions; table->name; table++)
+        if (!strcmp(table->name, name))
+            table->fn(NULL, NULL);
+}
+
+static void on_palette(struct widget *w, void *u)
+{
+    (void)w;
+    (void)u;
+    palette_toggle();
+}
+
 static void panel_key(struct ui_window *w, struct wm_event *ev, void *u)
 {
     (void)w;
@@ -303,7 +355,7 @@ void panel_start(void)
     static const struct ui_handler_entry handlers[] = {
         { "launcher", on_launcher }, { "clock", on_clock }, { "settings", on_settings },
         { "signout", on_signout }, { "restart", on_restart }, { "poweroff", on_poweroff }, { "lock", on_lock },
-        { "moveto", on_moveto }, { NULL, NULL },
+        { "moveto", on_moveto }, { "palette", on_palette }, { NULL, NULL },
     };
     char who[128];
 
@@ -329,6 +381,7 @@ void panel_start(void)
     tick(NULL);
     ui_timer(1000, tick, NULL);
     launcher_init(panel);
+    palette_init(panel);
     volume_init(panel, ui_get(panel, "volume"));
     notify_init(panel, ui_get(panel, "bell"));
     lock_init();

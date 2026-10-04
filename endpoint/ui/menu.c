@@ -796,8 +796,10 @@ static int menu_commands(struct ui_window *win, struct widget *menu, const char 
 {
     for (struct widget *c = menu->first; c; c = c->next) {
         char label[WM_TEXT_MAX];
+        const char *hidden = ui_attr(c, "hidden");
 
-        if (!c->visible || !c->enabled)
+        // As the menu would show them.
+        if ((hidden && attr_bool(hidden)) || !item_enabled(c))
             continue;
         snprintf(label, sizeof(label), "%s%s%s", prefix, *prefix ? " \xE2\x80\xBA " : "", ui_translate(c->text ? c->text : ""));
         if (!strcmp(c->tag, "menu")) {

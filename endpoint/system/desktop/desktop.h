@@ -22,6 +22,25 @@ void open_path(const char *path);
 // panel.c
 void panel_start(void);
 void end_session(int code);
+struct panel_window {
+    uint32_t id;                    // global window id
+    char title[WM_TEXT_MAX];
+    int workspace;
+    bool focused;
+};
+// The open windows, as the taskbar knows them.
+int panel_windows(struct panel_window *out, int max);
+int panel_workspace(void);
+// The panel's top edge on the screen (popups are placed relative to it).
+int panel_top(void);
+// Runs a session menu action: "lock", "signout", "restart", "poweroff", "settings".
+void panel_action(const char *name);
+
+// palette.c: the command palette.
+void palette_init(struct ui_window *panel);
+void palette_toggle(void);
+bool palette_shown(void);
+void palette_command_item(const struct wm_msg *m);
 
 // launcher.c
 void launcher_init(struct ui_window *panel);

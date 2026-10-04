@@ -171,6 +171,9 @@ These keys work in `input`, `password`, `spin` and `textarea`:
 - Keyboard: F10 opens the menu bar. The arrow keys, Enter and Escape move
   through the menus, and typing a letter jumps to the matching item.
 - An `<item>` takes `shortcut`, `checked` and `disabled`.
+- The items in a window's menu bar are also its commands in the command
+  palette (Super+P), with their shortcuts. Hidden and disabled items are
+  left out, as in the menus.
 - A `<menu>` outside a menu bar is never shown in place. Open it with
   `ui_menu_popup(menu, widget, x, y)`, usually from an `oncontext` handler.
   Pass `x = -1` to open it at the pointer.

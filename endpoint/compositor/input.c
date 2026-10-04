@@ -643,7 +643,7 @@ static void key(uint16_t code, int value)
     if (!target || (target->role != WM_ROLE_POPUP
                     && (code == KEY_LEFTMETA || code == KEY_RIGHTMETA || code >= 0x100 || code == KEY_MUTE
                         || code == KEY_VOLUMEUP || code == KEY_VOLUMEDOWN
-                        || ((mods & MOD_META) && code == KEY_A + 'l' - 'a')))) {
+                        || ((mods & MOD_META) && (code == KEY_A + 'l' - 'a' || code == KEY_A + 'p' - 'a'))))) {
         for (struct window *w = windows; w; w = w->next) {
             if (w->role == WM_ROLE_PANEL && w->owner) {
                 target = w;
