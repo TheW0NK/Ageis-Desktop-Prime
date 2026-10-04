@@ -43,6 +43,7 @@ enum wm_type {
     WM_COMMAND_ITEM,        // program: window, a = index, text = "Menu > Item\tShortcut";
                             // a = -1 ends the list. To the panel: window = global id
     WM_COMMAND_RUN,         // panel: window = global id, a = index; to the program: window, a
+    WM_SET_AUTOHIDE,        // window (a panel), a = 1: hidden until the pointer reaches its screen edge
 
     // Compositor to client.
     WM_WELCOME = 64,        // a = screen width, b = screen height, c = work area height

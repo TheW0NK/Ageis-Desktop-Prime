@@ -151,6 +151,10 @@ static void window_list(struct wm_event *ev, void *u)
     if (ev->type == WM_EV_SETTING) {
         if (!strncmp(m->text, "background=", 11))
             background_reload();
+        else if (!strncmp(m->text, "hideicons=", 10))
+            background_hide_icons(!strcmp(m->text + 10, "yes"));
+        else if (!strncmp(m->text, "hidetaskbar=", 12))
+            panel_hide(!strcmp(m->text + 12, "yes"));
         else if (!strncmp(m->text, "name=", 5) || !strncmp(m->text, "picture=", 8)) {
             char who[128];
 
@@ -329,6 +333,12 @@ void panel_action(const char *name)
             table->fn(NULL, NULL);
 }
 
+void panel_hide(bool hide)
+{
+    if (panel && ui_wm_window(panel))
+        wm_set_autohide(ui_wm_window(panel), hide);
+}
+
 static void on_palette(struct widget *w, void *u)
 {
     (void)w;
@@ -390,4 +400,10 @@ void panel_start(void)
     lock_init();
     ui_window_show(panel);
     wm_subscribe();
+    {
+        char v[8];
+
+        if (user_setting_get(&me, "hidetaskbar", v, sizeof(v)) > 0 && !strcmp(v, "yes"))
+            panel_hide(true);
+    }
 }

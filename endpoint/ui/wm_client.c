@@ -187,6 +187,11 @@ void wm_begin_move(struct wm_window *w)
     send_simple(WM_BEGIN_MOVE, w, 0, 0, 0, 0);
 }
 
+void wm_set_autohide(struct wm_window *w, bool on)
+{
+    send_simple(WM_SET_AUTOHIDE, w, on, 0, 0, 0);
+}
+
 void wm_subscribe(void)
 {
     send_simple(WM_SUBSCRIBE, NULL, 0, 0, 0, 0);

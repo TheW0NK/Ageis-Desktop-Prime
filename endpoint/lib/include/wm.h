@@ -77,6 +77,8 @@ void wm_resize(struct wm_window *w, int width, int height);
 void wm_set_state(struct wm_window *w, uint32_t state);
 void wm_set_cursor(struct wm_window *w, int cursor);
 void wm_begin_move(struct wm_window *w);
+// Panels: hide until the pointer touches the screen edge they are on.
+void wm_set_autohide(struct wm_window *w, bool on);
 void wm_send(struct wm_msg *m);
 // Copies r of the surface to the screen buffer and tells the compositor.
 void wm_present(struct wm_window *w, struct rect r);

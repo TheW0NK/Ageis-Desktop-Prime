@@ -26,6 +26,11 @@ static const char page[] =
     "          </dropdown>"
     "          <button text='Choose picture...' onclick='picture'/>"
     "        </hbox>"
+    "        <h2 text='Desktop'/>"
+    "        <toggle id='hideicons' text='Hide desktop items' onchange='hideicons'/>"
+    "        <toggle id='hidetaskbar' text='Hide the taskbar' onchange='hidetaskbar'/>"
+    "        <p dim='true'>Hidden desktop items stay in your Desktop folder. A hidden taskbar comes back"
+    "           while the pointer is at the bottom edge of the screen, and with Super or Super+P.</p>"
     "      </vbox></scroll>"
     // Account
     "      <scroll><vbox padding='24' spacing='14'>"
@@ -125,8 +130,9 @@ static void paint_preview(struct widget *w, struct gfx *g, struct rect r, void *
     (void)w;
     (void)u;
     wallpaper_draw(g, r, wallpaper);
-    // A miniature window and taskbar for scale.
-    gfx_fill(g, (struct rect){ r.x, r.y + r.h - 14, r.w, 14 }, ALPHA(0x11151D, 0xEE));
+    // A miniature window and taskbar (unless it is hidden) for scale.
+    if (!ui_value(ui_get(win, "hidetaskbar")))
+        gfx_fill(g, (struct rect){ r.x, r.y + r.h - 14, r.w, 14 }, ALPHA(0x11151D, 0xEE));
     gfx_fill_rounded(g, (struct rect){ r.x + r.w / 4, r.y + r.h / 5, r.w / 2, r.h / 2 }, 4, RGB(0xF3F5F8));
     gfx_fill(g, (struct rect){ r.x + r.w / 4, r.y + r.h / 5, r.w / 2, 10 }, RGB(0xE1E6EE));
 }
@@ -160,6 +166,28 @@ static void on_background(struct widget *w, void *u)
     (void)u;
     if (i >= 0 && i < 6)
         set_background(bg_specs[i]);
+}
+
+// "yes" or "no", saved and passed to the desktop.
+static void desktop_option(struct widget *w, const char *key)
+{
+    const char *v = ui_value(w) ? "yes" : "no";
+
+    user_setting_set(&me, key, v);
+    wm_setting_changed(key, v);
+}
+
+static void on_hideicons(struct widget *w, void *u)
+{
+    (void)u;
+    desktop_option(w, "hideicons");
+}
+
+static void on_hidetaskbar(struct widget *w, void *u)
+{
+    (void)u;
+    desktop_option(w, "hidetaskbar");
+    ui_redraw(ui_get(win, "preview"));
 }
 
 static void on_picture(struct widget *w, void *u)
@@ -465,6 +493,7 @@ int main(int argc, char **argv)
 {
     static const struct ui_handler_entry handlers[] = {
         { "page", on_page }, { "theme", on_theme }, { "background", on_background }, { "picture", on_picture },
+        { "hideicons", on_hideicons }, { "hidetaskbar", on_hidetaskbar },
         { "avatar", on_avatar }, { "noavatar", on_noavatar }, { "rename", on_rename },
         { "password", on_password }, { "language", on_language }, { "zone", on_zone }, { "dhcp", on_dhcp },
         { "hostname", on_hostname }, { NULL, NULL },
@@ -489,6 +518,12 @@ int main(int argc, char **argv)
     if (user_setting_get(&me, "theme", buf, sizeof(buf)) <= 0)
         strlcpy(buf, "light", sizeof(buf));
     ui_set_value(ui_get(win, !strcmp(buf, "dark") ? "dark" : !strncmp(buf, "high", 4) ? "contrast" : "light"), 1);
+    {
+        char v[8];
+
+        ui_set_value(ui_get(win, "hideicons"), user_setting_get(&me, "hideicons", v, sizeof(v)) > 0 && !strcmp(v, "yes"));
+        ui_set_value(ui_get(win, "hidetaskbar"), user_setting_get(&me, "hidetaskbar", v, sizeof(v)) > 0 && !strcmp(v, "yes"));
+    }
     if (user_setting_get(&me, "background", wallpaper, sizeof(wallpaper)) <= 0)
         strlcpy(wallpaper, "default", sizeof(wallpaper));
     ui_list_select(ui_get(win, "bg"), 6);

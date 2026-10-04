@@ -18,6 +18,7 @@ static struct widget *canvas;
 static struct item *items;
 static int nitems, selected = -1;
 static int drop_item = -1;          // the icon a drag would land on
+static bool icons_hidden;           // "Hide desktop items" in Settings
 static bool armed;                  // an icon was pressed: moving away drags it
 static int press_x, press_y;
 static char wallpaper[256];
@@ -224,7 +225,7 @@ static void paint(struct widget *w, struct gfx *g, struct rect r, void *u)
 
     (void)w;
     (void)u;
-    for (int i = 0; i < nitems; i++) {
+    for (int i = 0; i < nitems && !icons_hidden; i++) {
         struct rect c = cell_rect(r, i);
         int lh = font_line_height(f), tw;
         char line1[96], line2[96];
@@ -278,7 +279,7 @@ static int item_at(struct widget *w, int x, int y)
     struct rect r = ui_rect(w);
 
     r.x = r.y = 0;
-    for (int i = 0; i < nitems; i++)
+    for (int i = 0; i < nitems && !icons_hidden; i++)
         if (rect_contains(cell_rect(r, i), x, y))
             return i;
     return -1;
@@ -469,6 +470,17 @@ static void drop(struct widget *w, struct ui_drop *d, int action, void *u)
 
 // ---- Keeping up with changes ----
 
+// The files stay in the Desktop folder; only their icons go.
+void background_hide_icons(bool hide)
+{
+    if (hide == icons_hidden)
+        return;
+    icons_hidden = hide;
+    selected = drop_item = -1;
+    if (canvas)
+        ui_redraw(canvas);
+}
+
 void background_reload(void)
 {
     char spec[256];
@@ -510,6 +522,11 @@ void background_start(void)
     ui_canvas_set(canvas, paint, input, NULL);
     ui_set_attr(canvas, "dropoutline", "false");
     ui_set_drop_target(canvas, drop_over, drop, NULL);
+    {
+        char v[8];
+
+        icons_hidden = user_setting_get(&me, "hideicons", v, sizeof(v)) > 0 && !strcmp(v, "yes");
+    }
     background_reload();
     scan();
     if (stat(desktop_dir, &st) == 0)

@@ -54,6 +54,10 @@ from the terminal (`disk list` shows the disks: dA, dB, ...).
   Manager), the sign-in screen has **Sign in as Guest**: no password, no
   administrator rights, and everything the guest saved is erased when they
   sign out.
+- **Hiding things.** Settings > Appearance can hide the desktop items (the
+  files stay in the Desktop folder) and the taskbar, which then leaves no
+  trace and comes back while the pointer is at the bottom edge of the
+  screen.
 - Super+L locks the screen, Super+arrows snap windows, Print Screen saves
   a screenshot to Images/Screenshots.
 

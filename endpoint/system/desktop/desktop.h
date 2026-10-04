@@ -18,6 +18,7 @@ extern bool me_guest;
 // background.c
 void background_start(void);
 void background_reload(void);
+void background_hide_icons(bool hide);
 // Opens a file, folder or .shortcut the way a double click would.
 void open_path(const char *path);
 
@@ -37,6 +38,8 @@ int panel_workspace(void);
 int panel_top(void);
 // Runs a session menu action: "lock", "signout", "restart", "poweroff", "settings".
 void panel_action(const char *name);
+// Hides the taskbar until the pointer reaches the bottom of the screen.
+void panel_hide(bool hide);
 
 // palette.c: the command palette.
 void palette_init(struct ui_window *panel);

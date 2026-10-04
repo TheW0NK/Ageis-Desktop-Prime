@@ -79,7 +79,37 @@ static bool on_every_workspace(struct window *w)
 
 bool on_screen(struct window *w)
 {
-    return w->visible && !w->minimized && (on_every_workspace(w) || w->workspace == current_workspace);
+    return w->visible && !w->minimized && (!w->autohide || w->revealed)
+           && (on_every_workspace(w) || w->workspace == current_workspace);
+}
+
+// An auto-hiding panel shows while the pointer is at its screen edge or on
+// it, or while one of its popups (menus, the launcher) is open.
+void update_autohide(void)
+{
+    for (struct window *p = windows; p; p = p->next) {
+        bool show = false;
+
+        if (!p->autohide || !p->visible)
+            continue;
+        if (p->flags & WM_FLAG_PANEL_TOP)
+            show = pointer_y <= 1;
+        else
+            show = pointer_y >= screen.height - 2;
+        if (p->revealed && rect_contains(p->frame, pointer_x, pointer_y))
+            show = true;
+        for (struct window *o = windows; o && !show; o = o->next) {
+            if (o->role != WM_ROLE_POPUP || !o->visible)
+                continue;
+            for (struct window *a = o->parent; a; a = a->parent)
+                if (a == p)
+                    show = true;
+        }
+        if (show != p->revealed) {
+            p->revealed = show;
+            damage_window(p);
+        }
+    }
 }
 
 static void announce_workspace(struct client *only)
@@ -371,7 +401,8 @@ void update_work_area(void)
     struct rect work = { 0, 0, screen.width, screen.height };
 
     for (struct window *w = windows; w; w = w->next) {
-        if (w->role != WM_ROLE_PANEL || !w->visible)
+        // An auto-hiding panel shows over windows, which keep the whole screen.
+        if (w->role != WM_ROLE_PANEL || !w->visible || w->autohide)
             continue;
         if (w->flags & WM_FLAG_PANEL_TOP) {
             work.y = MAX(work.y, w->frame.y + w->frame.h);
@@ -730,6 +761,15 @@ static void handle(struct client *c, struct wm_msg *m, int fd)
         if (c->subscribed && w && w->owner)
             send_window(w, WM_COMMAND_RUN, m->a, 0, 0, 0, 0);
         break;
+    case WM_SET_AUTOHIDE:
+        if (w && w->role == WM_ROLE_PANEL && w->autohide != (m->a != 0)) {
+            w->autohide = m->a != 0;
+            w->revealed = false;
+            damage_window(w);
+            update_work_area();
+            update_autohide();
+        }
+        break;
     case WM_SWITCH_WORKSPACE:
         switch_workspace(m->a);
         break;
@@ -929,6 +969,7 @@ int main(int argc, char **argv)
             if (gone)
                 drop_client(c);
         }
+        update_autohide();
         render();
     }
 }

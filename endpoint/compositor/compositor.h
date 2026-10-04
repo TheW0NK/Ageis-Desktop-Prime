@@ -38,6 +38,7 @@ struct window {
     bool visible, minimized, maximized;
     int tiled;                      // TILE_LEFT or TILE_RIGHT: snapped to half the screen
     int workspace;                  // normal windows and dialogs: the one they are on
+    bool autohide, revealed;        // panels: hidden until the pointer reaches their edge
     struct rect saved;              // frame before maximizing or tiling
     struct window *parent;
     bool frame_pending;
@@ -130,6 +131,8 @@ extern int current_workspace;
 bool on_screen(struct window *w);       // shown, not minimized, and on this workspace (or on all)
 void switch_workspace(int n);
 void move_to_workspace(struct window *w, int n);
+// Shows or hides auto-hiding panels for the pointer's position.
+void update_autohide(void);
 void update_work_area(void);
 void vt_leave(void);
 void vt_enter(void);
