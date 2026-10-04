@@ -789,7 +789,8 @@ static void update_finished(bool ok, const char *text)
                                                      : "Aegis was updated to %s. Restarting...", ver);
         ui_set_text(ui_get(win, "upmsg"), msg);
         ui_set_text(ui_get(win, "uptitle"), pending_kind == 2 ? "The update was undone" : "Aegis is up to date");
-        dprintf(STDERR_FILENO, "recovery: updated to %s\n", ver);
+        dprintf(STDERR_FILENO, pending_kind == 2 ? "recovery: undid the update, back to %s\n" : "recovery: updated to %s\n",
+                ver);
         ui_timer(3000, restart_later, NULL);
         return;
     }

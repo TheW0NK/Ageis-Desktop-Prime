@@ -61,6 +61,23 @@ from the terminal (`disk list` shows the disks: dA, dB, ...).
 - Super+L locks the screen, Super+arrows snap windows, Print Screen saves
   a screenshot to Images/Screenshots.
 
+## Updates
+
+An Aegis update is a `.upd` file (`make update` builds one of the current
+system: `make update AEGIS_VERSION=0.3.1 UPDATE_NOTE='What changed'`).
+Open it from Files (the Updates app), or as an administrator run
+`elevate update FILE.upd`; in a routine or script, `update --restart FILE.upd`
+restarts without asking. The file is checked against its SHA-256 (updates
+are not signed yet), then the computer restarts into Aegis Recovery, which
+replaces the system files and boot files and starts the updated system.
+Accounts, settings, installed apps, routines, logs and everyone's files
+stay. The replaced system is kept: a failed update rolls back by itself,
+and the Updates app, Recovery's Reinstall page or `update --undo` put the
+previous version back. `update --status` shows the version, what is waiting
+and what can be undone; `update --cancel` drops a waiting update. The
+version is in Settings > About and `/osystem/version.aset`; the history is
+in `/osystem/updates/history`.
+
 ## Recovery
 
 Installed systems have **Aegis Recovery** and **Aegis (safe mode)** in the boot
@@ -109,6 +126,7 @@ Aegis's own file formats:
 | `.tscr` | Terminal scripts | `terminal script 1`, then one command per line (`$@` is the arguments) |
 | `.aex` | Aegis executables: an x86-64 program inside an Aegis header (`tools/mkaex.py` makes one) | `AEGISAEX`, version, program offset and size, name |
 | `.aip` | App packages (see `docs/PACKAGES.md`) | |
+| `.upd` | System updates (see Updates above, and `endpoint/lib/update.c`) | `aegis update 1`, a header, then the files |
 | `.aui` / `.as` | Window layouts and AegisScript (see `docs/AUI.md`, `docs/SCRIPT.md`) | |
 
 The terminal prompt is `user@computer@folder - :`. Its commands:

@@ -62,7 +62,8 @@ reset a forgotten password but cannot recover the encrypted credentials.
 | 8. App model | Started: `.aip` packages with an installer that asks which permissions to grant (see [PACKAGES.md](PACKAGES.md)), repair and uninstall, `aip` in the terminal. Left: signing, the sandbox that enforces permissions, powersudo. |
 | 9. Apps | Done: every app in the four suites. |
 | Install media | Done: `make iso` builds a live ISO that boots into a graphical installer (erases one disk). |
-| 10.–11. | Planned |
+| 10. Upkeep | Started: offline updates from `.upd` files, installed by Recovery with automatic rollback and undo (checksummed, not yet signed). Left: signing, crash reports, swap and low-memory handling. |
+| 11. | Planned |
 
 ## Phases
 
