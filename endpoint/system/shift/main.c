@@ -10,6 +10,11 @@
 // The shift then becomes the user, prepares their folders and runs the
 // desktop until it exits. The exit status tells the greeter what to do
 // next: 0 sign out, 10 shut down, 11 restart.
+//
+// shift --auto signs in an administrator without a password (automatic
+// sign-in); shift --guest makes a fresh guest account and signs in to it
+// (the user name sent is then "guest"). The greeter removes the guest
+// account when the shift ends.
 
 #define DESKTOP "/osystem/core/desktop"
 
@@ -40,7 +45,7 @@ static void redirect_output(const struct user_info *u)
 
 int main(int argc, char **argv)
 {
-    bool automatic = argc > 1 && !strcmp(argv[1], "--auto");
+    bool automatic = argc > 1 && !strcmp(argv[1], "--auto"), guest = argc > 1 && !strcmp(argv[1], "--guest");
     char name[64], pass[256], go[16];
     struct user_info u;
     char *desktop_argv[] = { "desktop", NULL };
@@ -52,7 +57,17 @@ int main(int argc, char **argv)
         reply("fail %s\n", "input");
         return 1;
     }
-    if (user_by_name(name, &u) < 0 || u.uid == 0) {
+    if (guest) {
+        // Only while an administrator allows guests.
+        if (!feature_enabled("guest") || strcmp(name, GUEST_NAME) || guest_create(&u) < 0
+            || user_setup_dirs(&u) < 0 || become(u.uid) < 0) {
+            reply("fail %s\n", "guest");
+            return 1;
+        }
+        syslog("shift", "a guest signed in");
+        goto signed_in;
+    }
+    if (user_by_name(name, &u) < 0 || u.uid == 0 || user_is_guest(&u)) {
         memset(pass, 0, sizeof(pass));
         msleep(1000);
         reply("fail %s\n", "password");
@@ -81,6 +96,7 @@ int main(int argc, char **argv)
             syslog("shift", "the credential store of %s could not be unlocked", name);
         memset(key, 0, sizeof(key));
     }
+signed_in:
     memset(pass, 0, sizeof(pass));
     dprintf(STDOUT_FILENO, "ok %u\n", u.uid);
     if (read_line(STDIN_FILENO, go, sizeof(go)) <= 0 || strcmp(go, "go"))

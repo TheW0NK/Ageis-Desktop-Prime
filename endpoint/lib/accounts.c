@@ -186,7 +186,8 @@ int group_set_member(const char *group, const char *user, bool member)
 
 static bool valid_name(const char *name)
 {
-    if (!*name || strlen(name) > 31 || !islower((unsigned char)name[0]))
+    // "guest" is kept for the guest account.
+    if (!*name || strlen(name) > 31 || !islower((unsigned char)name[0]) || !strcmp(name, GUEST_NAME))
         return false;
     for (const char *p = name; *p; p++)
         if (!islower((unsigned char)*p) && !isdigit((unsigned char)*p) && *p != '-' && *p != '_')
@@ -215,14 +216,21 @@ int account_add(const char *name, const char *display, const char *password, boo
     return account_add_hashed(name, display, hash, admin);
 }
 
+static int add_account(const char *name, const char *display, const char *hash, bool admin, bool guest);
+
 // As account_add, with the password already hashed (the installer's
 // first-boot settings).
 int account_add_hashed(const char *name, const char *display, const char *hash, bool admin)
 {
+    return add_account(name, display, hash, admin, false);
+}
+
+static int add_account(const char *name, const char *display, const char *hash, bool admin, bool guest)
+{
     struct user_info u;
     uint32_t uid;
 
-    if (!valid_name(name)) {
+    if (!guest && !valid_name(name)) {
         errno = EINVAL;
         return -1;
     }
@@ -247,6 +255,8 @@ int account_add_hashed(const char *name, const char *display, const char *hash, 
         rec_set(acc, "display", display && *display ? display : name);
         rec_set(acc, "home", home);
         rec_set(acc, "terminal", "/sysapps/terminal");
+        if (guest)
+            rec_set(acc, "guest", "yes");
         grp = records_add(&r, "group", name);
         rec_set(grp, "id", num);
         rec_set(grp, "members", name);
@@ -304,6 +314,62 @@ int account_remove(const char *name, bool remove_files)
 bool account_is_admin(const char *name)
 {
     return user_in_group(name, "admins");
+}
+
+// ---- The guest account ----
+
+// True if the account called "guest" is the guest account (and not one
+// made before the name was kept for it).
+static bool is_guest_account(void)
+{
+    struct records r;
+    struct rec_block *b;
+    bool yes;
+
+    if (load_accounts(&r) < 0)
+        return false;
+    yes = (b = records_find(&r, "account", GUEST_NAME)) && rec_get(b, "guest") && !strcmp(rec_get(b, "guest"), "yes");
+    records_free(&r);
+    return yes;
+}
+
+int guest_remove(void)
+{
+    struct user_info u;
+    struct aegis_procinfo procs[256];
+    int n;
+
+    if (user_by_name(GUEST_NAME, &u) < 0) {
+        // Files left behind by a guest whose account is already gone.
+        if (access("/userfiles/" GUEST_NAME, 0) == 0)
+            remove_path("/userfiles/" GUEST_NAME);
+        return 0;
+    }
+    if (!is_guest_account()) {
+        errno = EEXIST;
+        return -1;
+    }
+    // Nothing the guest started keeps running.
+    n = procinfo(procs, 256);
+    for (int i = 0; i < n; i++)
+        if (procs[i].uid == u.uid || procs[i].euid == u.uid)
+            kill(procs[i].pid, SIGKILL);
+    return account_remove(GUEST_NAME, true);
+}
+
+int guest_create(struct user_info *out)
+{
+    if (guest_remove() < 0)
+        return -1;
+    // "!" is no password hash: nobody can sign in to it with a password.
+    if (add_account(GUEST_NAME, "Guest", "!", false, true) < 0)
+        return -1;
+    return user_by_name(GUEST_NAME, out);
+}
+
+bool user_is_guest(const struct user_info *u)
+{
+    return !strcmp(u->name, GUEST_NAME) && is_guest_account();
 }
 
 // Changes the calling user's password through the privilege helper.

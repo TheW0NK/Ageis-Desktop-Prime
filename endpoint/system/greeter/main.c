@@ -21,6 +21,7 @@ static const char page[] =
     "        <password id='password' placeholder='Password' onactivate='signin'/>"
     "        <label id='error' textalign='center' text=''/>"
     "        <button id='signin' text='Sign in' default='true' onclick='signin'/>"
+    "        <button id='guest' text='Sign in as Guest' flat='true' hidden='true' onclick='guest'/>"
     "      </card>"
     "    </hbox>"
     "  </vbox>"
@@ -36,6 +37,7 @@ static struct ui_window *win;
 static struct user_info users[32];
 static int nusers, current;
 static int session_pid = -1, session_in = -1, session_out = -1;
+static bool guest_session;          // the shift running (or starting) is a guest's
 static char wallpaper[256] = "default";
 static struct surface *backdrop_cache;
 
@@ -87,6 +89,12 @@ static void load_users(void)
     struct widget *list = ui_get(win, "users");
 
     nusers = user_list(users, 32);
+    // The guest account only exists while a guest is signed in, and is
+    // never picked from the list.
+    for (int i = 0; i < nusers; i++)
+        if (!strcmp(users[i].name, GUEST_NAME) && user_is_guest(&users[i]))
+            users[i--] = users[--nusers];
+    ui_set_visible(ui_get(win, "guest"), feature_enabled("guest"));
     ui_list_clear(list);
     for (int i = 0; i < nusers; i++)
         ui_list_add(list, users[i].display);
@@ -115,6 +123,24 @@ static void set_busy(bool busy)
     ui_set_enabled(ui_get(win, "signin"), !busy);
     ui_set_enabled(ui_get(win, "password"), !busy);
     ui_set_enabled(ui_get(win, "users"), !busy);
+    ui_set_enabled(ui_get(win, "guest"), !busy);
+}
+
+static const char *session_user(void)
+{
+    return guest_session ? GUEST_NAME : nusers ? users[current].name : "?";
+}
+
+// After a guest's shift: their account, files and programs go.
+static void end_guest(void)
+{
+    if (!guest_session)
+        return;
+    guest_session = false;
+    if (guest_remove() < 0)
+        syslog("greeter", "the guest account could not be removed: %s", strerror(errno));
+    else
+        syslog("greeter", "the guest's files were erased");
 }
 
 static void close_pipes(void)
@@ -144,8 +170,9 @@ static bool watch_session(void *u)
         return true;
     session_pid = -1;
     close_pipes();
-    syslog("greeter", "shift of %s ended (status %d)", users[current].name,
+    syslog("greeter", "shift of %s ended (status %d)", session_user(),
            WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+    end_guest();
     {
         struct wm_msg m = { WM_SET_SESSION, 0, -1, 0, 0, 0, 0, 0, { 0 } };
 
@@ -179,26 +206,29 @@ static void session_reply(int fd, void *u)
         ui_window_hide(win);
         ui_set_text(ui_get(win, "password"), "");
         dprintf(session_in, "go\n");
-        syslog("greeter", "signed in %s", users[current].name);
+        syslog("greeter", "signed in %s", session_user());
         ui_unwatch_fd(fd);
         ui_timer(300, watch_session, NULL);
         return;
     }
-    syslog("greeter", "sign-in failed for %s", users[current].name);
-    set_error(n > 0 && strstr(line, "password") ? "That password is not right." : "Signing in failed.");
+    syslog("greeter", "sign-in failed for %s", session_user());
+    set_error(guest_session ? "Signing in as Guest is not possible right now."
+              : n > 0 && strstr(line, "password") ? "That password is not right." : "Signing in failed.");
     set_busy(false);
     close_pipes();
     if (session_pid > 0)
         waitpid(session_pid, NULL, 0);
     session_pid = -1;
+    end_guest();
     ui_set_text(ui_get(win, "password"), "");
     ui_focus(ui_get(win, "password"));
 }
 
-static int start_session(bool automatic)
+// mode: NULL, "--auto" or "--guest" (see shift).
+static int start_session(const char *mode)
 {
     int to[2], from[2], saved_in, saved_out, pid;
-    char *argv[] = { "session", automatic ? "--auto" : NULL, NULL };
+    char *argv[] = { "session", (char *)mode, NULL };
 
     if (pipe(to) < 0)
         return -1;
@@ -240,12 +270,31 @@ static void signin(struct widget *w, void *u)
     if (!nusers || session_pid > 0)
         return;
     set_error("");
-    if (start_session(false) < 0) {
+    guest_session = false;
+    if (start_session(NULL) < 0) {
         set_error("Signing in is not possible right now.");
         return;
     }
     set_busy(true);
     dprintf(session_in, "%s\n%s\n", users[current].name, pass);
+    ui_watch_fd(session_out, session_reply, NULL);
+}
+
+static void guest(struct widget *w, void *u)
+{
+    (void)w;
+    (void)u;
+    if (session_pid > 0 || !feature_enabled("guest"))
+        return;
+    set_error("");
+    guest_session = true;
+    if (start_session("--guest") < 0) {
+        guest_session = false;
+        set_error("Signing in is not possible right now.");
+        return;
+    }
+    set_busy(true);
+    dprintf(session_in, "%s\n\n", GUEST_NAME);
     ui_watch_fd(session_out, session_reply, NULL);
 }
 
@@ -284,7 +333,7 @@ int main(void)
 {
     static const struct ui_handler_entry handlers[] = {
         { "signin", signin }, { "user", user_changed }, { "restart", restart }, { "poweroff", poweroff },
-        { NULL, NULL },
+        { "guest", guest }, { NULL, NULL },
     };
     struct widget *list;
 
@@ -292,6 +341,8 @@ int main(void)
     if (!(win = ui_load_string_named(page, handlers, NULL, "greeter")))
         return 1;
     (void)list;
+    // A guest's files left behind by a shift that never ended properly.
+    guest_remove();
     load_users();
     {
         char host[64];
@@ -308,7 +359,7 @@ int main(void)
     // Automatic sign-in, once per boot, for the first administrator.
     if (feature_enabled("autologin")) {
         for (int i = 0; i < nusers; i++) {
-            if (account_is_admin(users[i].name) && start_session(true) == 0) {
+            if (account_is_admin(users[i].name) && start_session("--auto") == 0) {
                 current = i;
                 set_busy(true);
                 dprintf(session_in, "%s\n\n", users[i].name);

@@ -3,6 +3,14 @@
 // The desktop shell, started by /osystem/core/shift as the signed-in user.
 
 struct user_info me;
+bool me_guest;
+
+static bool welcome_guest(void *u)
+{
+    (void)u;
+    notify("Guest", "You are signed in as Guest", "Everything you save is erased when you sign out.");
+    return false;
+}
 
 int main(void)
 {
@@ -31,8 +39,11 @@ int main(void)
         if (user_setting_get(&me, "theme", theme, sizeof(theme)) > 0)
             wm_setting_changed("theme", theme);
     }
+    me_guest = user_is_guest(&me);
     background_start();
     panel_start();
+    if (me_guest)
+        ui_timer(1500, welcome_guest, NULL);
     code = ui_run();
     sync();
     return code;

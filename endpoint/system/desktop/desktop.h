@@ -7,6 +7,8 @@
 // The desktop shell: background with shortcuts, taskbar, launcher.
 
 extern struct user_info me;
+// Signed in as Guest: no password, and everything goes at sign-out.
+extern bool me_guest;
 
 // Exit codes the session passes to the greeter.
 #define EXIT_SIGN_OUT   0

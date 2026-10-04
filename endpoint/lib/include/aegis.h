@@ -376,6 +376,13 @@ int account_add(const char *name, const char *display, const char *password, boo
 int account_add_hashed(const char *name, const char *display, const char *hash, bool admin);
 int account_remove(const char *name, bool remove_files);
 bool account_is_admin(const char *name);
+// The guest account ("Guest", with the guest feature): made fresh for each
+// visit with no password, never an administrator, and removed with
+// everything in it, and anything still running, when the guest signs out.
+#define GUEST_NAME "guest"
+int guest_create(struct user_info *out);
+int guest_remove(void);
+bool user_is_guest(const struct user_info *u);
 int group_set_member(const char *group, const char *user, bool member);
 // Any user: through the account sentry (/osystem/core/account-sentry).
 #define PRIVD_SOCKET "@aegis/accounts"

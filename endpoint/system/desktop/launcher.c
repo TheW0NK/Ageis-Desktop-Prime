@@ -221,7 +221,8 @@ static void signout(struct widget *w, void *u)
     (void)w;
     (void)u;
     ui_window_hide(win);
-    end_session(EXIT_SIGN_OUT);
+    // As the session menu does it (a guest is asked first).
+    panel_action("signout");
 }
 
 static void restart(struct widget *w, void *u)

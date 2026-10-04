@@ -37,6 +37,26 @@ start. In VMware, use UEFI firmware and a SATA or NVMe disk of at least 2 GB.
 From a running system, `elevate disk install DISK USER PASSWORD` does the same
 from the terminal (`disk list` shows the disks: dA, dB, ...).
 
+## Using the desktop
+
+- **Drag and drop.** Drag files between Files windows, the desktop, the
+  Trash and app shortcuts, or onto an app to open them. Files move within
+  a disk and are copied between disks; hold Ctrl to copy, Shift to move,
+  Alt to make a shortcut, and press Esc to cancel. Selected text drags
+  between text fields.
+- **Workspaces.** Four of them: Ctrl+Super+Left/Right switches, and with
+  Shift the focused window comes along. The taskbar shows the windows on
+  the current one; right-click a window's button to move it.
+- **Command palette.** Super+P lists the focused app's menu commands,
+  open windows, workspaces, apps and session actions; type to filter and
+  press Enter.
+- **Guest account.** With the "Guest account" feature on (Feature
+  Manager), the sign-in screen has **Sign in as Guest**: no password, no
+  administrator rights, and everything the guest saved is erased when they
+  sign out.
+- Super+L locks the screen, Super+arrows snap windows, Print Screen saves
+  a screenshot to Images/Screenshots.
+
 ## Recovery
 
 Installed systems have **Aegis Recovery** and **Aegis (safe mode)** in the boot

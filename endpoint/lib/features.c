@@ -15,6 +15,8 @@ static const struct feature features[] = {
       "the launcher.", true, false },
     { "bootlog", "Show startup messages", "Starts the computer with the verbose boot entry, so messages scroll by "
       "instead of the logo (F13 or the boot menu still work).", false, false },
+    { "guest", "Guest account", "Lets anyone sign in as Guest without a password. Guests cannot change the "
+      "computer's settings, and everything a guest saves is erased when they sign out.", false, false },
     { "autologin", "Sign in automatically", "Starts the desktop of the first administrator without asking for a "
       "password. Anyone at the computer gets their files.", false, false },
 };

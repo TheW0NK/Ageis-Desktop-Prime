@@ -77,7 +77,8 @@ static void on_unlock(struct widget *w, void *u)
     ui_set_text(w, "");
     ui_set_text(ui_get(win, "error"), "Checking...");
     ui_redraw(ui_get(win, "error"));
-    if (verify_own_password(pass) == 0) {
+    // A guest has no password: the lock only hides the screen.
+    if (me_guest || verify_own_password(pass) == 0) {
         locked = false;
         ui_set_text(ui_get(win, "error"), "");
         ui_window_hide(win);
@@ -122,6 +123,8 @@ void lock_init(void)
     ui_window_set_backdrop(win, backdrop, NULL);
     ui_canvas_set(ui_get(win, "avatar"), paint_avatar, NULL, NULL);
     ui_set_text(ui_get(win, "name"), me.display);
+    if (me_guest)
+        ui_set_attr(ui_get(win, "password"), "placeholder", "Press Enter to unlock");
     ui_on_close(win, refuse_close, NULL);
     ui_window_hide(win);
     ui_timer(1000, tick, NULL);

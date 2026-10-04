@@ -258,6 +258,9 @@ static void on_signout(struct widget *w, void *u)
 {
     (void)w;
     (void)u;
+    if (me_guest && ui_message(NULL, "Sign out", "Sign out of Guest? Everything saved since signing in will be erased.",
+                               "Sign out|Cancel") != 0)
+        return;
     end_session(EXIT_SIGN_OUT);
 }
 
