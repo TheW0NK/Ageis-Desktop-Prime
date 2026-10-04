@@ -509,6 +509,42 @@ int install_system(const struct install_options *o, install_progress_fn progress
 // accounts, settings, apps and files.
 int install_refresh(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
                     size_t error_size);
+// Updates (lib/update.c, lib/install.c). A .upd file holds new system files
+// and boot files; installing one keeps accounts, settings, apps and files.
+#define UPDATES_DIR "/osystem/updates"
+struct update_info {
+    char version[32];               // "0.3.1"
+    char build[64];
+    char description[200];
+    uint64_t size;                  // of the files inside
+    uint32_t files;
+};
+// Reads a .upd file's header and checks its contents against its SHA-256.
+int update_check(const char *path, struct update_info *info, char *error, size_t size);
+// The version of the system at root ("" for the running one): 0.3.0.
+int system_version(const char *root, char *out, size_t size);
+// Compares versions like "0.3.1": <0, 0 or >0.
+int version_compare(const char *a, const char *b);
+// Superuser: keeps the file for Recovery and makes the next start go there
+// to install it (restarting is up to the caller). update_cancel undoes that.
+int update_schedule(const char *path, char *error, size_t size);
+int update_cancel(void);
+// Superuser: the next start goes to Recovery to undo the last update.
+int update_schedule_undo(char *error, size_t size);
+// What is waiting (under root): 1 an update, 2 undoing one, 0 nothing.
+int update_pending(const char *root, struct update_info *info);
+// The version the last update replaced, if it can still be undone.
+bool update_can_undo(const char *root, char *previous_version, size_t size);
+// Recovery: installs the waiting update or undo on the system mounted at
+// root, puts the boot menu back, and logs it in UPDATES_DIR/history.
+int update_run_pending(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                       size_t error_size);
+// lib/install.c: the steps themselves (the new files already unpacked in
+// UPDATES_DIR/new/root and /esp).
+int install_update(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                   size_t error_size);
+int install_undo_update(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                        size_t error_size);
 
 // .aip packages (lib/aip.c).
 enum { AIP_TIER_BASIC, AIP_TIER_ELEVATED, AIP_TIER_SYSTEM, AIP_TIER_POWERSUDO };

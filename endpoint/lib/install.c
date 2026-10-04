@@ -38,10 +38,10 @@ static bool keeping;                // see struct ctx.keep
 static bool skipped(const char *rel)
 {
     static const char *const skip[] = { "/osystem/devices", "/osystem/temp", "/osystem/volumes", "/osystem/boot", "/userfiles", "/msc/live", "/msc/firstboot.aset",
-                                        "/osystem/installer", "/osystem/logs/shift.log", NULL };
+                                        "/osystem/installer", "/osystem/logs/shift.log", UPDATES_DIR, "/lost+found", NULL };
     // A reinstall leaves the computer's own settings and data alone.
     static const char *const keep[] = { ACCOUNTS_FILE, SECRETS_FILE, COMPUTER_FILE, "/msc/features.aset",
-                                        "/msc/routines", "/osystem/logs",
+                                        "/msc/routines", "/msc/hosts", "/serve", "/osystem/logs",
                                         "/osystem/data", "/osystem/backups", "/userApps",
                                         "/userfiles/superuser", NULL };
 
@@ -420,6 +420,294 @@ int install_refresh(const char *root, const char *esp, install_progress_fn progr
             }
         }
     }
+    sync();
+    step(&c, 100, "Done");
+    ret = 0;
+out:
+    keeping = false;
+    if (error)
+        strlcpy(error, c.error, error_size);
+    return ret;
+}
+
+// ---- Updates (.upd): replacing the system files, and undoing it ----
+//
+// The system files are everything a reinstall would replace. An update
+// moves them aside (into UPDATES_DIR/previous, by renaming, so it costs no
+// space and is quick), moves the new ones (unpacked beforehand into
+// UPDATES_DIR/new) into place, and replaces the boot files. What it moved
+// aside is how it is undone, and how a failed update is rolled back.
+
+// True if some kept or skipped path is inside rel: rel itself cannot be
+// moved whole, only what is in it.
+static bool holds_kept(const char *rel)
+{
+    static const char *const kept[] = { "/lost+found", "/osystem/devices", "/osystem/temp", "/osystem/volumes", "/osystem/boot",
+                                        "/userfiles", "/msc/live", "/msc/firstboot.aset", "/osystem/installer",
+                                        "/osystem/logs", UPDATES_DIR, ACCOUNTS_FILE, SECRETS_FILE, COMPUTER_FILE,
+                                        "/msc/features.aset", "/msc/routines", "/msc/hosts", "/serve", "/osystem/data",
+                                        "/osystem/backups", "/userApps", NULL };
+    size_t n = strlen(rel);
+
+    for (int i = 0; kept[i]; i++)
+        if (!strncmp(kept[i], rel, n) && kept[i][n] == '/')
+            return true;
+    return false;
+}
+
+static void mkdir_all(char *path, uint32_t mode)
+{
+    for (char *p = path + 1; *p; p++)
+        if (*p == '/') {
+            *p = 0;
+            mkdir(path, mode);
+            *p = '/';
+        }
+    mkdir(path, mode);
+}
+
+static int make_dir_like(const char *path, const char *like)
+{
+    struct aegis_stat st;
+
+    if (mkdir(path, 0755) < 0 && errno != EEXIST)
+        return -1;
+    if (stat(like, &st) == 0) {
+        chown(path, st.uid, st.gid);
+        chmod(path, st.mode & 07777);
+    }
+    return 0;
+}
+
+// Moves the system files of the tree at root (rel inside it) into aside,
+// leaving everything kept where it is.
+static int move_system(struct ctx *c, const char *root, const char *aside, const char *rel)
+{
+    char dir[1024];
+    struct dir_stream *d;
+    struct aegis_dirent *de;
+
+    snprintf(dir, sizeof(dir), "%s%s", root, rel);
+    if (!(d = opendir(dir)))
+        return fail(c, dir);
+    while ((de = readdir(d))) {
+        char r[1024], from[1100], to[1100];
+        struct aegis_stat st;
+
+        if (!strcmp(de->name, ".") || !strcmp(de->name, ".."))
+            continue;
+        snprintf(r, sizeof(r), "%s/%s", rel, de->name);
+        if (skipped(r))
+            continue;
+        snprintf(from, sizeof(from), "%s%s", root, r);
+        snprintf(to, sizeof(to), "%s%s", aside, r);
+        if (lstat(from, &st) < 0)
+            continue;
+        if (S_ISDIR(st.mode) && holds_kept(r)) {
+            if (make_dir_like(to, from) < 0 || move_system(c, root, aside, r) < 0) {
+                closedir(d);
+                return c->error[0] ? -1 : fail(c, to);
+            }
+            continue;
+        }
+        if (rename(from, to) < 0) {
+            closedir(d);
+            return fail(c, from);
+        }
+        c->copied++;
+    }
+    closedir(d);
+    return 0;
+}
+
+// Moves the tree at from (rel inside it) into root where nothing is in the
+// way: kept files already there win.
+static int move_in(struct ctx *c, const char *from_root, const char *root, const char *rel)
+{
+    char dir[1024];
+    struct dir_stream *d;
+    struct aegis_dirent *de;
+
+    snprintf(dir, sizeof(dir), "%s%s", from_root, rel);
+    if (!(d = opendir(dir)))
+        return fail(c, dir);
+    while ((de = readdir(d))) {
+        char r[1024], from[1100], to[1100];
+        struct aegis_stat sf, st;
+
+        if (!strcmp(de->name, ".") || !strcmp(de->name, ".."))
+            continue;
+        snprintf(r, sizeof(r), "%s/%s", rel, de->name);
+        snprintf(from, sizeof(from), "%s%s", from_root, r);
+        snprintf(to, sizeof(to), "%s%s", root, r);
+        if (lstat(from, &sf) < 0)
+            continue;
+        if (lstat(to, &st) < 0) {
+            if (rename(from, to) < 0) {
+                closedir(d);
+                return fail(c, to);
+            }
+            c->copied++;
+        } else if (S_ISDIR(sf.mode) && S_ISDIR(st.mode)) {
+            if (move_in(c, from_root, root, r) < 0) {
+                closedir(d);
+                return -1;
+            }
+        }
+    }
+    closedir(d);
+    return 0;
+}
+
+static const char *const boot_files[] = { "EFI/BOOT/BOOTX64.EFI", "EFI/Aegis/btloader.efi", "EFI/Aegis/kernel.elf",
+                                          "EFI/Aegis/recovery.img", NULL };
+
+// Copies the boot files found under from_dir to the EFI partition, saving
+// the ones they replace under save_dir (if given).
+static int swap_boot_files(struct ctx *c, const char *from_dir, const char *esp, const char *save_dir)
+{
+    for (int i = 0; boot_files[i]; i++) {
+        char a[600], b[600], s[600];
+        struct aegis_stat st;
+
+        snprintf(a, sizeof(a), "%s/%s", from_dir, boot_files[i]);
+        snprintf(b, sizeof(b), "%s/%s", esp, boot_files[i]);
+        if (stat(a, &st) < 0)
+            continue;
+        if (save_dir && stat(b, &st) == 0) {
+            char parent[600];
+
+            snprintf(s, sizeof(s), "%s/%s", save_dir, boot_files[i]);
+            snprintf(parent, sizeof(parent), "%s", s);
+            *strrchr(parent, '/') = 0;
+            mkdir_all(parent, 0755);
+            if (copy_file(b, s, 0644) < 0)
+                return fail(c, "Saving the boot files");
+        }
+        // FAT cannot replace a file by renaming over it.
+        unlink(b);
+        if (copy_file(a, b, 0644) < 0)
+            return fail(c, "Installing the boot files");
+    }
+    return 0;
+}
+
+int install_update(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                   size_t error_size)
+{
+    struct ctx c = { true, NULL, progress, u, "", 0, 0 };
+    char upd[300], fresh[300], prev[300], prev_root[300], prev_esp[300], failed[300];
+    bool moved_aside = false;
+    int ret = -1;
+
+    keeping = true;
+    snprintf(upd, sizeof(upd), "%s" UPDATES_DIR, root);
+    snprintf(fresh, sizeof(fresh), "%s/new", upd);
+    snprintf(prev, sizeof(prev), "%s/previous", upd);
+    snprintf(prev_root, sizeof(prev_root), "%s/root", prev);
+    snprintf(prev_esp, sizeof(prev_esp), "%s/esp", prev);
+    snprintf(failed, sizeof(failed), "%s/failed", upd);
+
+    // The update before this one can no longer be undone.
+    step(&c, 40, "Making room");
+    remove_path(prev);
+    remove_path(failed);
+    // Readable by everyone (the old system files are no secret), so anyone
+    // can see that the update can be undone.
+    if (mkdir(prev, 0755) < 0 || make_dir_like(prev_root, root) < 0) {
+        fail(&c, "Preparing the update");
+        goto out;
+    }
+    step(&c, 50, "Setting the old system aside");
+    if (move_system(&c, root, prev_root, "") < 0)
+        goto undo;
+    moved_aside = true;
+    step(&c, 65, "Putting the new system in place");
+    {
+        char new_root[320];
+
+        snprintf(new_root, sizeof(new_root), "%s/root", fresh);
+        if (move_in(&c, new_root, root, "") < 0)
+            goto undo;
+    }
+    step(&c, 85, "Installing the boot files");
+    if (esp) {
+        char new_esp[320];
+
+        snprintf(new_esp, sizeof(new_esp), "%s/esp", fresh);
+        if (swap_boot_files(&c, new_esp, esp, prev_esp) < 0)
+            goto undo;
+    }
+    step(&c, 95, "Finishing");
+    remove_path(fresh);
+    sync();
+    step(&c, 100, "Done");
+    ret = 0;
+    goto out;
+undo:
+    // Put the old system back as it was.
+    if (moved_aside) {
+        struct ctx back = { true, NULL, NULL, NULL, "", 0, 0 };
+
+        mkdir(failed, 0700);
+        move_system(&back, root, failed, "");
+        move_in(&back, prev_root, root, "");
+        if (esp)
+            swap_boot_files(&back, prev_esp, esp, NULL);
+        remove_path(failed);
+    } else {
+        struct ctx back = { true, NULL, NULL, NULL, "", 0, 0 };
+
+        move_in(&back, prev_root, root, "");
+    }
+    remove_path(prev);
+    sync();
+out:
+    keeping = false;
+    if (error)
+        strlcpy(error, c.error, error_size);
+    return ret;
+}
+
+int install_undo_update(const char *root, const char *esp, install_progress_fn progress, void *u, char *error,
+                        size_t error_size)
+{
+    struct ctx c = { true, NULL, progress, u, "", 0, 0 };
+    char prev[300], prev_root[320], prev_esp[320], undone[300];
+    struct aegis_stat st;
+    int ret = -1;
+
+    keeping = true;
+    snprintf(prev, sizeof(prev), "%s" UPDATES_DIR "/previous", root);
+    snprintf(prev_root, sizeof(prev_root), "%s/root", prev);
+    snprintf(prev_esp, sizeof(prev_esp), "%s/esp", prev);
+    snprintf(undone, sizeof(undone), "%s" UPDATES_DIR "/undone", root);
+    if (stat(prev_root, &st) < 0) {
+        errno = ENOENT;
+        fail(&c, "There is no update to undo");
+        goto out;
+    }
+    remove_path(undone);
+    if (mkdir(undone, 0700) < 0 || make_dir_like(undone, root) < 0) {
+        fail(&c, "Preparing");
+        goto out;
+    }
+    step(&c, 30, "Setting the updated system aside");
+    if (move_system(&c, root, undone, "") < 0) {
+        struct ctx back = { true, NULL, NULL, NULL, "", 0, 0 };
+
+        move_in(&back, undone, root, "");
+        goto out;
+    }
+    step(&c, 60, "Putting the previous system back");
+    if (move_in(&c, prev_root, root, "") < 0)
+        goto out;
+    step(&c, 85, "Putting the previous boot files back");
+    if (esp && swap_boot_files(&c, prev_esp, esp, NULL) < 0)
+        goto out;
+    step(&c, 95, "Finishing");
+    remove_path(undone);
+    remove_path(prev);
     sync();
     step(&c, 100, "Done");
     ret = 0;

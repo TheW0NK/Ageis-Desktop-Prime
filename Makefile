@@ -3,6 +3,8 @@
 # make run          boot the image in QEMU (q35, AHCI disk) with the devices below
 # make run-serial   the same, without a window (serial console on the terminal)
 # make test         boot the image and run a scripted smoke test
+# make iso          build the install media (build/aegis-install.iso)
+# make update       build a system update file (build/aegis-VERSION.upd)
 #
 # Image options: AEGIS_USER=name AEGIS_PASSWORD=secret (defaults: user / aegis)
 #
@@ -19,13 +21,17 @@
 #   QEMU_CAMERA=VID:PID pass a real USB webcam through (QEMU has no virtual camera)
 #   QEMU_EXTRA=...      any other QEMU arguments
 
+# The system's version, written to /osystem/version.aset and update files.
+AEGIS_VERSION  ?= 0.3.0
+AEGIS_BUILD    ?= $(shell date -u +%Y-%m-%d)-$(shell git rev-parse --short HEAD 2>/dev/null)
+export AEGIS_VERSION AEGIS_BUILD
 AEGIS_USER     ?= user
 AEGIS_PASSWORD ?= aegis
 IMAGE    := build/aegis.img
 OVMF_CODE := /usr/share/OVMF/OVMF_CODE_4M.fd
 OVMF_VARS := /usr/share/OVMF/OVMF_VARS_4M.fd
 
-.PHONY: iso all boot kernel endpoint image run run-serial test clean
+.PHONY: iso update all boot kernel endpoint image run run-serial test clean
 
 all: boot kernel endpoint
 
@@ -44,6 +50,14 @@ iso: all
 	$(MAKE) -C boot esp KERNEL=$(abspath kernel/build/kernel.elf)
 	mkdir -p build
 	LIVE=1 tools/mkrootfs.sh $(ISO) boot/build/esp endpoint/build - -
+
+# A system update (.upd) of this build, installed through Recovery:
+#   make update [AEGIS_VERSION=0.3.1] [UPDATE_NOTE='What changed']
+UPD ?= build/aegis-$(AEGIS_VERSION).upd
+UPDATE_NOTE ?=
+
+update: image iso
+	tools/mkupd.py $(UPD) build/rootfs boot/build/esp build/live.img $(AEGIS_VERSION) '$(AEGIS_BUILD)' '$(UPDATE_NOTE)'
 
 build/ovmf_vars.fd:
 	mkdir -p build

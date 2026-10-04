@@ -426,7 +426,13 @@ static void show_about(void)
     char buf[160], a[32], b[32];
 
     if (uname(&un) == 0) {
-        snprintf(buf, sizeof(buf), "%s %s (%s)", un.sysname, un.release, un.machine);
+        char ver[32], build[64] = "";
+
+        // The system's version (updates change it), then the kernel's.
+        system_version("", ver, sizeof(ver));
+        aset_get("/osystem/version.aset", "build", build, sizeof(build));
+        snprintf(buf, sizeof(buf), "Aegis %s%s%s%s, kernel %s (%s)", ver, *build ? " (build " : "", build,
+                 *build ? ")" : "", un.release, un.machine);
         ui_set_text(ui_get(win, "system"), buf);
     }
     if (sysinfo(&si) == 0) {

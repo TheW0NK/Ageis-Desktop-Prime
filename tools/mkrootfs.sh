@@ -72,6 +72,9 @@ mkdir -p "$root"/osystem/resources/certificates "$root"/osystem/resources/fonts
 cp "$here"/../third_party/fonts/*.ttf "$root"/osystem/resources/fonts/
 cp "$here"/../third_party/ca-certificates.pem "$root"/osystem/resources/certificates/ca-bundle.pem
 
+# Which Aegis this is (Settings > About, update files).
+printf 'aegis settings 1\nversion: %s\nbuild: %s\n' "${AEGIS_VERSION:-0.0.0}" "${AEGIS_BUILD:-}" \
+    > "$root"/osystem/version.aset
 cat > "$root"/msc/routines <<ROUTINES
 # System routines: schedule, account, command. Edit with the Routines app.
 #   minute hour day month weekday  user  command

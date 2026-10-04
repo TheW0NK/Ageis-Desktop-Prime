@@ -24,6 +24,8 @@ mkfs.ext4 -q -F -L aegis-live -b 4096 -O ^has_journal -d "$root_dir" "$work/live
 
 cp -r "$esp_dir" "$work/esp"
 cp "$work/live.img" "$work/esp/EFI/Aegis/live.img"
+# Kept for update files, as the new recovery system.
+cp "$work/live.img" "$(dirname "$out")/live.img"
 cat > "$work/esp/EFI/Aegis/bcd" <<'BCD'
 # Aegis Boot Configuration Data for the install media.
 timeout=5

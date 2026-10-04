@@ -838,6 +838,7 @@ const char *icon_for_file(const char *name, bool dir)
         { ".jpeg", "image" }, { ".gif", "image" }, { ".bmp", "image" }, { ".tga", "image" },
         { ".wav", "audio" }, { ".mp3", "audio" }, { ".ogg", "audio" }, { ".flac", "audio" },
         { ".aip", "package" },
+        { ".upd", "shield" },
     };
     const char *dot = strrchr(name, '.');
 

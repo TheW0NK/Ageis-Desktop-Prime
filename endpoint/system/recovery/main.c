@@ -98,6 +98,11 @@ static const char page[] =
     "              <hbox><button text='Reinstall, keeping files' onclick='reinstall'/></hbox>"
     "              <progress id='reprogress' value='0'/>"
     "              <label id='remsg' dim='true'/>"
+    "              <vbox id='undobox' spacing='10' hidden='true'>"
+    "                <separator/>"
+    "                <p id='undotext'/>"
+    "                <hbox><button text='Undo the last update' onclick='undoupdate'/></hbox>"
+    "              </vbox>"
     "              <separator/>"
     "              <p text='Or erase the whole disk and install again from the start.'/>"
     "              <hbox><button text='Erase and install...' onclick='erase'/></hbox>"
@@ -108,6 +113,16 @@ static const char page[] =
     "              <p text='A terminal as the superuser. The installed system is at /osystem/volumes/system and its EFI partition at"
     " /osystem/volumes/esp. Changes take effect at once: take care.'/>"
     "              <hbox><button text='Open terminal' onclick='terminal'/></hbox>"
+    "            </vbox>"
+    // 7: installing a waiting update (shown by itself)
+    "            <vbox spacing='12'>"
+    "              <h2 id='uptitle' text='Updating Aegis'/>"
+    "              <p text='Replacing the system files. Accounts, settings, apps and everyone&apos;s files stay."
+    " Do not turn the computer off.'/>"
+    "              <progress id='upprogress' value='0'/>"
+    "              <label id='upmsg' dim='true'/>"
+    "              <hbox spacing='8'><button id='upcontinue' text='Continue to Recovery' hidden='true'"
+    "                onclick='upcontinue'/><button id='uprestart' text='Restart' hidden='true' onclick='restart'/></hbox>"
     "            </vbox>"
     "          </stack>"
     "        </hbox>"
@@ -506,7 +521,7 @@ static void finish(bool ok, const char *error)
     write(pipe_fds[1], &m, sizeof(m));
 }
 
-static int job_kind;                // 0 image create, 1 restore, 2 reinstall
+static int job_kind;                // 0 image create, 1 restore, 2 reinstall, 3 update, 4 undo an update
 static char job_arg[400];
 
 static void *job_thread(void *arg)
@@ -519,18 +534,24 @@ static void *job_thread(void *arg)
         r = sysimage_create(SYS, job_arg, report, NULL, error, sizeof(error));
     else if (job_kind == 1)
         r = sysimage_restore(job_arg, SYS, report, NULL, error, sizeof(error));
-    else
+    else if (job_kind == 2)
         r = install_refresh(SYS, ESP, report, NULL, error, sizeof(error));
+    else if (job_kind == 3)
+        r = update_run_pending(SYS, have_esp ? ESP : NULL, report, NULL, error, sizeof(error));
+    else
+        r = install_undo_update(SYS, have_esp ? ESP : NULL, report, NULL, error, sizeof(error));
     finish(r == 0, error);
     return NULL;
 }
 
 static void load_images(void);
+static void update_finished(bool ok, const char *text);
 
 static void job_progress(int fd, void *u)
 {
     struct msg m;
-    const char *bar = job_kind == 2 ? "reprogress" : "imgprogress", *label = job_kind == 2 ? "remsg" : "imgmsg";
+    const char *bar = job_kind == 3 ? "upprogress" : job_kind >= 2 ? "reprogress" : "imgprogress";
+    const char *label = job_kind == 3 ? "upmsg" : job_kind >= 2 ? "remsg" : "imgmsg";
 
     (void)u;
     while (read(fd, &m, sizeof(m)) == sizeof(m)) {
@@ -539,8 +560,10 @@ static void job_progress(int fd, void *u)
         if (m.done) {
             busy = false;
             dprintf(STDERR_FILENO, "recovery: job %d %s: %s\n", job_kind, m.done > 0 ? "done" : "failed", m.text);
-            if (job_kind != 2)
+            if (job_kind <= 1)
                 load_images();
+            if (job_kind >= 3)
+                update_finished(m.done > 0, m.text);
         }
     }
 }
@@ -727,6 +750,80 @@ static void on_safe(struct widget *w, void *u)
     on_restart(NULL, NULL);
 }
 
+// ---- Updates ----
+
+static int pending_kind;            // 1 installing an update at start, 2 undoing one
+
+static bool restart_later(void *u)
+{
+    (void)u;
+    on_restart(NULL, NULL);
+    return false;
+}
+
+static void show_undo(void)
+{
+    char prev[32], text[200];
+    bool can = have_system && update_can_undo(SYS, prev, sizeof(prev));
+
+    if (can) {
+        snprintf(text, sizeof(text), "The last update can be undone: the system goes back to Aegis %s, keeping "
+                 "accounts, settings, apps and files.", prev);
+        ui_set_text(ui_get(win, "undotext"), text);
+    }
+    ui_set_visible(ui_get(win, "undobox"), can);
+}
+
+static void update_finished(bool ok, const char *text)
+{
+    char msg[300], ver[32];
+
+    system_version(SYS, ver, sizeof(ver));
+    if (job_kind == 4) {
+        show_undo();
+        ui_set_text(ui_get(win, "remsg"), ok ? "The update was undone. Restart to start the previous system." : text);
+        return;
+    }
+    if (ok) {
+        snprintf(msg, sizeof(msg), pending_kind == 2 ? "The update was undone: this is Aegis %s again. Restarting..."
+                                                     : "Aegis was updated to %s. Restarting...", ver);
+        ui_set_text(ui_get(win, "upmsg"), msg);
+        ui_set_text(ui_get(win, "uptitle"), pending_kind == 2 ? "The update was undone" : "Aegis is up to date");
+        dprintf(STDERR_FILENO, "recovery: updated to %s\n", ver);
+        ui_timer(3000, restart_later, NULL);
+        return;
+    }
+    snprintf(msg, sizeof(msg), "%s: %s. The system was left as it was (Aegis %s).",
+             pending_kind == 2 ? "The update was not undone" : "The update was not installed", text, ver);
+    ui_set_text(ui_get(win, "uptitle"), pending_kind == 2 ? "Undoing the update did not work" : "The update did not work");
+    ui_set_text(ui_get(win, "upmsg"), msg);
+    ui_set_visible(ui_get(win, "upcontinue"), true);
+    ui_set_visible(ui_get(win, "uprestart"), true);
+}
+
+static void on_up_continue(struct widget *w, void *u)
+{
+    (void)w;
+    (void)u;
+    ui_set_enabled(ui_get(win, "tools"), true);
+    ui_list_select(ui_get(win, "tools"), 0);
+    ui_set_value(ui_get(win, "pages"), 0);
+    show_undo();
+    ui_relayout(win);
+}
+
+static void on_undo_update(struct widget *w, void *u)
+{
+    (void)w;
+    (void)u;
+    if (!have_system || busy)
+        return;
+    if (ui_message(win, "Undo the last update", "Put back the system as it was before the last update? Accounts, "
+                   "settings, apps and files stay.", "Undo|Cancel") != 0)
+        return;
+    start_job(4, NULL);
+}
+
 static void on_tool(struct widget *w, void *u)
 {
     int i = ui_list_selected(w);
@@ -766,7 +863,8 @@ int main(void)
         { "tool", on_tool }, { "restart", on_restart }, { "safe", on_safe }, { "poweroff", on_poweroff },
         { "firmware", on_firmware }, { "savestartup", on_save_startup }, { "loadbcd", on_load_bcd },
         { "savebcd", on_save_bcd }, { "resetpw", on_reset_pw }, { "mkimage", on_mkimage }, { "restore", on_restore },
-        { "reinstall", on_reinstall }, { "erase", on_erase }, { "terminal", on_terminal }, { NULL, NULL },
+        { "reinstall", on_reinstall }, { "erase", on_erase }, { "terminal", on_terminal },
+        { "undoupdate", on_undo_update }, { "upcontinue", on_up_continue }, { NULL, NULL },
     };
     struct widget *tools;
     char text[200];
@@ -794,7 +892,28 @@ int main(void)
     ui_set_text(ui_get(win, "system"), text);
     ui_list_select(tools, 0);
     ui_watch_fd(pipe_fds[0], job_progress, NULL);
+    show_undo();
     ui_window_show(win);
     dprintf(STDERR_FILENO, "recovery: ready (%s)\n", have_system ? sys_dev : "no system");
+    // An update (or undoing one) asked for from the running system: do it
+    // at once, then start the system again.
+    {
+        struct update_info w;
+        int pending = have_system ? update_pending(SYS, &w) : 0;
+
+        if (pending) {
+            pending_kind = pending;
+            ui_set_enabled(tools, false);
+            ui_set_value(ui_get(win, "pages"), 7);
+            if (pending == 2)
+                ui_set_text(ui_get(win, "uptitle"), "Undoing the last update");
+            else if (*w.version) {
+                snprintf(text, sizeof(text), "Updating Aegis to %s", w.version);
+                ui_set_text(ui_get(win, "uptitle"), text);
+            }
+            dprintf(STDERR_FILENO, "recovery: installing the waiting update\n");
+            start_job(3, NULL);
+        }
+    }
     return ui_run();
 }
